@@ -1,0 +1,37 @@
+# 临时锚点（重建提交历史期间的安全副本，验证后删除）
+_anchor_current.html
+
+# 会话期间的一次性辅助文件（重建脚本、提交信息草稿、快照巡检）
+_rebuild_history.sh
+_inspect_snapshots.py
+_msg*.txt
+
+# 快照备份：每个状态都已作为一次提交的 ops-workbench.html 内容被记录，
+# 再纳入版本控制就是同一份内容存两遍。映射关系见 README.md。
+ops-workbench.backup-before-*.html
+
+# 可再生的中间产物：base64 载荷已内嵌进 ops-workbench.html，
+# 且可由「源 PNG + db-icon-recolor skill」随时重新生成
+nb64_*.txt
+b64_*.txt
+rc-*.png
+*-norm.png
+
+# 构建产物：源在仓库外的用户级 skill 目录（~/.workbuddy/skills/db-icon-recolor/）
+db-icon-recolor.zip
+
+# 一次性诊断/校验脚本（会话期间的临时工具，结论已沉淀进 skill）
+_measure_*.py
+_verify_*.py
+_diag_*.py
+_filter_test.py
+_faint_diag.py
+_final_check.py
+_idempotency.py
+_legibility.py
+_out.txt
+_v.txt
+
+# Python
+__pycache__/
+*.pyc

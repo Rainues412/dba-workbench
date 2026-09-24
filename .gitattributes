@@ -1,0 +1,8 @@
+# 字节保真：ops-workbench.html 是已发布到线上的文件（CRLF 行尾），
+# 仓库必须原样存储，禁止任何行尾转换——否则 checkout 出的副本与线上发布件
+# 不再逐字节一致，也会让 regenerate_all.py 的哈希比对失去意义。
+* -text
+
+# 显式声明二进制，避免 diff 噪声与任何文本处理
+*.png binary
+*.zip binary
