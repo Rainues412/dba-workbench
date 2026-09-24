@@ -49,3 +49,14 @@
 - Windows `C:\Windows\System32\convert` 是 **NTFS 工具，不是 ImageMagick**，禁止用于图片
 - PowerShell `Add-Type`（WinRT 位图解码）被沙箱策略拦截，不要尝试
 - bash 陷阱：Windows 绝对路径含 `C:` 冒号会破坏 `${f%%:*}` 参数展开，for 循环里别用冒号作分隔符
+- `sha256sum` 对二进制模式文件会加 `\` 前缀，直接字符串比较会误判 FAIL；比对哈希改用 Python 读字节
+
+## 版本控制
+
+项目已建本地 git 仓库（`D:/coding/workspace/.git`，分支 `main`）。
+
+- **`.gitattributes` 用 `* -text` 禁止行尾转换**，不可删改：`ops-workbench.html` 是纯 CRLF 且已发布线上，转换会让 checkout 副本与发布件不再逐字节一致，也会破坏 `regenerate_all.py` 的哈希比对。仓库级另设 `core.autocrlf=false`（但本地 config 不随克隆传播，以 `.gitattributes` 为准）
+- 6 个源 PNG 已全部入库（含 `postgresql-icon.png`，此前只在桌面），仓库自包含，可直接跑 `regenerate_all.py`
+- `.gitignore` 排除：`ops-workbench.backup-before-*.html`（内容已作为历史提交存在）、`nb64_*.txt` / `rc-*.png` / `*-norm.png`（可再生）、`db-icon-recolor.zip`（构建产物，源在仓库外的 skill 目录）
+- **改完 `ops-workbench.html` 或 memory 后要提交**；提交前用 `git diff --stat` 确认改动范围符合预期
+- 备份快照 → 提交的映射表记在 `README.md`，忽略备份后仍可追溯历史

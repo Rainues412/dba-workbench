@@ -64,13 +64,23 @@ PostgreSQL / SQL Server / Linux / 其他），Redis 为手绘线性 SVG。
 
 **备份文件 → 提交映射**（备份是各轮「改动前」快照，因此其内容等于上一轮的最终状态）：
 
-| 备份文件 | 对应提交内容 |
-|---|---|
-| `backup-before-pg.html` | 提交 1：DBA 工作台基线 |
-| `backup-before-oracle.html` | 提交 2：新增 PostgreSQL、MySQL 改绿 |
-| `backup-before-mssql-other.html` | 提交 3：Oracle 官方图标 |
-| `backup-before-other-linux.html` | 提交 4：SQL Server +「其他」官方图标 |
-| `backup-before-normalize.html` | 提交 5：「其他」+ Linux（alpha mask） |
-| （当前文件） | 提交 6：统一图标视觉尺寸 |
+| 备份文件 | 提交 | 内容 |
+|---|---|---|
+| `backup-before-pg.html` | `548c5e1` | 1：DBA 工作台基线（MySQL 绿 PNG + PG 120px 透明底 PNG，余为手绘 SVG） |
+| `backup-before-oracle.html` | `30930fc` | 2：PostgreSQL 换用 300x300 白底版官方图标 |
+| `backup-before-mssql-other.html` | `41551b9` | 3：Oracle 改用官方 logo 图标 |
+| `backup-before-other-linux.html` | `aff09f0` | 4：SQL Server 与「其他」改用官方 logo 图标 |
+| `backup-before-normalize.html` | `6aeed64` | 5：「其他」与 Linux 改用官方图标（alpha mask） |
+| （当前文件） | `9ff0cc3` | 6：统一 7 个图标的视觉尺寸 |
+
+每次提交的时间戳取自对应备份的 mtime，还原了真实时序。
 
 工作记忆与偏好记录在 `.workbuddy/memory/`（已纳入版本控制）。
+
+## 行尾策略（重要，勿改）
+
+`ops-workbench.html` 是纯 CRLF 文件且已发布到线上，`.gitattributes` 用
+`* -text` 禁止任何行尾转换。若允许转换，`git checkout` 得到的副本将不再与
+线上发布件逐字节一致，`regenerate_all.py` 的哈希比对也会失效。
+仓库级另设 `core.autocrlf=false`，但本地 config 不随克隆传播，
+**以 `.gitattributes` 为准**。
