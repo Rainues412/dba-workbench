@@ -12,7 +12,13 @@
 (function () {
   'use strict';
 
-  var API_BASE = 'http://localhost:8686';
+  // 公网发布页的 CSP 是 connect-src 'self' blob: https:（平台固定，不可改），
+  // 明文 http 的 localhost 一律被拦。因此：页面在 https 上下文（workbuddy iframe、
+  // 或直接 https://localhost:8687）时走 https://localhost:8687（自签证书），
+  // 其余（本地 http 服务、file:// 双击打开）走 http://localhost:8686。
+  var API_BASE = location.protocol === 'https:'
+    ? 'https://localhost:8687'
+    : 'http://localhost:8686';
   var P = 'wb_dba_workbench_';
   var LOCAL_ONLY = { accounts: true };   // 永不走 API 的集合
   var KNOWN = { scripts: 1, knowledge: 1, installers: 1, tasks: 1, contacts: 1, accounts: 1 };

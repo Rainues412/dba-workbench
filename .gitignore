@@ -42,3 +42,8 @@ server/workspace.db-wal
 server/workspace.db-shm
 server/.workspace_secret
 server/public.html
+
+# 自签 localhost 证书/私钥（本机生成，不入库）
+server/tls/
+# 发布件（可再生：make_publish.py）
+server/publish.html

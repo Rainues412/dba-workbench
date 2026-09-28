@@ -47,12 +47,35 @@ D:\coding\workspace\
 
 | 访问方式 | 数据源 | 打开/定位/扫描入库 |
 |---|---|---|
-| `localhost:8686`（本服务器） | SQLite 真数据 | ✅ |
-| `workbuddy.link` 公网页（**本机**浏览器） | 经 CORS 连 localhost:8686 → SQLite | ✅ |
-| 公网页（其他设备）/ 双击 HTML 文件 | 该浏览器 localStorage | ❌（无 API 可达） |
+| `localhost:8686`（本服务器，http） | SQLite 真数据 | ✅ |
+| `localhost:8687`（本服务器，https 自签） | SQLite 真数据 | ✅ |
+| `workbuddy.link` 公网页（**本机**浏览器，证书已信任） | iframe 桥接 → https://localhost:8687 → SQLite | ✅ |
+| 公网页（其他设备 / 证书未信任）/ 双击 HTML 文件 | 该浏览器 localStorage | ❌（无 API 可达） |
 
 服务绑定 `127.0.0.1`，外部设备不可达——公网页对非本机访问者自然降级为
 localStorage 展示态（空库时显示内置示例数据）。这是设计边界，不是故障。
+
+### 为什么需要 https://localhost:8687（CSP 结论，勿删）
+
+workbuddy 静态资源域对发布页下发的 CSP 为：
+
+```
+connect-src 'self' blob: https: wss:
+```
+
+即**禁止 https 页面请求明文 http**。公网页以 iframe 加载
+（origin = `workbuddy-space-static.codebuddy.work`），其中的桥接脚本若请求
+`http://localhost:8686` 会被浏览器直接拦截（静默失败，无控制台报错）。
+因此 `workbench.js` 按 `location.protocol` 自适应：https 上下文走
+`https://localhost:8687`（自签证书，`server/tls/`），其余走 `http://localhost:8686`。
+
+证书一次性安装（当前用户根存储，已在本机执行）：
+
+```bash
+certutil -addstore -user Root server\tls\localhost-cert.cer
+```
+
+换机器/换浏览器配置文件后需重跑；卸载见 `http://localhost:8686/trust-guide`。
 
 ### 数据流
 
@@ -103,18 +126,24 @@ localStorage 展示态（空库时显示内置示例数据）。这是设计边�
 ## 修改与发布
 
 本地改动不会自动上线，必须重新导入并发布。**必须带 `--node-block-id`**，
-否则会新建一个页面、链接随之改变：
+否则会新建一个页面、链接随之改变。
+
+发布件不是 `ops-workbench.html` 本身，而是 `server/publish.html`
+（= 纯净 UI 壳 + **内联**桥接脚本；资料库只服务单文件，没有 /static 路由）：
 
 ```bash
-python3 "<library-skill>/page/import_html.py" ops-workbench.html \
+cd server && python make_publish.py        # 由 ops-workbench.html + workbench.js 生成 publish.html
+python3 "<library-skill>/page/import_html.py" publish.html \
         --node-block-id yKeXCdqf9JT4DJ2JmpmBpY
 python3 "<library-skill>/page/publish_page.py" --node-id yKeXCdqf9JT4DJ2JmpmBpY
 ```
 
-发布的是**磁盘上的纯净 `ops-workbench.html`**；桥接脚本只存在于本地服务器的
-HTTP 响应里，因此发布流程与图标哈希比对均不受合并影响。
-查线上产物必须用接口返回的 `artifacts[].path`（当前产物名为 `public.html`），
-沿用旧文件名会拿到 NoSuchKey 错误页并误判线上被破坏。
+- `ops-workbench.html` 保持纯净（不含桥接），是 UI 与 git 的唯一事实源；
+  本地 :8686 版在响应里以 `<script src>` 注入桥接，磁盘文件不改
+- 查线上产物必须用接口返回的 `artifacts[].path`（当前产物名为 `public.html`），
+  沿用旧文件名会拿到 NoSuchKey 错误页并误判线上被破坏
+- 发布页要连上本机真数据，需满足：本机服务在跑 + 自签证书已信任（见上节）；
+  否则自动降级为 localStorage 展示态
 
 ## 数据库图标
 
