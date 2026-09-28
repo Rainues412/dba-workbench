@@ -187,7 +187,7 @@
   function schedulePush(key) {
     clearTimeout(pending[key]);
     pending[key] = setTimeout(function () {
-      pushAll(key).catch(function (e) {
+      pushAll(key).then(refreshUI).catch(function (e) {
         console.warn('[workbench] 同步失败，数据保留在本地缓存:', key, e);
       });
     }, 400);
