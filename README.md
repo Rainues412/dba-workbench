@@ -1,10 +1,95 @@
 # DBA 工作台
 
-个人 DBA 工作台，单文件 HTML（CSS/JS 全内联，零外部依赖），已部署为在线页面。
+个人 DBA 工作台。**合并版架构**：workbuddy 的单文件 UI 壳 + FastAPI 后端与
+SQLite 数据层。UI 与 `ops-workbench.html` 保持逐字节不变，数据层按访问方式切换。
 
+- **本地工作台（真数据）**：http://localhost:8686 （`server/main.py`）
 - **在线访问**：https://workbuddy.link/p/yKeXCdqf9JT4DJ2JmpmBpY
 - **编辑态**：https://www.workbuddy.cn/space/d/yKeXCdqf9JT4DJ2JmpmBpY
-- 主文件：`ops-workbench.html`
+- 前端主文件：`ops-workbench.html`（CSS/JS 全内联，零外部依赖）
+
+## 快速开始
+
+```bash
+cd server && python main.py     # 自动开浏览器 http://localhost:8686
+```
+
+依赖：`server/requirements.txt`（fastapi / uvicorn / cryptography）。
+侧栏标题下方徽章显示当前数据模式：**已连接服务器**（API/SQLite）或
+**本地模式**（回退 localStorage）。
+
+## 项目架构
+
+```
+D:\coding\workspace\
+├── ops-workbench.html        单文件前端（workbuddy UI 壳，磁盘/git/线上逐字节一致）
+├── *-icon.png ×6             数据库官方 logo 图标源文件（base64 已内嵌进 HTML）
+├── README.md / .gitignore / .gitattributes
+├── .workbuddy/memory/        workbuddy 工作记忆与偏好（纳入版本控制）
+└── server\                   FastAPI 后端（合并自 dba-workspace 项目）
+    ├── main.py               入口 :8686；GET / 返回 HTML 时仅在响应中追加
+    │                         <script src="/static/workbench.js">（不改磁盘文件）；
+    │                         注册 CORS（workbuddy.link / workbuddy.cn 两个 origin）
+    ├── static/workbench.js   数据层桥接：劫持页面 gd()/sd()，读写改走 REST API；
+    │                         服务器不可用时自动回退 localStorage
+    ├── backend/
+    │   ├── database.py       SQLite 建表 + 迁移（含 wb_type/wb_db/wb_person 等桥接列）
+    │   └── routers/          11 个路由模块（见下「API 一览」）
+    ├── migrate_from_dba_workspace.py
+    │                         一次性幂等迁移：旧库 → 本库（09-24 已执行）
+    ├── requirements.txt
+    ├── workspace.db          SQLite 真数据（git 忽略；583 行）
+    └── .workspace_secret     密码本 Fernet 密钥（git 忽略，勿外传；当前未启用见下）
+```
+
+### 三种访问形态
+
+| 访问方式 | 数据源 | 打开/定位/扫描入库 |
+|---|---|---|
+| `localhost:8686`（本服务器） | SQLite 真数据 | ✅ |
+| `workbuddy.link` 公网页（**本机**浏览器） | 经 CORS 连 localhost:8686 → SQLite | ✅ |
+| 公网页（其他设备）/ 双击 HTML 文件 | 该浏览器 localStorage | ❌（无 API 可达） |
+
+服务绑定 `127.0.0.1`，外部设备不可达——公网页对非本机访问者自然降级为
+localStorage 展示态（空库时显示内置示例数据）。这是设计边界，不是故障。
+
+### 数据流
+
+```
+页面 render*() ──读──> gd(key) ──> [API 模式] 内存 cache（pull 自 REST API）
+                                └─> [回退模式] localStorage
+页面 sd(key, data) ─写─> [API 模式] cache + 400ms 防抖 → 全量对账推送
+                                （删服务端多余 + 逐条 upsert）→ SQLite
+                        └─> [回退模式] localStorage
+每次 pull 镜像回 localStorage：服务器宕机时回退看到的是真实数据而非示例种子
+```
+
+- 6 个集合中 5 个走 SQLite：scripts / knowledge / installers / tasks / contacts
+- **accounts（账号保险箱）始终留在 localStorage**：明文密码不进 API、不进 git、不上云
+- 字段映射在 `workbench.js` 的 `M` 表：P0/P1/P2 ↔ 高/中/低；
+  scripts.type ↔ `scripts.wb_type`；knowledge.db ↔ `articles.wb_db`；
+  contacts 的负责人/联系方式 ↔ `customers.wb_person` / `wb_contact`
+- 密码本模块（vault 路由，Fernet 加密）后端保留但前端未接线——
+  当前 UI 的账号保险箱按用户偏好走 localStorage；`.workspace_secret` 暂为闲置
+
+### API 一览（前缀 `/api`）
+
+| 路由 | 用途 |
+|---|---|
+| `dashboard` | 统计数 / 待办 / 收藏 / 最近文档 |
+| `scripts` / `articles` | 脚本库 / 知识库（对应 UI 的 scripts / knowledge） |
+| `resources` | 安装包索引（对应 UI 的 installers） |
+| `tasks` / `customers` | 任务排期 / 客户通讯录（含联系人与沟通记录子表） |
+| `vault` | 密码本（Fernet 加密；前端未启用） |
+| `launcher` | 打开本地文件/目录/URL（`os.startfile` / `explorer /select` / 浏览器） |
+| `scan` | 扫描目录配置 + 扫描 + 入库（只记路径，不移动文件） |
+| `search` / `export` | 全局搜索 / JSON 导出导入 |
+
+### 合并带来的增强（不改 UI，仅运行时注入）
+
+- 脚本/知识库/安装包表格中**有路径的行**行首注入「打开」「定位」按钮
+- 设置弹窗注入「扫描入库」区块；控制台另有
+  `wbAddScanDir("D:\...")` / `wbScan()` / `wbListScanDirs()`
 
 ## 模块
 
@@ -12,8 +97,7 @@
 
 仪表盘左侧为「处理中的故障」+「我的当前工作」，右侧为「数据库类型分布」
 （7 类两列卡片，每张含图标胶囊 + 进度条 + 数量）。
-
-账号密码仅存本机浏览器 localStorage，不上云。
+注意：分布图计数写死在 HTML 的 `dbData` 中，不随 SQLite 数据变化。
 
 ## 修改与发布
 
@@ -26,14 +110,19 @@ python3 "<library-skill>/page/import_html.py" ops-workbench.html \
 python3 "<library-skill>/page/publish_page.py" --node-id yKeXCdqf9JT4DJ2JmpmBpY
 ```
 
+发布的是**磁盘上的纯净 `ops-workbench.html`**；桥接脚本只存在于本地服务器的
+HTTP 响应里，因此发布流程与图标哈希比对均不受合并影响。
+查线上产物必须用接口返回的 `artifacts[].path`（当前产物名为 `public.html`），
+沿用旧文件名会拿到 NoSuchKey 错误页并误判线上被破坏。
+
 ## 数据库图标
 
 「数据库类型分布」的 7 个图标中，6 个来自官方 logo（Oracle / MySQL /
 PostgreSQL / SQL Server / Linux / 其他），Redis 为手绘线性 SVG。
 
 图标处理**必须复用 user-level skill `db-icon-recolor`**
-（`~/.workbuddy/skills/db-icon-recolor/`），不要重写逻辑。该 skill 在本仓库之外，
-仓库里的 `db-icon-recolor.zip` 只是它的打包快照。
+（`~/.workbuddy/skills/db-icon-recolor/`），不要重写逻辑。该 skill 在本仓库之外
+（仓库曾有的 `db-icon-recolor.zip` 打包快照已于 2026-09-28 清理）。
 
 关键约定：
 
@@ -54,17 +143,19 @@ PostgreSQL / SQL Server / Linux / 其他），Redis 为手绘线性 SVG。
 
 ## 版本控制约定
 
-`.gitignore` 排除三类内容：
+`.gitignore` 排除内容：
 
 | 排除项 | 原因 |
 |---|---|
-| `ops-workbench.backup-before-*.html` | 每个状态都已作为一次提交的 `ops-workbench.html` 记录，再纳入即重复 |
-| `nb64_*.txt` / `rc-*.png` / `*-norm.png` | 可由「源 PNG + skill」再生；base64 已内嵌进 HTML |
-| `db-icon-recolor.zip` | 构建产物，源在仓库外的 skill 目录 |
+| `ops-workbench.backup-before-*.html` | 每个状态都已作为一次提交的 `ops-workbench.html` 记录。**文件已于 2026-09-28 删除**（删除前逐一与对应提交 blob 校验 sha256 一致），规则保留作安全网 |
+| `nb64_*.txt` / `b64_*.txt` / `rc-*.png` / `*-norm.png` | 可由「源 PNG + skill」再生；base64 已内嵌进 HTML（文件已清理） |
+| `db-icon-recolor.zip` | 构建产物，源在仓库外的 skill 目录（文件已清理） |
+| `server/workspace.db*` / `server/.workspace_secret` / `server/public.html` | 真数据 / 密钥 / 可再生发布产物，不入库 |
+| `__pycache__/` / `*.pyc` 及一次性诊断脚本 | 临时产物 |
 
-**备份文件 → 提交映射**（备份是各轮「改动前」快照，因此其内容等于上一轮的最终状态）：
+**备份文件 → 提交映射**（历史存档；备份是各轮「改动前」快照，内容等于上一轮最终状态）：
 
-| 备份文件 | 提交 | 内容 |
+| 备份文件（已删） | 提交 | 内容 |
 |---|---|---|
 | `backup-before-pg.html` | `548c5e1` | 1：DBA 工作台基线（MySQL 绿 PNG + PG 120px 透明底 PNG，余为手绘 SVG） |
 | `backup-before-oracle.html` | `30930fc` | 2：PostgreSQL 换用 300x300 白底版官方图标 |
@@ -72,8 +163,6 @@ PostgreSQL / SQL Server / Linux / 其他），Redis 为手绘线性 SVG。
 | `backup-before-other-linux.html` | `aff09f0` | 4：SQL Server 与「其他」改用官方 logo 图标 |
 | `backup-before-normalize.html` | `6aeed64` | 5：「其他」与 Linux 改用官方图标（alpha mask） |
 | （当前文件） | `9ff0cc3` | 6：统一 7 个图标的视觉尺寸 |
-
-每次提交的时间戳取自对应备份的 mtime，还原了真实时序。
 
 工作记忆与偏好记录在 `.workbuddy/memory/`（已纳入版本控制）。
 
@@ -85,57 +174,18 @@ PostgreSQL / SQL Server / Linux / 其他），Redis 为手绘线性 SVG。
 仓库级另设 `core.autocrlf=false`，但本地 config 不随克隆传播，
 **以 `.gitattributes` 为准**。
 
-## 合并版架构（2026-09-24 起）
+## 历史时间线
 
-本仓库同时承载两套形态，**UI 与 `ops-workbench.html` 保持逐字节不变**：
+| 日期 | 事件 | 提交 |
+|---|---|---|
+| 09-24 | 建库基线 + 6 轮图标迭代 | `548c5e1`…`9ff0cc3` |
+| 09-24 | 合并 dba-workspace 后端（FastAPI + SQLite + 桥接层），迁移 583 行真数据 | `0618297`（feat/server-merge） |
+| 09-28 | workbuddy 会话误回滚（checkout main），留下僵尸进程与线上桥接版不同步 | `1108853`（记录） |
+| 09-28 | 用户确认要合并模式：合回 main、补 CORS、清理备份与可再生产物 | `3854c96` / `bcb3d85` |
 
-```
-ops-workbench.html          单文件前端（原 workbuddy 版，UI 不动）
-        │  直接双击 / workbuddy.link 打开 → localStorage 模式（原行为）
-        │  经本地服务器打开 → 注入 server/static/workbench.js，切到 API 模式
-server/
-├── main.py                 FastAPI 入口，http://localhost:8686
-│                           GET / 返回 HTML + 追加 <script src="/static/workbench.js">
-│                           （磁盘文件不改，只在响应里注入）
-├── backend/                REST API（源自 dba-workspace 项目）
-│   └── routers/            scripts / articles / tasks / customers / resources /
-│                           vault / launcher / scan / search / dashboard / export
-├── static/workbench.js     数据层桥接：劫持页面 gd()/sd()，读写走 API（SQLite）
-├── workspace.db            SQLite 数据文件（git 忽略）
-├── .workspace_secret       密码本 Fernet 密钥（git 忽略，勿外传）
-└── migrate_from_dba_workspace.py
-                            一次性迁移脚本：旧 dba-workspace 库 → 本库（已执行，幂等）
-```
+## 安全说明
 
-### 启动
-
-```bash
-cd server && python main.py     # 自动开浏览器 http://localhost:8686
-```
-
-侧栏标题下方会显示徽章：**已连接服务器**（API 模式）或 **本地模式**（回退 localStorage）。
-
-### 数据流与合并规则
-
-- 6 个集合中 5 个（scripts/knowledge/installers/tasks/contacts）走 SQLite；
-  **accounts（账号保险箱）始终留在 localStorage**，明文密码不进 API、不进 git
-- 字段映射在 `workbench.js` 的 `M` 表：P0/P1/P2 ↔ 高/中/低、
-  scripts.type ↔ scripts.wb_type、knowledge.db ↔ articles.wb_db、
-  contacts 的负责人/联系方式 ↔ customers.wb_person/wb_contact
-- 写入防抖 400ms 后全量对账推送（删多余 + upsert），失败只告警不丢本地缓存
-- 每次 pull 会镜像回 localStorage，服务器宕机时回退看到的是真实数据
-
-### 合并带来的新增能力（不改 UI，仅增强）
-
-- 脚本/知识库/安装包表格行首注入「打开」「定位」按钮 → `os.startfile` / `explorer /select`
-- 设置弹窗注入「扫描入库」：配置目录 → 扫描 → 一键索引本地文件（不移动文件）
-- 控制台可用 `wbAddScanDir("D:\...")` / `wbScan()` / `wbListScanDirs()`
-
-### 已迁移数据（来自 D:\coding\dba-workspace\workspace.db）
-
-scripts 24 / articles 483 / resources 76 / scan_dirs 2（tasks、customers 源库为空）。
-旧项目 `D:\coding\dba-workspace` 保留未删，确认无误后可自行归档。
-
-### git 忽略项（新增）
-
-`server/workspace.db*`、`server/.workspace_secret`、`server/**/__pycache__/`
+- 账号保险箱密码只在本机浏览器 localStorage，PIN 校验在前端（源码可见），
+  属"防顺手翻看"级别，不是加密存储；含真实密码的导出 JSON 勿外传
+- `server/workspace.db` 与 `.workspace_secret` 均被 git 忽略；备份数据库时两者要同存同备
+- API 仅绑定 127.0.0.1；CORS 只放行 workbuddy 两个 origin
