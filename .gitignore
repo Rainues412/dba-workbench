@@ -41,3 +41,4 @@ server/workspace.db
 server/workspace.db-wal
 server/workspace.db-shm
 server/.workspace_secret
+server/public.html

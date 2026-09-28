@@ -14,6 +14,7 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -26,6 +27,16 @@ BASE_DIR = Path(__file__).parent
 HTML_FILE = BASE_DIR.parent / "ops-workbench.html"
 
 app = FastAPI(title="DBA 工作台 API", version="0.3")
+
+# CORS：发布在 workbuddy.link 的桥接版页面需要从浏览器调用本机 API。
+# 仅放开 GET/POST/PUT/DELETE/OPTIONS 与 JSON 头；服务仍绑定 127.0.0.1，
+# 外部设备不可达，因此该配置只影响"本机浏览器访问公网页"这一场景。
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://workbuddy.link", "https://www.workbuddy.cn"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type"],
+)
 
 # Register routers
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
