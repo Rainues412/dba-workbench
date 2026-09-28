@@ -6,6 +6,7 @@ SQLite 数据层。UI 与 `ops-workbench.html` 保持逐字节不变，数据层
 - **本地工作台（真数据）**：http://localhost:8686 （`server/main.py`）
 - **在线访问**：https://workbuddy.link/p/yKeXCdqf9JT4DJ2JmpmBpY
 - **编辑态**：https://www.workbuddy.cn/space/d/yKeXCdqf9JT4DJ2JmpmBpY
+- **GitHub**：https://github.com/Rainues412/dba-workbench （private，源码备份）
 - 前端主文件：`ops-workbench.html`（CSS/JS 全内联，零外部依赖）
 
 ## 快速开始
@@ -165,6 +166,19 @@ PostgreSQL / SQL Server / Linux / 其他），Redis 为手绘线性 SVG。
 | （当前文件） | `9ff0cc3` | 6：统一 7 个图标的视觉尺寸 |
 
 工作记忆与偏好记录在 `.workbuddy/memory/`（已纳入版本控制）。
+
+## GitHub 同步
+
+- 仓库：`git@github.com:Rainues412/dba-workbench.git`（**private**），推送 `git push origin main`
+- **入库**：UI 壳、图标源 PNG、`server/` 后端与桥接层、`.workbuddy/memory/`、README
+- **不入库**（.gitignore）：`server/workspace.db*`（583 行真数据）、
+  `server/.workspace_secret`、`server/public.html`、`__pycache__/`
+- 因此 GitHub 副本**不含真实业务数据**，只是源码备份；换机器后
+  克隆仓库 + 恢复 `workspace.db` 备份（或设置页导入 JSON）即可复原
+- 安全提示：`ops-workbench.html` 的 `SD` 种子数据含 5 条示例账号密码字符串
+  （workbuddy 生成的 DBA 场景示例，非真实凭据）；若日后把其中任何一条换成
+  真实密码，请先从种子中移除再提交。仓库设为 private 即为此类内容兜底
+- 公网发布态（workbuddy.link）独立于本仓库，改 HTML 后需按「修改与发布」重新导入发布
 
 ## 行尾策略（重要，勿改）
 
