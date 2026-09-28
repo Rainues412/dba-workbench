@@ -84,3 +84,58 @@ PostgreSQL / SQL Server / Linux / 其他），Redis 为手绘线性 SVG。
 线上发布件逐字节一致，`regenerate_all.py` 的哈希比对也会失效。
 仓库级另设 `core.autocrlf=false`，但本地 config 不随克隆传播，
 **以 `.gitattributes` 为准**。
+
+## 合并版架构（2026-09-24 起）
+
+本仓库同时承载两套形态，**UI 与 `ops-workbench.html` 保持逐字节不变**：
+
+```
+ops-workbench.html          单文件前端（原 workbuddy 版，UI 不动）
+        │  直接双击 / workbuddy.link 打开 → localStorage 模式（原行为）
+        │  经本地服务器打开 → 注入 server/static/workbench.js，切到 API 模式
+server/
+├── main.py                 FastAPI 入口，http://localhost:8686
+│                           GET / 返回 HTML + 追加 <script src="/static/workbench.js">
+│                           （磁盘文件不改，只在响应里注入）
+├── backend/                REST API（源自 dba-workspace 项目）
+│   └── routers/            scripts / articles / tasks / customers / resources /
+│                           vault / launcher / scan / search / dashboard / export
+├── static/workbench.js     数据层桥接：劫持页面 gd()/sd()，读写走 API（SQLite）
+├── workspace.db            SQLite 数据文件（git 忽略）
+├── .workspace_secret       密码本 Fernet 密钥（git 忽略，勿外传）
+└── migrate_from_dba_workspace.py
+                            一次性迁移脚本：旧 dba-workspace 库 → 本库（已执行，幂等）
+```
+
+### 启动
+
+```bash
+cd server && python main.py     # 自动开浏览器 http://localhost:8686
+```
+
+侧栏标题下方会显示徽章：**已连接服务器**（API 模式）或 **本地模式**（回退 localStorage）。
+
+### 数据流与合并规则
+
+- 6 个集合中 5 个（scripts/knowledge/installers/tasks/contacts）走 SQLite；
+  **accounts（账号保险箱）始终留在 localStorage**，明文密码不进 API、不进 git
+- 字段映射在 `workbench.js` 的 `M` 表：P0/P1/P2 ↔ 高/中/低、
+  scripts.type ↔ scripts.wb_type、knowledge.db ↔ articles.wb_db、
+  contacts 的负责人/联系方式 ↔ customers.wb_person/wb_contact
+- 写入防抖 400ms 后全量对账推送（删多余 + upsert），失败只告警不丢本地缓存
+- 每次 pull 会镜像回 localStorage，服务器宕机时回退看到的是真实数据
+
+### 合并带来的新增能力（不改 UI，仅增强）
+
+- 脚本/知识库/安装包表格行首注入「打开」「定位」按钮 → `os.startfile` / `explorer /select`
+- 设置弹窗注入「扫描入库」：配置目录 → 扫描 → 一键索引本地文件（不移动文件）
+- 控制台可用 `wbAddScanDir("D:\...")` / `wbScan()` / `wbListScanDirs()`
+
+### 已迁移数据（来自 D:\coding\dba-workspace\workspace.db）
+
+scripts 24 / articles 483 / resources 76 / scan_dirs 2（tasks、customers 源库为空）。
+旧项目 `D:\coding\dba-workspace` 保留未删，确认无误后可自行归档。
+
+### git 忽略项（新增）
+
+`server/workspace.db*`、`server/.workspace_secret`、`server/**/__pycache__/`

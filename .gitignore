@@ -35,3 +35,9 @@ _v.txt
 # Python
 __pycache__/
 *.pyc
+
+# ── 合并版 server（2026-09-24）──
+server/workspace.db
+server/workspace.db-wal
+server/workspace.db-shm
+server/.workspace_secret
