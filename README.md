@@ -4,9 +4,11 @@
 SQLite 数据层。UI 与 `ops-workbench.html` 保持逐字节不变，数据层按访问方式切换。
 
 - **本地工作台（真数据）**：http://localhost:8686 （`server/main.py`）
-- **在线访问**：https://workbuddy.link/p/yKeXCdqf9JT4DJ2JmpmBpY
-- **编辑态**：https://www.workbuddy.cn/space/d/yKeXCdqf9JT4DJ2JmpmBpY
 - **GitHub**：https://github.com/Rainues412/dba-workbench （private，源码备份）
+- **公网发布**：已于 2026-09-28 下线（`unpublish_page.py`）。页面仍保留在
+  workbuddy 资料库（节点 `yKeXCdqf9JT4DJ2JmpmBpY`，编辑态
+  https://www.workbuddy.cn/space/d/yKeXCdqf9JT4DJ2JmpmBpY ），
+  计划日后在独立服务器上重新发布，见「修改与发布」
 - 前端主文件：`ops-workbench.html`（CSS/JS 全内联，零外部依赖）
 
 ## 快速开始
@@ -28,9 +30,9 @@ D:\coding\workspace\
 ├── README.md / .gitignore / .gitattributes
 ├── .workbuddy/memory/        workbuddy 工作记忆与偏好（纳入版本控制）
 └── server\                   FastAPI 后端（合并自 dba-workspace 项目）
-    ├── main.py               入口 :8686；GET / 返回 HTML 时仅在响应中追加
-    │                         <script src="/static/workbench.js">（不改磁盘文件）；
-    │                         注册 CORS（workbuddy.link / workbuddy.cn 两个 origin）
+    ├── main.py               入口 :8686（仅绑 127.0.0.1）；GET / 返回 HTML 时
+    │                         仅在响应中追加 <script src="/static/workbench.js">
+    │                         （不改磁盘文件）
     ├── static/workbench.js   数据层桥接：劫持页面 gd()/sd()，读写改走 REST API；
     │                         服务器不可用时自动回退 localStorage
     ├── backend/
@@ -43,39 +45,15 @@ D:\coding\workspace\
     └── .workspace_secret     密码本 Fernet 密钥（git 忽略，勿外传；当前未启用见下）
 ```
 
-### 三种访问形态
+### 两种访问形态
 
 | 访问方式 | 数据源 | 打开/定位/扫描入库 |
 |---|---|---|
-| `localhost:8686`（本服务器，http） | SQLite 真数据 | ✅ |
-| `localhost:8687`（本服务器，https 自签） | SQLite 真数据 | ✅ |
-| `workbuddy.link` 公网页（**本机**浏览器，证书已信任） | iframe 桥接 → https://localhost:8687 → SQLite | ✅ |
-| 公网页（其他设备 / 证书未信任）/ 双击 HTML 文件 | 该浏览器 localStorage | ❌（无 API 可达） |
+| `localhost:8686`（本服务器） | SQLite 真数据 | ✅ |
+| 双击 `ops-workbench.html` 直接打开 | 该浏览器 localStorage（空库时为内置示例数据） | ❌（无 API） |
 
-服务绑定 `127.0.0.1`，外部设备不可达——公网页对非本机访问者自然降级为
-localStorage 展示态（空库时显示内置示例数据）。这是设计边界，不是故障。
-
-### 为什么需要 https://localhost:8687（CSP 结论，勿删）
-
-workbuddy 静态资源域对发布页下发的 CSP 为：
-
-```
-connect-src 'self' blob: https: wss:
-```
-
-即**禁止 https 页面请求明文 http**。公网页以 iframe 加载
-（origin = `workbuddy-space-static.codebuddy.work`），其中的桥接脚本若请求
-`http://localhost:8686` 会被浏览器直接拦截（静默失败，无控制台报错）。
-因此 `workbench.js` 按 `location.protocol` 自适应：https 上下文走
-`https://localhost:8687`（自签证书，`server/tls/`），其余走 `http://localhost:8686`。
-
-证书一次性安装（当前用户根存储，已在本机执行）：
-
-```bash
-certutil -addstore -user Root server\tls\localhost-cert.cer
-```
-
-换机器/换浏览器配置文件后需重跑；卸载见 `http://localhost:8686/trust-guide`。
+服务绑定 `127.0.0.1`，外部设备不可达。公网形态已下线；日后在独立服务器
+发布时，前端与 API 同域部署即可天然避开跨域与 CSP 问题（见「修改与发布」）。
 
 ### 数据流
 
@@ -125,25 +103,34 @@ certutil -addstore -user Root server\tls\localhost-cert.cer
 
 ## 修改与发布
 
-本地改动不会自动上线，必须重新导入并发布。**必须带 `--node-block-id`**，
-否则会新建一个页面、链接随之改变。
+**当前状态：公网已下线（2026-09-28 unpublish）**。页面仍保留在 workbuddy
+资料库（节点 `yKeXCdqf9JT4DJ2JmpmBpY`），链接 `workbuddy.link/p/...` 不再可访问。
+计划日后在独立服务器上重新发布本项目。
 
-发布件不是 `ops-workbench.html` 本身，而是 `server/publish.html`
-（= 纯净 UI 壳 + **内联**桥接脚本；资料库只服务单文件，没有 /static 路由）：
+### 将来在独立服务器发布的要点
+
+- 前端与 API **同域部署**（如 `https://your.host/` 出页面、`https://your.host/api`
+  出接口），天然避开跨域与 workbuddy 那类平台 CSP 限制，无需自签证书/https 双端口
+- `workbench.js` 的 `API_BASE` 目前是写死的 `http://localhost:8686`，
+  同域部署时改为相对路径（如 `/api` 前缀）或按 `location.origin` 拼接
+- 数据从本机迁出：设置页导出 JSON，或直接拷贝 `server/workspace.db`
+  （含 `.workspace_secret` 若启用密码本）
+- 绑定地址需从 `127.0.0.1` 改为对外网卡，并**务必加认证**（当前 API 无任何鉴权，
+  仅靠"只绑回环"这一条防线）
+
+### workbuddy 资料库（历史通道，保留备查）
+
+若仍要向 workbuddy 发布（仅 localStorage 展示态，无真数据）：
 
 ```bash
-cd server && python make_publish.py        # 由 ops-workbench.html + workbench.js 生成 publish.html
-python3 "<library-skill>/page/import_html.py" publish.html \
+python3 "<library-skill>/page/import_html.py" ops-workbench.html \
         --node-block-id yKeXCdqf9JT4DJ2JmpmBpY
 python3 "<library-skill>/page/publish_page.py" --node-id yKeXCdqf9JT4DJ2JmpmBpY
 ```
 
-- `ops-workbench.html` 保持纯净（不含桥接），是 UI 与 git 的唯一事实源；
-  本地 :8686 版在响应里以 `<script src>` 注入桥接，磁盘文件不改
-- 查线上产物必须用接口返回的 `artifacts[].path`（当前产物名为 `public.html`），
-  沿用旧文件名会拿到 NoSuchKey 错误页并误判线上被破坏
-- 发布页要连上本机真数据，需满足：本机服务在跑 + 自签证书已信任（见上节）；
-  否则自动降级为 localStorage 展示态
+**必须带 `--node-block-id`**，否则会新建一个页面、链接随之改变。
+查线上产物必须用接口返回的 `artifacts[].path`（产物名可能是 `public.html`），
+沿用旧文件名会拿到 NoSuchKey 错误页并误判线上被破坏。
 
 ## 数据库图标
 
@@ -207,7 +194,7 @@ PostgreSQL / SQL Server / Linux / 其他），Redis 为手绘线性 SVG。
 - 安全提示：`ops-workbench.html` 的 `SD` 种子数据含 5 条示例账号密码字符串
   （workbuddy 生成的 DBA 场景示例，非真实凭据）；若日后把其中任何一条换成
   真实密码，请先从种子中移除再提交。仓库设为 private 即为此类内容兜底
-- 公网发布态（workbuddy.link）独立于本仓库，改 HTML 后需按「修改与发布」重新导入发布
+- 公网形态已于 2026-09-28 下线；workbuddy 资料库节点保留，见「修改与发布」
 
 ## 行尾策略（重要，勿改）
 
@@ -225,10 +212,13 @@ PostgreSQL / SQL Server / Linux / 其他），Redis 为手绘线性 SVG。
 | 09-24 | 合并 dba-workspace 后端（FastAPI + SQLite + 桥接层），迁移 583 行真数据 | `0618297`（feat/server-merge） |
 | 09-28 | workbuddy 会话误回滚（checkout main），留下僵尸进程与线上桥接版不同步 | `1108853`（记录） |
 | 09-28 | 用户确认要合并模式：合回 main、补 CORS、清理备份与可再生产物 | `3854c96` / `bcb3d85` |
+| 09-28 | 推送 GitHub private 仓库 | `5ee9477` |
+| 09-28 | 排查公网页拿不到真数据：CORS origin + 平台 CSP 拦明文 http；上 https:8687 双端口方案并发布 | `9da0354` |
+| 09-28 | 用户决定取消公网形态（日后独立服务器发布）：unpublish、拆掉 https/CORS/证书/发布件 | 本次提交 |
 
 ## 安全说明
 
 - 账号保险箱密码只在本机浏览器 localStorage，PIN 校验在前端（源码可见），
   属"防顺手翻看"级别，不是加密存储；含真实密码的导出 JSON 勿外传
 - `server/workspace.db` 与 `.workspace_secret` 均被 git 忽略；备份数据库时两者要同存同备
-- API 仅绑定 127.0.0.1；CORS 只放行 workbuddy 两个 origin
+- API 仅绑定 127.0.0.1 且无鉴权——**不要把它暴露到公网**；将来服务器发布前必须加认证
