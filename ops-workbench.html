@@ -101,6 +101,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .btn-edit{background:#dbeafe;color:#2563eb}
 .btn-delete{background:#fee2e2;color:#dc2626}
 .btn-copy{background:#f1f5f9;color:#64748b}
+.task-acts{display:flex;gap:6px;align-items:center}
+.task-icon-btn{width:16px;height:16px;padding:0;border:none;background:transparent;color:#64748b;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:color .15s,transform .1s}
+.task-icon-btn:hover{color:#1e293b}
+.task-icon-btn:active{transform:scale(.9)}
+.task-icon-btn svg{width:16px;height:16px;fill:currentColor}
+.task-tip{position:fixed;z-index:150;background:#1e293b;color:#fff;font-size:12px;line-height:1;padding:6px 9px;border-radius:5px;pointer-events:none;opacity:0;transform:translateX(-50%);transition:opacity .12s;white-space:nowrap}
+.task-tip.show{opacity:1}
+.task-tip::after{content:'';position:absolute;left:calc(50% + var(--ax,0px));top:100%;transform:translateX(-50%);border:4px solid transparent;border-top-color:#1e293b}
+.task-tip.below::after{top:auto;bottom:100%;border-top-color:transparent;border-bottom-color:#1e293b}
 .modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:200;align-items:center;justify-content:center}
 .modal-overlay.active{display:flex}
 .modal{background:#fff;border-radius:12px;padding:24px;width:90%;max-width:500px;max-height:90vh;overflow-y:auto}
@@ -640,7 +649,7 @@ function renderTasks(){
     const pb=t.priority==='P0'?'badge-overdue':t.priority==='P1'?'badge-today':'badge-week';
     const sb=t.status==='completed'?'badge-normal':t.deadline<ds(0)?'badge-overdue':'badge-today';
     const st=t.status==='completed'?'已完成':t.deadline<ds(0)?'逾期':'待处理';
-    return '<tr'+(t.status==='completed'?' style="opacity:.5"':'')+'><td><strong>'+t.title+'</strong><br><small style="color:#64748b">'+t.notes+'</small></td><td>'+t.deadline+'</td><td><span class="task-badge '+pb+'">'+t.priority+'</span></td><td><span class="task-badge '+sb+'">'+st+'</span></td><td>'+(t.status==='completed'?'<button class="action-btn btn-edit" onclick="toggleTask('+t.id+')">恢复</button>':'<button class="action-btn" style="background:#22c55e;color:#fff" onclick="toggleTask('+t.id+')">完成</button>')+'<button class="action-btn btn-edit" onclick="editTask('+t.id+')">编辑</button><button class="action-btn btn-delete" onclick="deleteTask('+t.id+')">删除</button></td></tr>';
+    return '<tr'+(t.status==='completed'?' style="opacity:.5"':'')+'><td><strong>'+t.title+'</strong><br><small style="color:#64748b">'+t.notes+'</small></td><td>'+t.deadline+'</td><td><span class="task-badge '+pb+'">'+t.priority+'</span></td><td><span class="task-badge '+sb+'">'+st+'</span></td><td><div class="task-acts">'+(t.status==='completed'?'<button class="task-icon-btn t-restore" data-tip="恢复" onclick="toggleTask('+t.id+')"><svg viewBox="0 0 24 24"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg></button>':'<button class="task-icon-btn t-done" data-tip="完成" onclick="toggleTask('+t.id+')"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></button>')+'<button class="task-icon-btn t-edit" data-tip="编辑" onclick="editTask('+t.id+')"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></button><button class="task-icon-btn t-del" data-tip="删除" onclick="deleteTask('+t.id+')"><svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button></div></td></tr>';
   }).join('');
 }
 
@@ -764,6 +773,41 @@ function savePin(){const v=document.getElementById('newPin').value;if(v.length==
 function exportData(){const d={scripts:gd('scripts'),knowledge:gd('knowledge'),installers:gd('installers'),tasks:gd('tasks'),contacts:gd('contacts'),accounts:gd('accounts')};const blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='dba_workbench_backup_'+ds(0)+'.json';a.click();toast('备份已导出')}
 function importData(e){const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=function(ev){try{const d=JSON.parse(ev.target.result);Object.keys(d).forEach(k=>sd(k,d[k]));toast('数据已恢复');closeModal();renderDashboard()}catch(err){toast('导入失败：文件格式错误')}};reader.readAsText(file)}
 function clearAllData(){if(confirm('确定清空所有数据？此操作不可恢复！')&&confirm('再次确认：真的要清空吗？')){['scripts','knowledge','installers','tasks','contacts','accounts'].forEach(k=>sd(k,[]));toast('数据已清空');closeModal();renderDashboard()}}
+
+// 任务表图标按钮 tooltip：自定义气泡替代原生 title（无延迟、样式统一）
+// 事件委托挂 document，因按钮由 renderTasks() 动态生成
+(function(){
+  var tip=document.createElement('div');
+  tip.className='task-tip';
+  document.body.appendChild(tip);
+  var cur=null;
+  function show(el){
+    var t=el.getAttribute('data-tip');
+    if(!t)return;
+    tip.textContent=t;
+    tip.classList.add('show');
+    var r=el.getBoundingClientRect();
+    var w=tip.offsetWidth;
+    var cx=r.left+r.width/2;
+    var x=Math.max(w/2+6,Math.min(cx,window.innerWidth-w/2-6));
+    tip.style.setProperty('--ax',(cx-x)+'px');
+    var y=r.top-tip.offsetHeight-8;
+    var below=false;
+    if(y<6){y=r.bottom+8;below=true}
+    tip.style.left=x+'px';
+    tip.style.top=y+'px';
+    tip.classList.toggle('below',below);
+    cur=el;
+  }
+  function hide(){if(cur){tip.classList.remove('show');cur=null}}
+  document.addEventListener('mouseover',function(e){
+    var b=e.target&&e.target.closest?e.target.closest('.task-icon-btn'):null;
+    if(b){if(b!==cur)show(b)}else hide();
+  });
+  document.addEventListener('mousedown',hide);
+  window.addEventListener('scroll',hide,true);
+  window.addEventListener('blur',hide);
+})();
 
 initData();renderDashboard();
 </script>
