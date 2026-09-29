@@ -34,6 +34,7 @@ def list_articles(
     keyword: str = "",
     category: str = "",
     tag: str = "",
+    wb_db: str = "",
     favorite_only: int = 0,
     page: int = 1,
     page_size: int = 20,
@@ -52,6 +53,9 @@ def list_articles(
         if tag:
             conditions.append("tags LIKE ?")
             params.append(f"%{tag}%")
+        if wb_db:
+            conditions.append("wb_db = ?")
+            params.append(wb_db)
         if favorite_only:
             conditions.append("is_favorite = 1")
 

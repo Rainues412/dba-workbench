@@ -339,27 +339,51 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 
     <!-- Knowledge -->
     <div class="module-view" id="view-knowledge" data-page-node-id="NLBOXNTSsYjZADoMdQ4f5s">
-      <div class="list-header" data-page-node-id="pdLcXxEGjsnmtoyWFqmjAZ">
-        <h2 class="list-title" data-page-node-id="GemFFnqPQoyKTGaDJPOWKe">知识库</h2>
-        <button class="btn-primary" onclick="openModal('knowledge')" data-page-node-id="e3z4WX8viDDi6ArPX91gQJ">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" data-page-node-id="eiVelrUJzth7xeqG0DgWb2"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" data-page-node-id="TyPP5CwD4K848ylMY0gaup"/></svg>
-          添加文档
-        </button>
+      <div id="kbBreadcrumb" style="padding:8px 0 12px;font-size:13px;color:#64748b"></div>
+      <!-- Level 1: DB type grid -->
+      <div id="kbDBGrid">
+        <div class="list-header">
+          <h2 class="list-title">知识库</h2>
+          <button class="btn-primary" onclick="openModal('knowledge')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            添加文档
+          </button>
+        </div>
+        <p style="color:#64748b;font-size:13px;margin-bottom:16px">选择一个数据库类型查看对应文档</p>
+        <div class="db-chart" id="kbDBChart" style="cursor:pointer;grid-template-columns:1fr"></div>
       </div>
-      <div class="filter-bar" data-page-node-id="rwnBWHeGjGQlz6zNWkwzBS">
-        <select class="filter-select" id="filterKbCategory" onchange="renderKnowledge()" data-page-node-id="bvliPlhU9IDpLWw7RAbL7P">
-          <option value="" data-page-node-id="UESWfcBnIPoBf55sSal78W">全部分类</option>
-          <option value="排障手册" data-page-node-id="cCYhHnbPTuG0bmBg0monza">排障手册</option>
-          <option value="运维规范" data-page-node-id="A3fdmV9lNtSji8Kzr1DRZr">运维规范</option>
-          <option value="架构设计" data-page-node-id="3ulVfQi82gNE1lECzzUHA9">架构设计</option>
-          <option value="性能调优" data-page-node-id="Hr7aYD6LcsBzcnLdB4056k">性能调优</option>
-          <option value="迁移方案" data-page-node-id="V9RYhaBolvMT5tJQcjJ3Kq">迁移方案</option>
-        </select>
+      <!-- Level 2: Document type grid -->
+      <div id="kbTypeGrid" style="display:none">
+        <div class="list-header">
+          <div style="display:flex;align-items:center;gap:12px">
+            <h2 class="list-title" id="kbTypeTitle"></h2>
+            <span id="kbTypeCount" style="font-size:13px;color:#64748b"></span>
+          </div>
+          <button class="btn-primary" onclick="openModal('knowledge')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            添加文档
+          </button>
+        </div>
+        <p style="color:#64748b;font-size:13px;margin-bottom:16px">选择一个文档类型查看详细列表</p>
+        <div class="db-chart" id="kbTypeChart" style="cursor:pointer;grid-template-columns:1fr"></div>
       </div>
-      <div class="data-table" data-page-node-id="kTlDhVjsYRfo1xflLAEqbF"><table data-page-node-id="fvdJCQRrFuwe49qDzuU7LR">
-        <thead data-page-node-id="J8O60bHXt6PuswlErP81gm"><tr data-page-node-id="bAtF0R7mfBbC5q8angA0XT"><th data-page-node-id="i7VWVlKeKtAth8yfdB2Ev4">文档名称</th><th data-page-node-id="sS3ZMxv6AkEmIk127FNQVH">分类</th><th data-page-node-id="fsNFv2A5MGTnTMZdgKjckk">数据库</th><th data-page-node-id="z1TSCevH8BdNRY7eE7w2yg">路径</th><th data-page-node-id="gxfVOT4fkCQFgozbUD28qM">标签</th><th data-page-node-id="Y9nnjJ6gufDOmg1PMB6fql">操作</th></tr></thead>
-        <tbody id="knowledgeTableBody" data-page-node-id="5PuusqqXlUhuZm2Me7h53u"></tbody>
-      </table></div>
+      <!-- Level 3: Document list -->
+      <div id="kbList" style="display:none">
+        <div class="list-header">
+          <div style="display:flex;align-items:center;gap:12px">
+            <h2 class="list-title" id="kbListTitle"></h2>
+            <span id="kbListCount" style="font-size:13px;color:#64748b"></span>
+          </div>
+          <button class="btn-primary" onclick="openModal('knowledge')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            添加文档
+          </button>
+        </div>
+        <div class="data-table"><table>
+          <thead><tr><th>文档名称</th><th>路径</th><th>标签</th><th>操作</th></tr></thead>
+          <tbody id="knowledgeTableBody"></tbody>
+        </table></div>
+      </div>
     </div>
 
     <!-- Installers -->
@@ -494,7 +518,7 @@ scripts:[
 knowledge:[
   {id:1,name:'Oracle RAC 故障排查手册',category:'排障手册',db:'Oracle',path:'D:\\docs\\oracle\\',desc:'RAC 节点驱逐、脑裂、OCR 损坏等场景处理流程',tags:['RAC','故障','Oracle'],createdAt:now()},
   {id:2,name:'MySQL 主从同步延迟排查指南',category:'排障手册',db:'MySQL',path:'D:\\docs\\mysql\\',desc:'Seconds_Behind_Master 异常排查步骤',tags:['主从','延迟','MySQL'],createdAt:now()},
-  {id:3,name:'数据库备份策略规范 v2.1',category:'运维规范',db:'通用',path:'D:\\docs\\standards\\',desc:'全量+增量+日志备份策略，RPO/RTO 要求',tags:['规范','备份'],createdAt:now()},
+  {id:3,name:'数据库备份策略规范 v2.1',category:'巡检规范',db:'其他',path:'D:\\docs\\standards\\',desc:'全量+增量+日志备份策略，RPO/RTO 要求',tags:['规范','备份'],createdAt:now()},
   {id:4,name:'PostgreSQL 高可用架构设计',category:'架构设计',db:'PostgreSQL',path:'D:\\docs\\architecture\\',desc:'Patroni + etcd + HAProxy 高可用方案',tags:['高可用','PostgreSQL'],createdAt:now()},
   {id:5,name:'Oracle 19c 性能调优实战',category:'性能调优',db:'Oracle',path:'D:\\docs\\tuning\\',desc:'AWR/ASH 分析、SQL 执行计划优化案例集',tags:['调优','AWR','Oracle'],createdAt:now()}
 ],
@@ -543,7 +567,7 @@ function switchView(v){
   if(nav)nav.classList.add('active');
   if(v==='dashboard')renderDashboard();
   else if(v==='scripts'){scriptBackToDB();renderScriptDBGrid();}
-  else if(v==='knowledge')renderKnowledge();
+  else if(v==='knowledge'){kbBackToDB();renderKbDBGrid();}
   else if(v==='installers')renderInstallers();
   else if(v==='tasks')renderTasks();
   else if(v==='contacts')renderContacts();
@@ -785,7 +809,7 @@ function renderScriptsList(){
   document.getElementById('scriptListCount').textContent='共 '+f.length+' 个脚本';
   document.getElementById('scriptsTableBody').innerHTML=f.length?f.map(function(s){
     return '<tr><td><a href="#" onclick="openScriptFile(\''+s.path.replace(/\\/g,'\\\\').replace(/'/g,'\\\'')+'\');return false;" style="color:#2563eb;text-decoration:none;cursor:pointer"><strong>'+s.name+'</strong></a><br><small style="color:#64748b">'+s.desc+'</small></td>'
-      +'<td><code style="background:#f1f5f9;padding:4px 8px;border-radius:4px;font-size:12px">'+s.path+'</code></td>'
+      +'<td><code style="background:#f1f5f9;padding:4px 8px;border-radius:4px;font-size:12px;cursor:pointer;color:#2563eb;text-decoration:underline" onclick="openFolder(\''+s.path.replace(/\\/g,'\\\\').replace(/'/g,'\\\'')+'\')" title="点击打开文件夹">'+s.path+'</code></td>'
       +'<td>'+s.tags.map(function(t){return '<span style="background:#e0e7ff;color:#3730a3;padding:2px 8px;border-radius:4px;font-size:11px;margin-right:4px">'+t+'</span>';}).join('')+'</td>'
       +'<td><button class="action-btn btn-copy" onclick="copyPath(\''+s.path.replace(/\\/g,'\\\\')+'\')">复制路径</button>'
       +'<button class="action-btn btn-edit" onclick="editScript('+s.id+')">编辑</button>'
@@ -824,11 +848,163 @@ function openScriptFile(path){
   });
 }
 
+function openFolder(path){
+  if(!path){
+    toast('文件路径为空');
+    return;
+  }
+  fetch('http://localhost:8686/api/launcher/path',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({path:path,mode:'folder'})
+  }).then(function(r){
+    if(!r.ok) throw new Error('打开失败');
+    return r.json();
+  }).then(function(){
+    toast('已打开文件夹: '+path);
+  }).catch(function(e){
+    toast('打开失败: '+e.message);
+  });
+}
+
+// === Knowledge Base Three-Level Navigation ===
+var _selectedKbDB='';
+var _selectedKbType='';
+var _kbTypes=['排障手册','备份恢复','安装部署','架构设计','性能调优','安全加固','迁移方案','巡检规范','学习笔记'];
+var _kbTypeColors={
+  '排障手册':'#ef4444','备份恢复':'#10b981','安装部署':'#f59e0b',
+  '架构设计':'#3b82f6','性能调优':'#8b5cf6','安全加固':'#ec4899',
+  '迁移方案':'#06b6d4','巡检规范':'#64748b','学习笔记':'#14b8a6'
+};
+var _kbTypeIcons={
+  '排障手册':'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.73 3H8.27L3 8.27v7.46L8.27 21h7.46L21 15.73V8.27L15.73 3zM12 17.3c-.72 0-1.3-.58-1.3-1.3s.58-1.3 1.3-1.3 1.3.58 1.3 1.3-.58 1.3-1.3 1.3zm1-4.3h-2V7h2v6z"/></svg>',
+  '备份恢复':'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>',
+  '安装部署':'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>',
+  '架构设计':'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M22 11V3h-7v3H9V3H2v8h7V8h2v10h4v3h7v-8h-7v3h-2V8h2v3z"/></svg>',
+  '性能调优':'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.38 8.57l-1.23 1.85a8 8 0 0 1-.22 7.58H5.07A8 8 0 0 1 15.58 6.85l1.85-1.23A10 10 0 0 0 3.35 19a2 2 0 0 0 1.72 1h13.85a2 2 0 0 0 1.74-1 10 10 0 0 0-.27-10.44z"/></svg>',
+  '安全加固':'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>',
+  '迁移方案':'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg>',
+  '巡检规范':'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>',
+  '学习笔记':'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 4h5v8l-2.5-1.5L6 12V4z"/></svg>'
+};
+
+function renderKbDBGrid(){
+  _loadScriptDBIcons();
+  if(!_scriptDBIcons||_scriptDBIcons.length<7){ renderDashboard(); _loadScriptDBIcons(); }
+  var articles=gd('knowledge');
+  var counts={};
+  _scriptDBMeta.forEach(function(d){counts[d.name]=0;});
+  articles.forEach(function(k){ var db=k.db||'其他'; if(counts[db]===undefined) counts['其他']++; else counts[db]++; });
+  var total=articles.length||1;
+  var grid=document.getElementById('kbDBChart');
+  if(!grid) return;
+  grid.innerHTML=_scriptDBMeta.map(function(item,i){
+    var c=counts[item.name]||0;
+    var dark=_scriptDarkColors[item.name]||item.color;
+    var pct=c>0?Math.max(Math.round(c/total*100),8):0;
+    var iconHtml=(_scriptDBIcons&&_scriptDBIcons[i])?_scriptDBIcons[i]:('<span style="font-weight:600;font-size:14px;color:'+item.color+'">'+item.name.charAt(0)+'</span>');
+    return '<div class="db-item" onclick="kbSelectDB(\''+item.name+'\')" style="cursor:pointer;transition:box-shadow .2s,transform .15s" onmouseenter="this.style.boxShadow=\'0 4px 12px rgba(0,0,0,.1)\';this.style.transform=\'translateY(-2px)\'" onmouseleave="this.style.boxShadow=\'none\';this.style.transform=\'none\'">'
+      +'<div class="db-icon" style="background:'+item.color+'15">'
+      +iconHtml
+      +'<span class="db-name" style="color:'+dark+'">'+item.name+'</span></div>'
+      +'<div class="db-bar-row"><div class="db-bar-track"><div class="db-bar-fill" style="width:'+pct+'%;background:'+item.color+'"></div></div>'
+      +'<span class="db-bar-num">'+c+'</span></div></div>';
+  }).join('');
+  document.getElementById('kbDBGrid').style.display='';
+  document.getElementById('kbTypeGrid').style.display='none';
+  document.getElementById('kbList').style.display='none';
+}
+
+function kbSelectDB(name){
+  _selectedKbDB=name;
+  renderKbTypeGrid();
+  updateKbBreadcrumb();
+  document.getElementById('kbDBGrid').style.display='none';
+  document.getElementById('kbTypeGrid').style.display='';
+  document.getElementById('kbList').style.display='none';
+}
+
+function renderKbTypeGrid(){
+  var articles=gd('knowledge').filter(function(k){ return k.db===_selectedKbDB; });
+  var counts={};
+  _kbTypes.forEach(function(t){counts[t]=0;});
+  articles.forEach(function(k){ var cat=k.category||'学习笔记'; if(counts[cat]===undefined) counts['学习笔记']++; else counts[cat]++; });
+  var total=articles.length||1;
+  document.getElementById('kbTypeTitle').textContent=_selectedKbDB+' 文档';
+  document.getElementById('kbTypeCount').textContent='共 '+articles.length+' 篇文档';
+  var chart=document.getElementById('kbTypeChart');
+  chart.innerHTML=_kbTypes.map(function(type){
+    var c=counts[type]||0;
+    var color=_kbTypeColors[type];
+    var pct=c>0?Math.max(Math.round(c/total*100),8):0;
+    return '<div class="db-item" onclick="kbSelectType(\''+type+'\')" style="cursor:pointer;transition:box-shadow .2s,transform .15s" onmouseenter="this.style.boxShadow=\'0 4px 12px rgba(0,0,0,.1)\';this.style.transform=\'translateY(-2px)\'" onmouseleave="this.style.boxShadow=\'none\';this.style.transform=\'none\'">'
+      +'<div class="db-icon" style="background:'+color+'15;color:'+color+'">'
+      +_kbTypeIcons[type]
+      +'<span class="db-name" style="color:'+color+'">'+type+'</span></div>'
+      +'<div class="db-bar-row"><div class="db-bar-track"><div class="db-bar-fill" style="width:'+pct+'%;background:'+color+'"></div></div>'
+      +'<span class="db-bar-num">'+c+'</span></div></div>';
+  }).join('');
+}
+
+function kbSelectType(type){
+  _selectedKbType=type;
+  document.getElementById('kbListTitle').textContent=_selectedKbDB+' · '+_selectedKbType;
+  renderKnowledgeList();
+  updateKbBreadcrumb();
+  document.getElementById('kbTypeGrid').style.display='none';
+  document.getElementById('kbList').style.display='';
+}
+
+function updateKbBreadcrumb(){
+  var breadcrumb=document.getElementById('kbBreadcrumb');
+  var parts=['<a href="#" onclick="kbBackToDB();return false;" style="color:#3b82f6;text-decoration:none">知识库</a>'];
+  if(_selectedKbDB){
+    parts.push('<span style="margin:0 6px">›</span>');
+    parts.push('<a href="#" onclick="kbBackToType();return false;" style="color:#3b82f6;text-decoration:none">'+_selectedKbDB+'</a>');
+  }
+  if(_selectedKbType){
+    parts.push('<span style="margin:0 6px">›</span>');
+    parts.push('<span style="color:#1e293b">'+_selectedKbType+'</span>');
+  }
+  breadcrumb.innerHTML=parts.join('');
+}
+
+function kbBackToDB(){
+  _selectedKbDB='';
+  _selectedKbType='';
+  renderKbDBGrid();
+  updateKbBreadcrumb();
+  document.getElementById('kbDBGrid').style.display='';
+  document.getElementById('kbTypeGrid').style.display='none';
+  document.getElementById('kbList').style.display='none';
+}
+
+function kbBackToType(){
+  _selectedKbType='';
+  renderKbTypeGrid();
+  updateKbBreadcrumb();
+  document.getElementById('kbTypeGrid').style.display='';
+  document.getElementById('kbList').style.display='none';
+}
+
+function renderKnowledgeList(){
+  var data=gd('knowledge');
+  var f=data.filter(function(k){ return k.db===_selectedKbDB && k.category===_selectedKbType; });
+  document.getElementById('kbListCount').textContent='共 '+f.length+' 篇文档';
+  document.getElementById('knowledgeTableBody').innerHTML=f.length?f.map(function(k){
+    return '<tr><td><a href="#" onclick="openScriptFile(\''+k.path.replace(/\\/g,'\\\\').replace(/'/g,'\\\'')+'\');return false;" style="color:#2563eb;text-decoration:none;cursor:pointer"><strong>'+k.name+'</strong></a><br><small style="color:#64748b">'+k.desc+'</small></td>'
+      +'<td><code style="background:#f1f5f9;padding:4px 8px;border-radius:4px;font-size:12px;cursor:pointer;color:#2563eb;text-decoration:underline" onclick="openFolder(\''+k.path.replace(/\\/g,'\\\\').replace(/'/g,'\\\'')+'\')" title="点击打开文件夹">'+k.path+'</code></td>'
+      +'<td>'+k.tags.map(function(t){return '<span style="background:#e0e7ff;color:#3730a3;padding:2px 8px;border-radius:4px;font-size:11px;margin-right:4px">'+t+'</span>';}).join('')+'</td>'
+      +'<td><button class="action-btn btn-copy" onclick="copyPath(\''+k.path.replace(/\\/g,'\\\\')+'\')">复制路径</button>'
+      +'<button class="action-btn btn-edit" onclick="editKnowledge('+k.id+')">编辑</button>'
+      +'<button class="action-btn btn-delete" onclick="deleteKnowledge('+k.id+')">删除</button></td></tr>';
+  }).join(''):'<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:40px">暂无文档</td></tr>';
+}
+
 function renderKnowledge(){
-  const data=gd('knowledge');
-  const fc=document.getElementById('filterKbCategory').value;
-  let f=fc?data.filter(k=>k.category===fc):data;
-  document.getElementById('knowledgeTableBody').innerHTML=f.map(k=>'<tr><td><strong>'+k.name+'</strong><br><small style="color:#64748b">'+k.desc+'</small></td><td><span class="task-badge badge-today">'+k.category+'</span></td><td><span class="task-badge badge-normal">'+k.db+'</span></td><td><code style="background:#f1f5f9;padding:4px 8px;border-radius:4px;font-size:12px">'+k.path+'</code></td><td>'+k.tags.map(t=>'<span style="background:#e0e7ff;color:#3730a3;padding:2px 8px;border-radius:4px;font-size:11px;margin-right:4px">'+t+'</span>').join('')+'</td><td><button class="action-btn btn-copy" onclick="copyPath(\''+k.path.replace(/\\/g,'\\\\')+'\')">复制路径</button><button class="action-btn btn-edit" onclick="editKnowledge('+k.id+')">编辑</button><button class="action-btn btn-delete" onclick="deleteKnowledge('+k.id+')">删除</button></td></tr>').join('');
+  if(_selectedKbDB && _selectedKbType){ renderKnowledgeList(); }
+  else if(_selectedKbDB){ renderKbTypeGrid(); }
+  else { renderKbDBGrid(); }
 }
 
 function renderInstallers(){
@@ -919,7 +1095,7 @@ function openModal(type,eid){
     h='<div class="modal-header"><h3 class="modal-title">'+(eid?'编辑脚本':'添加脚本')+'</h3><button class="modal-close" onclick="closeModal()">✕</button></div><form onsubmit="saveScript(event,'+eid+')"><div class="form-group"><label class="form-label">脚本名称</label><input type="text" class="form-input" name="name" value="'+(r?.name||'')+'" required></div><div class="form-group"><label class="form-label">类型</label><select class="form-select" name="type" required><option value="巡检" '+(r?.type==='巡检'?'selected':'')+'>巡检</option><option value="备份" '+(r?.type==='备份'?'selected':'')+'>备份</option><option value="部署" '+(r?.type==='部署'?'selected':'')+'>部署</option><option value="监控" '+(r?.type==='监控'?'selected':'')+'>监控</option><option value="性能" '+(r?.type==='性能'?'selected':'')+'>性能</option><option value="其他" '+(r?.type==='其他'?'selected':'')+'>其他</option></select></div><div class="form-group"><label class="form-label">数据库</label><select class="form-select" name="db" required><option value="Oracle" '+(r?.db==='Oracle'?'selected':'')+'>Oracle</option><option value="MySQL" '+(r?.db==='MySQL'?'selected':'')+'>MySQL</option><option value="PostgreSQL" '+(r?.db==='PostgreSQL'?'selected':'')+'>PostgreSQL</option><option value="SQL Server" '+(r?.db==='SQL Server'?'selected':'')+'>SQL Server</option><option value="Redis" '+(r?.db==='Redis'?'selected':'')+'>Redis</option><option value="MongoDB" '+(r?.db==='MongoDB'?'selected':'')+'>MongoDB</option></select></div><div class="form-group"><label class="form-label">本地路径</label><input type="text" class="form-input" name="path" value="'+(r?.path||'')+'" placeholder="例如: D:\\scripts\\oracle\\" required></div><div class="form-group"><label class="form-label">说明</label><textarea class="form-textarea" name="desc">'+(r?.desc||'')+'</textarea></div><div class="form-group"><label class="form-label">标签（逗号分隔）</label><input type="text" class="form-input" name="tags" value="'+(r?.tags?.join(', ')||'')+'"></div><div class="modal-actions"><button type="button" class="btn-secondary" onclick="closeModal()">取消</button><button type="submit" class="btn-primary">保存</button></div></form>';
   }else if(type==='knowledge'){
     const r=eid?gd('knowledge').find(x=>x.id===eid):null;
-    h='<div class="modal-header"><h3 class="modal-title">'+(eid?'编辑文档':'添加文档')+'</h3><button class="modal-close" onclick="closeModal()">✕</button></div><form onsubmit="saveKnowledge(event,'+eid+')"><div class="form-group"><label class="form-label">文档名称</label><input type="text" class="form-input" name="name" value="'+(r?.name||'')+'" required></div><div class="form-group"><label class="form-label">分类</label><select class="form-select" name="category" required><option value="排障手册" '+(r?.category==='排障手册'?'selected':'')+'>排障手册</option><option value="运维规范" '+(r?.category==='运维规范'?'selected':'')+'>运维规范</option><option value="架构设计" '+(r?.category==='架构设计'?'selected':'')+'>架构设计</option><option value="性能调优" '+(r?.category==='性能调优'?'selected':'')+'>性能调优</option><option value="迁移方案" '+(r?.category==='迁移方案'?'selected':'')+'>迁移方案</option></select></div><div class="form-group"><label class="form-label">数据库</label><select class="form-select" name="db" required><option value="Oracle" '+(r?.db==='Oracle'?'selected':'')+'>Oracle</option><option value="MySQL" '+(r?.db==='MySQL'?'selected':'')+'>MySQL</option><option value="PostgreSQL" '+(r?.db==='PostgreSQL'?'selected':'')+'>PostgreSQL</option><option value="SQL Server" '+(r?.db==='SQL Server'?'selected':'')+'>SQL Server</option><option value="Redis" '+(r?.db==='Redis'?'selected':'')+'>Redis</option><option value="通用" '+(r?.db==='通用'?'selected':'')+'>通用</option></select></div><div class="form-group"><label class="form-label">本地路径</label><input type="text" class="form-input" name="path" value="'+(r?.path||'')+'" required></div><div class="form-group"><label class="form-label">说明</label><textarea class="form-textarea" name="desc">'+(r?.desc||'')+'</textarea></div><div class="form-group"><label class="form-label">标签（逗号分隔）</label><input type="text" class="form-input" name="tags" value="'+(r?.tags?.join(', ')||'')+'"></div><div class="modal-actions"><button type="button" class="btn-secondary" onclick="closeModal()">取消</button><button type="submit" class="btn-primary">保存</button></div></form>';
+    h='<div class="modal-header"><h3 class="modal-title">'+(eid?'编辑文档':'添加文档')+'</h3><button class="modal-close" onclick="closeModal()">✕</button></div><form onsubmit="saveKnowledge(event,'+eid+')"><div class="form-group"><label class="form-label">文档名称</label><input type="text" class="form-input" name="name" value="'+(r?.name||'')+'" required></div><div class="form-group"><label class="form-label">分类</label><select class="form-select" name="category" required><option value="排障手册" '+(r?.category==='排障手册'?'selected':'')+'>排障手册</option><option value="备份恢复" '+(r?.category==='备份恢复'?'selected':'')+'>备份恢复</option><option value="安装部署" '+(r?.category==='安装部署'?'selected':'')+'>安装部署</option><option value="架构设计" '+(r?.category==='架构设计'?'selected':'')+'>架构设计</option><option value="性能调优" '+(r?.category==='性能调优'?'selected':'')+'>性能调优</option><option value="安全加固" '+(r?.category==='安全加固'?'selected':'')+'>安全加固</option><option value="迁移方案" '+(r?.category==='迁移方案'?'selected':'')+'>迁移方案</option><option value="巡检规范" '+(r?.category==='巡检规范'?'selected':'')+'>巡检规范</option><option value="学习笔记" '+(r?.category==='学习笔记'?'selected':'')+'>学习笔记</option></select></div><div class="form-group"><label class="form-label">数据库</label><select class="form-select" name="db" required><option value="Oracle" '+(r?.db==='Oracle'?'selected':'')+'>Oracle</option><option value="MySQL" '+(r?.db==='MySQL'?'selected':'')+'>MySQL</option><option value="PostgreSQL" '+(r?.db==='PostgreSQL'?'selected':'')+'>PostgreSQL</option><option value="SQL Server" '+(r?.db==='SQL Server'?'selected':'')+'>SQL Server</option><option value="Linux" '+(r?.db==='Linux'?'selected':'')+'>Linux</option><option value="Redis" '+(r?.db==='Redis'?'selected':'')+'>Redis</option><option value="其他" '+(r?.db==='其他'?'selected':'')+'>其他</option></select></div><div class="form-group"><label class="form-label">本地路径</label><input type="text" class="form-input" name="path" value="'+(r?.path||'')+'" required></div><div class="form-group"><label class="form-label">说明</label><textarea class="form-textarea" name="desc">'+(r?.desc||'')+'</textarea></div><div class="form-group"><label class="form-label">标签（逗号分隔）</label><input type="text" class="form-input" name="tags" value="'+(r?.tags?.join(', ')||'')+'"></div><div class="modal-actions"><button type="button" class="btn-secondary" onclick="closeModal()">取消</button><button type="submit" class="btn-primary">保存</button></div></form>';
   }else if(type==='installer'){
     const r=eid?gd('installers').find(x=>x.id===eid):null;
     h='<div class="modal-header"><h3 class="modal-title">'+(eid?'编辑安装包':'添加安装包')+'</h3><button class="modal-close" onclick="closeModal()">✕</button></div><form onsubmit="saveInstaller(event,'+eid+')"><div class="form-group"><label class="form-label">安装包名称</label><input type="text" class="form-input" name="name" value="'+(r?.name||'')+'" required></div><div class="form-group"><label class="form-label">版本</label><input type="text" class="form-input" name="version" value="'+(r?.version||'')+'" required></div><div class="form-group"><label class="form-label">类型</label><select class="form-select" name="type" required><option value="数据库" '+(r?.type==='数据库'?'selected':'')+'>数据库</option><option value="中间件" '+(r?.type==='中间件'?'selected':'')+'>中间件</option><option value="监控工具" '+(r?.type==='监控工具'?'selected':'')+'>监控工具</option><option value="客户端" '+(r?.type==='客户端'?'selected':'')+'>客户端</option></select></div><div class="form-group"><label class="form-label">本地路径</label><input type="text" class="form-input" name="path" value="'+(r?.path||'')+'" required></div><div class="form-group"><label class="form-label">文件大小</label><input type="text" class="form-input" name="size" value="'+(r?.size||'')+'" placeholder="例如: 680 MB"></div><div class="modal-actions"><button type="button" class="btn-secondary" onclick="closeModal()">取消</button><button type="submit" class="btn-primary">保存</button></div></form>';
@@ -938,7 +1114,7 @@ function openModal(type,eid){
 function closeModal(){document.getElementById('modalOverlay').classList.remove('active')}
 
 function saveScript(e,eid){e.preventDefault();const f=e.target,data=gd('scripts');const item={id:eid||Date.now(),name:f.name.value,type:f.type.value,db:f.db.value,path:f.path.value,desc:f.desc.value,tags:f.tags.value.split(',').map(t=>t.trim()).filter(t=>t),createdAt:eid?data.find(x=>x.id===eid).createdAt:now()};if(eid){const i=data.findIndex(x=>x.id===eid);data[i]=item}else data.push(item);sd('scripts',data);closeModal();if(_selectedScriptDB){renderScriptsList();renderScriptDBGrid();}else{renderScripts();}renderDashboard();toast(eid?'脚本已更新':'脚本已添加')}
-function saveKnowledge(e,eid){e.preventDefault();const f=e.target,data=gd('knowledge');const item={id:eid||Date.now(),name:f.name.value,category:f.category.value,db:f.db.value,path:f.path.value,desc:f.desc.value,tags:f.tags.value.split(',').map(t=>t.trim()).filter(t=>t),createdAt:eid?data.find(x=>x.id===eid).createdAt:now()};if(eid){const i=data.findIndex(x=>x.id===eid);data[i]=item}else data.push(item);sd('knowledge',data);closeModal();renderKnowledge();renderDashboard();toast(eid?'文档已更新':'文档已添加')}
+function saveKnowledge(e,eid){e.preventDefault();const f=e.target,data=gd('knowledge');const item={id:eid||Date.now(),name:f.name.value,category:f.category.value,db:f.db.value,path:f.path.value,desc:f.desc.value,tags:f.tags.value.split(',').map(t=>t.trim()).filter(t=>t),createdAt:eid?data.find(x=>x.id===eid).createdAt:now()};if(eid){const i=data.findIndex(x=>x.id===eid);data[i]=item}else data.push(item);sd('knowledge',data);closeModal();renderKnowledge();renderKbDBGrid();renderDashboard();toast(eid?'文档已更新':'文档已添加')}
 function saveInstaller(e,eid){e.preventDefault();const f=e.target,data=gd('installers');const item={id:eid||Date.now(),name:f.name.value,version:f.version.value,type:f.type.value,path:f.path.value,size:f.size.value,createdAt:eid?data.find(x=>x.id===eid).createdAt:now()};if(eid){const i=data.findIndex(x=>x.id===eid);data[i]=item}else data.push(item);sd('installers',data);closeModal();renderInstallers();renderDashboard();toast(eid?'安装包已更新':'安装包已添加')}
 function saveTask(e,eid){e.preventDefault();const f=e.target,data=gd('tasks');const item={id:eid||Date.now(),title:f.title.value,deadline:f.deadline.value,priority:f.priority.value,status:f.status?f.status.value:'pending',notes:f.notes.value};if(eid){const i=data.findIndex(x=>x.id===eid);data[i]=item}else data.push(item);sd('tasks',data);closeModal();renderTasks();renderDashboard();toast(eid?'任务已更新':'任务已创建')}
 function saveContact(e,eid){e.preventDefault();const f=e.target,data=gd('contacts');const item={id:eid||Date.now(),project:f.project.value,customer:f.customer.value,groupName:f.groupName.value,personInCharge:f.personInCharge.value,contact:f.contact.value,status:f.status.value,notes:f.notes.value};if(eid){const i=data.findIndex(x=>x.id===eid);data[i]=item}else data.push(item);sd('contacts',data);closeModal();renderContacts();renderDashboard();toast(eid?'联系人已更新':'联系人已添加')}
@@ -946,7 +1122,7 @@ function saveAccount(e,eid){e.preventDefault();const f=e.target,data=gd('account
 
 function editScript(id){openModal('script',id)}function editKnowledge(id){openModal('knowledge',id)}function editInstaller(id){openModal('installer',id)}function editTask(id){openModal('task',id)}function editContact(id){openModal('contact',id)}function editAccount(id){openModal('account',id)}
 function deleteScript(id){if(confirm('确定删除？')){sd('scripts',gd('scripts').filter(x=>x.id!==id));if(_selectedScriptDB){renderScriptsList();renderScriptDBGrid();}else{renderScripts();}renderDashboard();toast('已删除')}}
-function deleteKnowledge(id){if(confirm('确定删除？')){sd('knowledge',gd('knowledge').filter(x=>x.id!==id));renderKnowledge();renderDashboard();toast('已删除')}}
+function deleteKnowledge(id){if(confirm('确定删除？')){sd('knowledge',gd('knowledge').filter(x=>x.id!==id));renderKnowledge();renderKbDBGrid();renderDashboard();toast('已删除')}}
 function deleteInstaller(id){if(confirm('确定删除？')){sd('installers',gd('installers').filter(x=>x.id!==id));renderInstallers();renderDashboard();toast('已删除')}}
 function deleteTask(id){if(confirm('确定删除？')){sd('tasks',gd('tasks').filter(x=>x.id!==id));renderTasks();renderDashboard();toast('已删除')}}
 function deleteContact(id){if(confirm('确定删除？')){sd('contacts',gd('contacts').filter(x=>x.id!==id));renderContacts();renderDashboard();toast('已删除')}}

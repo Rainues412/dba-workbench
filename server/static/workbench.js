@@ -250,14 +250,18 @@
   // 在「复制路径」旁边注入「打开」按钮：改写三个 render 函数的输出
   function enhanceOpenButtons() {
     ['scripts', 'knowledge', 'installers'].forEach(function (key) {
-      var orig = window['render' + key.charAt(0).toUpperCase() + key.slice(1)];
+      var renderName = 'render' + key.charAt(0).toUpperCase() + key.slice(1);
+      var orig = window[renderName];
       if (typeof orig !== 'function') return;
-      window['render' + key.charAt(0).toUpperCase() + key.slice(1)] = function () {
+      window[renderName] = function () {
         orig();
         var bodyId = { scripts: 'scriptsTableBody', knowledge: 'knowledgeTableBody', installers: 'installersTableBody' }[key];
         var tbody = document.getElementById(bodyId);
         if (!tbody) return;
-        var rows = window.gd(key);
+        // For knowledge in hierarchical mode, gd() returns all items; use only visible rows
+        var rows = (key === 'knowledge' && typeof _selectedKbDB !== 'undefined' && _selectedKbDB && _selectedKbType)
+          ? window.gd(key).filter(function(k){ return k.db === _selectedKbDB && k.category === _selectedKbType; })
+          : window.gd(key);
         var trs = tbody.querySelectorAll('tr');
         for (var i = 0; i < trs.length && i < rows.length; i++) {
           (function (tr, row) {
