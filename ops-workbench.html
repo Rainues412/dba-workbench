@@ -822,7 +822,7 @@ function openScriptFile(path){
     toast('文件路径为空');
     return;
   }
-  fetch('http://localhost:8686/api/launcher/path',{
+  fetch('/api/launcher/path',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({path:path,mode:'edit'})
@@ -833,7 +833,7 @@ function openScriptFile(path){
     toast('已打开: '+path);
   }).catch(function(e){
     // 如果edit模式失败，尝试open模式
-    fetch('http://localhost:8686/api/launcher/path',{
+    fetch('/api/launcher/path',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({path:path,mode:'open'})
@@ -853,7 +853,7 @@ function openFolder(path){
     toast('文件路径为空');
     return;
   }
-  fetch('http://localhost:8686/api/launcher/path',{
+  fetch('/api/launcher/path',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({path:path,mode:'folder'})
@@ -1087,15 +1087,130 @@ function togglePwd(id,pw){const e=document.getElementById('pwd-'+id);e.textConte
 function moveToNextPin(el,i){if(el.value&&i<3)document.querySelectorAll('.pin-digit')[i+1].focus()}
 function checkPin(el){if(el.value){const pins=Array.from(document.querySelectorAll('.pin-digit')).map(e=>e.value).join('');if(pins===currentPin){accountsUnlocked=true;renderAccounts();toast('解锁成功')}else{toast('PIN 码错误');document.querySelectorAll('.pin-digit').forEach(e=>e.value='');document.querySelectorAll('.pin-digit')[0].focus()}}}
 
+// ── Batch folder scan ─────────────────────────────────────
+function pickFolder(type){
+  var pathInput=document.getElementById(type==='script'?'scanScriptPath':'scanKnowledgePath');
+  var resultEl=document.getElementById(type==='script'?'scanScriptResult':'scanKnowledgeResult');
+  resultEl.innerHTML='<div style="color:#0284c7">⏳ 正在打开文件夹选择器...</div>';
+  fetch('/api/launcher/pick-folder',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({title:type==='script'?'选择脚本文件夹':'选择文档文件夹',initial_dir:pathInput.value||''})
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d.ok && d.path){
+      pathInput.value=d.path;
+      resultEl.innerHTML='<div style="color:#16a34a">✓ 已选择: <strong>'+d.path+'</strong> — 点击"扫描"开始</div>';
+    }else{
+      resultEl.innerHTML='<div style="color:#64748b">未选择文件夹</div>';
+    }
+  }).catch(function(e){
+    resultEl.innerHTML='<div style="color:#dc2626">❌ 打开选择器失败: '+(e.message||e)+'</div>';
+  });
+}
+
+function scanFolder(type){
+  var pathInput=document.getElementById(type==='script'?'scanScriptPath':'scanKnowledgePath');
+  var resultEl=document.getElementById(type==='script'?'scanScriptResult':'scanKnowledgeResult');
+  var folderPath=pathInput.value.trim();
+  if(!folderPath){toast('请输入文件夹路径');return}
+  resultEl.innerHTML='<div style="color:#0284c7">⏳ 正在扫描 <strong>'+folderPath+'</strong> ...</div>';
+  fetch('/api/scan/run',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({paths:[folderPath]})
+  }).then(function(r){if(!r.ok)throw new Error('扫描失败');return r.json()}).then(function(d){
+    var items=(d.items||[]).filter(function(it){
+      if(type==='script') return it.kind==='script';
+      if(type==='knowledge') return it.kind==='article';
+      return false;
+    });
+    if(!items.length){resultEl.innerHTML='<div style="color:#64748b">✓ 该目录下没有发现新的'+(type==='script'?'脚本':'文档')+'（可能已全部已导入）</div>';return}
+    // Group by db_type
+    var grouped={};
+    items.forEach(function(it){
+      var db=it.db_type||'其他';
+      if(!grouped[db])grouped[db]=[];
+      grouped[db].push(it);
+    });
+    var html='<div style="margin-bottom:8px"><strong style="color:#0c4a6e">发现 '+items.length+' 个新'+(type==='script'?'脚本':'文档')+'</strong>'
+      +' <button type="button" class="btn-secondary" onclick="commitScanFolder(\''+type+'\')" style="margin-left:8px;font-size:12px;padding:4px 12px">全部导入</button>'
+      +' <button type="button" class="btn-secondary" onclick="toggleScanSelection(\''+type+'\')" style="margin-left:4px;font-size:12px;padding:4px 12px">全选/取消</button></div>';
+    html+='<div id="scanFolderItems_'+type+'" style="border:1px solid #e2e8f0;border-radius:6px;max-height:300px;overflow-y:auto">';
+    Object.keys(grouped).sort().forEach(function(db){
+      var list=grouped[db];
+      html+='<div style="padding:6px 10px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-weight:600;color:#334155;font-size:12px">'+db+' ('+list.length+')</div>';
+      list.forEach(function(it,idx){
+        var catInfo=it.category?'<span style="color:#8b5cf6;font-size:11px;margin-left:4px">['+it.category+']</span>':'';
+        var tagsInfo=(it.tags&&it.tags.length)?'<span style="color:#64748b;font-size:11px;margin-left:4px">'+it.tags.slice(1).join(', ')+'</span>':'';
+        html+='<label style="display:flex;align-items:center;gap:8px;padding:5px 10px;border-bottom:1px solid #f1f5f9;cursor:pointer;font-size:12px" class="scan-item">'
+          +'<input type="checkbox" class="scan-check" data-kind="'+it.kind+'" data-name="'+it.name.replace(/"/g,'&quot;')+'" data-path="'+it.path.replace(/\\/g,'\\\\').replace(/"/g,'&quot;')+'" data-db="'+it.db_type+'" data-category="'+(it.category||'学习笔记')+'" data-tags="'+(it.tags||[]).join(',')+'" '+(it.selected?'checked':'')+' style="accent-color:#3b82f6">'
+          +'<span style="color:#1e293b">'+it.name+'</span>'+catInfo+tagsInfo
+          +'</label>';
+      });
+    });
+    html+='</div>';
+    // Store items for commit
+    window['_scanItems_'+type]=items;
+    resultEl.innerHTML=html;
+  }).catch(function(e){
+    resultEl.innerHTML='<div style="color:#dc2626">❌ 扫描失败: '+(e.message||e)+'<br><small>请检查路径是否正确，并确保服务器已启动</small></div>';
+  });
+}
+
+function toggleScanSelection(type){
+  var checks=document.querySelectorAll('#scanFolderItems_'+type+' .scan-check');
+  var allChecked=Array.from(checks).every(function(c){return c.checked});
+  checks.forEach(function(c){c.checked=!allChecked});
+}
+
+function commitScanFolder(type){
+  var resultEl=document.getElementById(type==='script'?'scanScriptResult':'scanKnowledgeResult');
+  var checks=document.querySelectorAll('#scanFolderItems_'+type+' .scan-check:checked');
+  if(!checks.length){toast('请至少选择一个文件');return}
+  var items=[];
+  checks.forEach(function(c){
+    items.push({
+      kind:c.getAttribute('data-kind'),
+      name:c.getAttribute('data-name'),
+      path:c.getAttribute('data-path'),
+      db_type:c.getAttribute('data-db')||'其他',
+      category:c.getAttribute('data-category')||'学习笔记',
+      tags:(c.getAttribute('data-tags')||'').split(',').filter(Boolean),
+      size_mb:0,res_kind:'其他',notes:''
+    });
+  });
+  resultEl.innerHTML='<div style="color:#0284c7">⏳ 正在导入 '+items.length+' 个文件...</div>';
+  fetch('/api/scan/commit',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({items:items})
+  }).then(function(r){if(!r.ok)throw new Error('导入失败');return r.json()}).then(function(d){
+    var imp=d.imported||{};
+    var msg='✓ 导入完成: ';
+    if(type==='script') msg+='脚本 '+(imp.script||0)+' 个';
+    else msg+='文档 '+(imp.article||0)+' 篇';
+    if(imp.skipped) msg+=' (跳过 '+imp.skipped+' 个已存在)';
+    resultEl.innerHTML='<div style="color:#16a34a">'+msg+'</div>';
+    toast(msg);
+    // Refresh the current view
+    if(type==='script'){
+      if(typeof renderScriptDBGrid==='function') renderScriptDBGrid();
+      if(typeof renderDashboard==='function') renderDashboard();
+    }else{
+      if(typeof renderKbDBGrid==='function') renderKbDBGrid();
+      if(typeof renderDashboard==='function') renderDashboard();
+    }
+  }).catch(function(e){
+    resultEl.innerHTML='<div style="color:#dc2626">❌ 导入失败: '+(e.message||e)+'</div>';
+  });
+}
+
 function openModal(type,eid){
   const ov=document.getElementById('modalOverlay'),ct=document.getElementById('modalContent');
   let h='';
   if(type==='script'){
     const r=eid?gd('scripts').find(x=>x.id===eid):null;
-    h='<div class="modal-header"><h3 class="modal-title">'+(eid?'编辑脚本':'添加脚本')+'</h3><button class="modal-close" onclick="closeModal()">✕</button></div><form onsubmit="saveScript(event,'+eid+')"><div class="form-group"><label class="form-label">脚本名称</label><input type="text" class="form-input" name="name" value="'+(r?.name||'')+'" required></div><div class="form-group"><label class="form-label">类型</label><select class="form-select" name="type" required><option value="巡检" '+(r?.type==='巡检'?'selected':'')+'>巡检</option><option value="备份" '+(r?.type==='备份'?'selected':'')+'>备份</option><option value="部署" '+(r?.type==='部署'?'selected':'')+'>部署</option><option value="监控" '+(r?.type==='监控'?'selected':'')+'>监控</option><option value="性能" '+(r?.type==='性能'?'selected':'')+'>性能</option><option value="其他" '+(r?.type==='其他'?'selected':'')+'>其他</option></select></div><div class="form-group"><label class="form-label">数据库</label><select class="form-select" name="db" required><option value="Oracle" '+(r?.db==='Oracle'?'selected':'')+'>Oracle</option><option value="MySQL" '+(r?.db==='MySQL'?'selected':'')+'>MySQL</option><option value="PostgreSQL" '+(r?.db==='PostgreSQL'?'selected':'')+'>PostgreSQL</option><option value="SQL Server" '+(r?.db==='SQL Server'?'selected':'')+'>SQL Server</option><option value="Redis" '+(r?.db==='Redis'?'selected':'')+'>Redis</option><option value="MongoDB" '+(r?.db==='MongoDB'?'selected':'')+'>MongoDB</option></select></div><div class="form-group"><label class="form-label">本地路径</label><input type="text" class="form-input" name="path" value="'+(r?.path||'')+'" placeholder="例如: D:\\scripts\\oracle\\" required></div><div class="form-group"><label class="form-label">说明</label><textarea class="form-textarea" name="desc">'+(r?.desc||'')+'</textarea></div><div class="form-group"><label class="form-label">标签（逗号分隔）</label><input type="text" class="form-input" name="tags" value="'+(r?.tags?.join(', ')||'')+'"></div><div class="modal-actions"><button type="button" class="btn-secondary" onclick="closeModal()">取消</button><button type="submit" class="btn-primary">保存</button></div></form>';
+    h='<div class="modal-header"><h3 class="modal-title">'+(eid?'编辑脚本':'添加脚本')+'</h3><button class="modal-close" onclick="closeModal()">✕</button></div>'+(eid?'':'<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px;margin-bottom:16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="#0284c7"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg><span style="font-weight:600;color:#0c4a6e">批量扫描文件夹</span></div><div style="display:flex;gap:8px"><input type="text" class="form-input" id="scanScriptPath" placeholder="输入文件夹路径，如 D:\\scripts" style="flex:1"><button type="button" class="btn-secondary" onclick="pickFolder('script')" style="white-space:nowrap;padding:6px 10px" title="浏览文件夹">📁</button><button type="button" class="btn-secondary" onclick="scanFolder(\'script\')" style="white-space:nowrap">扫描</button></div><div id="scanScriptResult" style="margin-top:8px;font-size:13px;color:#64748b;max-height:200px;overflow-y:auto"></div></div>')+'<form onsubmit="saveScript(event,'+eid+')"><div class="form-group"><label class="form-label">脚本名称</label><input type="text" class="form-input" name="name" value="'+(r?.name||'')+'" required></div><div class="form-group"><label class="form-label">类型</label><select class="form-select" name="type" required><option value="巡检" '+(r?.type==='巡检'?'selected':'')+'>巡检</option><option value="备份" '+(r?.type==='备份'?'selected':'')+'>备份</option><option value="部署" '+(r?.type==='部署'?'selected':'')+'>部署</option><option value="监控" '+(r?.type==='监控'?'selected':'')+'>监控</option><option value="性能" '+(r?.type==='性能'?'selected':'')+'>性能</option><option value="其他" '+(r?.type==='其他'?'selected':'')+'>其他</option></select></div><div class="form-group"><label class="form-label">数据库</label><select class="form-select" name="db" required><option value="Oracle" '+(r?.db==='Oracle'?'selected':'')+'>Oracle</option><option value="MySQL" '+(r?.db==='MySQL'?'selected':'')+'>MySQL</option><option value="PostgreSQL" '+(r?.db==='PostgreSQL'?'selected':'')+'>PostgreSQL</option><option value="SQL Server" '+(r?.db==='SQL Server'?'selected':'')+'>SQL Server</option><option value="Redis" '+(r?.db==='Redis'?'selected':'')+'>Redis</option><option value="MongoDB" '+(r?.db==='MongoDB'?'selected':'')+'>MongoDB</option></select></div><div class="form-group"><label class="form-label">本地路径</label><input type="text" class="form-input" name="path" value="'+(r?.path||'')+'" placeholder="例如: D:\\scripts\\oracle\\" required></div><div class="form-group"><label class="form-label">说明</label><textarea class="form-textarea" name="desc">'+(r?.desc||'')+'</textarea></div><div class="form-group"><label class="form-label">标签（逗号分隔）</label><input type="text" class="form-input" name="tags" value="'+(r?.tags?.join(', ')||'')+'"></div><div class="modal-actions"><button type="button" class="btn-secondary" onclick="closeModal()">取消</button><button type="submit" class="btn-primary">保存</button></div></form>';
   }else if(type==='knowledge'){
     const r=eid?gd('knowledge').find(x=>x.id===eid):null;
-    h='<div class="modal-header"><h3 class="modal-title">'+(eid?'编辑文档':'添加文档')+'</h3><button class="modal-close" onclick="closeModal()">✕</button></div><form onsubmit="saveKnowledge(event,'+eid+')"><div class="form-group"><label class="form-label">文档名称</label><input type="text" class="form-input" name="name" value="'+(r?.name||'')+'" required></div><div class="form-group"><label class="form-label">分类</label><select class="form-select" name="category" required><option value="排障手册" '+(r?.category==='排障手册'?'selected':'')+'>排障手册</option><option value="备份恢复" '+(r?.category==='备份恢复'?'selected':'')+'>备份恢复</option><option value="安装部署" '+(r?.category==='安装部署'?'selected':'')+'>安装部署</option><option value="架构设计" '+(r?.category==='架构设计'?'selected':'')+'>架构设计</option><option value="性能调优" '+(r?.category==='性能调优'?'selected':'')+'>性能调优</option><option value="安全加固" '+(r?.category==='安全加固'?'selected':'')+'>安全加固</option><option value="迁移方案" '+(r?.category==='迁移方案'?'selected':'')+'>迁移方案</option><option value="巡检规范" '+(r?.category==='巡检规范'?'selected':'')+'>巡检规范</option><option value="学习笔记" '+(r?.category==='学习笔记'?'selected':'')+'>学习笔记</option></select></div><div class="form-group"><label class="form-label">数据库</label><select class="form-select" name="db" required><option value="Oracle" '+(r?.db==='Oracle'?'selected':'')+'>Oracle</option><option value="MySQL" '+(r?.db==='MySQL'?'selected':'')+'>MySQL</option><option value="PostgreSQL" '+(r?.db==='PostgreSQL'?'selected':'')+'>PostgreSQL</option><option value="SQL Server" '+(r?.db==='SQL Server'?'selected':'')+'>SQL Server</option><option value="Linux" '+(r?.db==='Linux'?'selected':'')+'>Linux</option><option value="Redis" '+(r?.db==='Redis'?'selected':'')+'>Redis</option><option value="其他" '+(r?.db==='其他'?'selected':'')+'>其他</option></select></div><div class="form-group"><label class="form-label">本地路径</label><input type="text" class="form-input" name="path" value="'+(r?.path||'')+'" required></div><div class="form-group"><label class="form-label">说明</label><textarea class="form-textarea" name="desc">'+(r?.desc||'')+'</textarea></div><div class="form-group"><label class="form-label">标签（逗号分隔）</label><input type="text" class="form-input" name="tags" value="'+(r?.tags?.join(', ')||'')+'"></div><div class="modal-actions"><button type="button" class="btn-secondary" onclick="closeModal()">取消</button><button type="submit" class="btn-primary">保存</button></div></form>';
+    h='<div class="modal-header"><h3 class="modal-title">'+(eid?'编辑文档':'添加文档')+'</h3><button class="modal-close" onclick="closeModal()">✕</button></div>'+(eid?'':'<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px;margin-bottom:16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="#0284c7"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg><span style="font-weight:600;color:#0c4a6e">批量扫描文件夹</span></div><div style="display:flex;gap:8px"><input type="text" class="form-input" id="scanKnowledgePath" placeholder="输入文件夹路径，如 D:\\Database" style="flex:1"><button type="button" class="btn-secondary" onclick="pickFolder('knowledge')" style="white-space:nowrap;padding:6px 10px" title="浏览文件夹">📁</button><button type="button" class="btn-secondary" onclick="scanFolder(\'knowledge\')" style="white-space:nowrap">扫描</button></div><div id="scanKnowledgeResult" style="margin-top:8px;font-size:13px;color:#64748b;max-height:200px;overflow-y:auto"></div></div>')+'<form onsubmit="saveKnowledge(event,'+eid+')"><div class="form-group"><label class="form-label">文档名称</label><input type="text" class="form-input" name="name" value="'+(r?.name||'')+'" required></div><div class="form-group"><label class="form-label">分类</label><select class="form-select" name="category" required><option value="排障手册" '+(r?.category==='排障手册'?'selected':'')+'>排障手册</option><option value="备份恢复" '+(r?.category==='备份恢复'?'selected':'')+'>备份恢复</option><option value="安装部署" '+(r?.category==='安装部署'?'selected':'')+'>安装部署</option><option value="架构设计" '+(r?.category==='架构设计'?'selected':'')+'>架构设计</option><option value="性能调优" '+(r?.category==='性能调优'?'selected':'')+'>性能调优</option><option value="安全加固" '+(r?.category==='安全加固'?'selected':'')+'>安全加固</option><option value="迁移方案" '+(r?.category==='迁移方案'?'selected':'')+'>迁移方案</option><option value="巡检规范" '+(r?.category==='巡检规范'?'selected':'')+'>巡检规范</option><option value="学习笔记" '+(r?.category==='学习笔记'?'selected':'')+'>学习笔记</option></select></div><div class="form-group"><label class="form-label">数据库</label><select class="form-select" name="db" required><option value="Oracle" '+(r?.db==='Oracle'?'selected':'')+'>Oracle</option><option value="MySQL" '+(r?.db==='MySQL'?'selected':'')+'>MySQL</option><option value="PostgreSQL" '+(r?.db==='PostgreSQL'?'selected':'')+'>PostgreSQL</option><option value="SQL Server" '+(r?.db==='SQL Server'?'selected':'')+'>SQL Server</option><option value="Linux" '+(r?.db==='Linux'?'selected':'')+'>Linux</option><option value="Redis" '+(r?.db==='Redis'?'selected':'')+'>Redis</option><option value="其他" '+(r?.db==='其他'?'selected':'')+'>其他</option></select></div><div class="form-group"><label class="form-label">本地路径</label><input type="text" class="form-input" name="path" value="'+(r?.path||'')+'" required></div><div class="form-group"><label class="form-label">说明</label><textarea class="form-textarea" name="desc">'+(r?.desc||'')+'</textarea></div><div class="form-group"><label class="form-label">标签（逗号分隔）</label><input type="text" class="form-input" name="tags" value="'+(r?.tags?.join(', ')||'')+'"></div><div class="modal-actions"><button type="button" class="btn-secondary" onclick="closeModal()">取消</button><button type="submit" class="btn-primary">保存</button></div></form>';
   }else if(type==='installer'){
     const r=eid?gd('installers').find(x=>x.id===eid):null;
     h='<div class="modal-header"><h3 class="modal-title">'+(eid?'编辑安装包':'添加安装包')+'</h3><button class="modal-close" onclick="closeModal()">✕</button></div><form onsubmit="saveInstaller(event,'+eid+')"><div class="form-group"><label class="form-label">安装包名称</label><input type="text" class="form-input" name="name" value="'+(r?.name||'')+'" required></div><div class="form-group"><label class="form-label">版本</label><input type="text" class="form-input" name="version" value="'+(r?.version||'')+'" required></div><div class="form-group"><label class="form-label">类型</label><select class="form-select" name="type" required><option value="数据库" '+(r?.type==='数据库'?'selected':'')+'>数据库</option><option value="中间件" '+(r?.type==='中间件'?'selected':'')+'>中间件</option><option value="监控工具" '+(r?.type==='监控工具'?'selected':'')+'>监控工具</option><option value="客户端" '+(r?.type==='客户端'?'selected':'')+'>客户端</option></select></div><div class="form-group"><label class="form-label">本地路径</label><input type="text" class="form-input" name="path" value="'+(r?.path||'')+'" required></div><div class="form-group"><label class="form-label">文件大小</label><input type="text" class="form-input" name="size" value="'+(r?.size||'')+'" placeholder="例如: 680 MB"></div><div class="modal-actions"><button type="button" class="btn-secondary" onclick="closeModal()">取消</button><button type="submit" class="btn-primary">保存</button></div></form>';

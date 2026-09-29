@@ -5,6 +5,7 @@ The workspace only stores *paths*; opening happens here via os.startfile
 """
 import os
 import subprocess
+import threading
 import webbrowser
 from pathlib import Path
 
@@ -24,6 +25,11 @@ EDITORS = [
 class OpenRequest(BaseModel):
     path: str
     mode: str = "open"  # open | folder | edit | run
+
+
+class PickFolderRequest(BaseModel):
+    title: str = "选择文件夹"
+    initial_dir: str = ""
 
 
 def _normalize(path: str) -> str:
@@ -105,3 +111,29 @@ def check_path(req: OpenRequest):
         "exists": target.exists(),
         "type": "dir" if target.is_dir() else ("file" if target.is_file() else "missing"),
     }
+
+
+@router.post("/pick-folder")
+def pick_folder(req: PickFolderRequest):
+    """Open a native folder picker dialog and return the selected path."""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+
+        kwargs = {"title": req.title}
+        if req.initial_dir and Path(req.initial_dir).exists():
+            kwargs["initialdir"] = req.initial_dir
+
+        path = filedialog.askdirectory(**kwargs)
+        root.destroy()
+
+        if path:
+            return {"ok": True, "path": path}
+        else:
+            return {"ok": False, "path": "", "reason": "cancelled"}
+    except Exception as e:
+        raise HTTPException(500, f"Failed to open folder picker: {str(e)}")

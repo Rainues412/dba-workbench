@@ -12,7 +12,7 @@
 (function () {
   'use strict';
 
-  var API_BASE = 'http://localhost:8686';
+  var API_BASE = window.location.protocol + '//' + window.location.host;
   var P = 'wb_dba_workbench_';
   var LOCAL_ONLY = { accounts: true };   // 永不走 API 的集合
   var KNOWN = { scripts: 1, knowledge: 1, installers: 1, tasks: 1, contacts: 1, accounts: 1 };
