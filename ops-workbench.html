@@ -288,38 +288,53 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
     </div>
 
     <!-- Scripts -->
-    <div class="module-view" id="view-scripts" data-page-node-id="qe4wz9wofg5rBMXifma4Hd">
-      <div class="list-header" data-page-node-id="Q9KdWdcREpNGX2Plt76InN">
-        <h2 class="list-title" data-page-node-id="SnAvYrgh1bm7tejsekiU4m">脚本库</h2>
-        <button class="btn-primary" onclick="openModal('script')" data-page-node-id="YiFlgs0BOf2FJjSKw5ZpHZ">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" data-page-node-id="FKwCblLzvN0NXBTBoghR3y"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" data-page-node-id="IkAHy7jqqKokMSg6NV1Awp"/></svg>
-          添加脚本
-        </button>
+    <div class="module-view" id="view-scripts">
+      <!-- 面包屑导航 -->
+      <div id="scriptBreadcrumb" style="padding:8px 0 12px;font-size:13px;color:#64748b"></div>
+      <!-- 第一层：按数据库类型分类 -->
+      <div id="scriptDBGrid">
+        <div class="list-header">
+          <h2 class="list-title">脚本库</h2>
+          <button class="btn-primary" onclick="openModal('script')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            添加脚本
+          </button>
+        </div>
+        <p style="color:#64748b;font-size:13px;margin-bottom:16px">选择一个数据库类型查看对应脚本</p>
+        <div class="db-chart" id="scriptDBChart" style="cursor:pointer;grid-template-columns:1fr"></div>
       </div>
-      <div class="filter-bar" data-page-node-id="bRRXIICEc3qSYQemcXrAD2">
-        <select class="filter-select" id="filterScriptType" onchange="renderScripts()" data-page-node-id="53vk32UEBOsOy5Y2NeKHOV">
-          <option value="" data-page-node-id="3p83fuayhlBNq2kNOS4f0b">全部类型</option>
-          <option value="巡检" data-page-node-id="Bvc1otorAJ1MimoG8bssMI">巡检</option>
-          <option value="备份" data-page-node-id="BHsK5keJD2M56QCSzikSgI">备份</option>
-          <option value="部署" data-page-node-id="iP8zlGOmDv425G6OQBYiMM">部署</option>
-          <option value="监控" data-page-node-id="NJstfFDvmRFqLvij7fpLTO">监控</option>
-          <option value="性能" data-page-node-id="ZDPUSwKhjh8w0OzkQpr0oi">性能</option>
-          <option value="其他" data-page-node-id="dBjlHbCiaGiLvlBdxTUjQB">其他</option>
-        </select>
-        <select class="filter-select" id="filterScriptDB" onchange="renderScripts()" data-page-node-id="rxqjmoyOtNE5sE29FOjMJ9">
-          <option value="" data-page-node-id="fcCKxoZBn32cWNxV6b6Cd4">全部数据库</option>
-          <option value="Oracle" data-page-node-id="s1P8icx4W0CbSlOQyjycO7">Oracle</option>
-          <option value="MySQL" data-page-node-id="gcsKhnZR0PtO6wKGI2sJ5m">MySQL</option>
-          <option value="PostgreSQL" data-page-node-id="530CBjglvexON96g9AkHkO">PostgreSQL</option>
-          <option value="SQL Server" data-page-node-id="tMWlcIrZMRNpK7VipRIn2A">SQL Server</option>
-          <option value="Redis" data-page-node-id="V4h1M68sBBxP0BXAD5RRO7">Redis</option>
-          <option value="MongoDB" data-page-node-id="x2yCvXGKBagI9QoTxANhF5">MongoDB</option>
-        </select>
+      <!-- 第二层：按脚本类型分类 -->
+      <div id="scriptTypeGrid" style="display:none">
+        <div class="list-header">
+          <div style="display:flex;align-items:center;gap:12px">
+            <h2 class="list-title" id="scriptTypeTitle"></h2>
+            <span id="scriptTypeCount" style="font-size:13px;color:#64748b"></span>
+          </div>
+          <button class="btn-primary" onclick="openModal('script')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            添加脚本
+          </button>
+        </div>
+        <p style="color:#64748b;font-size:13px;margin-bottom:16px">选择一个脚本类型查看详细列表</p>
+        <div class="db-chart" id="scriptTypeChart" style="cursor:pointer;grid-template-columns:1fr"></div>
       </div>
-      <div class="data-table" data-page-node-id="F8a0koswfKkU0Tamv0e4Xs"><table data-page-node-id="uWKmxA9VGAQgueglXwCtXE">
-        <thead data-page-node-id="RFRUeB0zU5NEyodJDem5iX"><tr data-page-node-id="ZV8sflvZhQedqdJreBjc9x"><th data-page-node-id="VUuaT4Ut0LwpESlcBarMV3">脚本名称</th><th data-page-node-id="tGaBjdkBDlG1RaEyM6BlHZ">类型</th><th data-page-node-id="o2ZRRznliBUfjQYSnOTFxQ">数据库</th><th data-page-node-id="w4NiaVjcY3sDMgzztLYZag">路径</th><th data-page-node-id="tMoCEqFHs9fZ15dQoNLeT7">说明</th><th data-page-node-id="pwSlIMu9IVVa7ZL3oQrG22">操作</th></tr></thead>
-        <tbody id="scriptsTableBody" data-page-node-id="2Kr6i9khQxyvXm70eNO23u"></tbody>
-      </table></div>
+      <!-- 第三层：选中数据库和类型后的脚本列表 -->
+      <div id="scriptList" style="display:none">
+        <div class="list-header">
+          <div style="display:flex;align-items:center;gap:12px">
+            <h2 class="list-title" id="scriptListTitle"></h2>
+            <span id="scriptListCount" style="font-size:13px;color:#64748b"></span>
+          </div>
+          <button class="btn-primary" onclick="openModal('script')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            添加脚本
+          </button>
+        </div>
+        <div class="data-table"><table>
+          <thead><tr><th>脚本名称</th><th>路径</th><th>说明</th><th>操作</th></tr></thead>
+          <tbody id="scriptsTableBody"></tbody>
+        </table></div>
+      </div>
     </div>
 
     <!-- Knowledge -->
@@ -527,7 +542,7 @@ function switchView(v){
   const nav=document.querySelector('[data-view="'+v+'"]');
   if(nav)nav.classList.add('active');
   if(v==='dashboard')renderDashboard();
-  else if(v==='scripts')renderScripts();
+  else if(v==='scripts'){scriptBackToDB();renderScriptDBGrid();}
   else if(v==='knowledge')renderKnowledge();
   else if(v==='installers')renderInstallers();
   else if(v==='tasks')renderTasks();
@@ -614,14 +629,199 @@ function renderDashboard(){
   }).join('');
 }
 
-function renderScripts(){
-  const data=gd('scripts');
-  const ft=document.getElementById('filterScriptType').value;
-  const fd=document.getElementById('filterScriptDB').value;
-  let f=data;
-  if(ft)f=f.filter(s=>s.type===ft);
-  if(fd)f=f.filter(s=>s.db===fd);
-  document.getElementById('scriptsTableBody').innerHTML=f.map(s=>'<tr><td><strong>'+s.name+'</strong><br><small style="color:#64748b">'+s.desc+'</small></td><td><span class="task-badge badge-week">'+s.type+'</span></td><td><span class="task-badge badge-normal">'+s.db+'</span></td><td><code style="background:#f1f5f9;padding:4px 8px;border-radius:4px;font-size:12px">'+s.path+'</code></td><td>'+s.tags.map(t=>'<span style="background:#e0e7ff;color:#3730a3;padding:2px 8px;border-radius:4px;font-size:11px;margin-right:4px">'+t+'</span>').join('')+'</td><td><button class="action-btn btn-copy" onclick="copyPath(\''+s.path.replace(/\\/g,'\\\\')+'\')">复制路径</button><button class="action-btn btn-edit" onclick="editScript('+s.id+')">编辑</button><button class="action-btn btn-delete" onclick="deleteScript('+s.id+')">删除</button></td></tr>').join('');
+var _scriptDBIcons = null;
+var _scriptDarkColors = { Oracle: '#991b1b', MySQL: '#15803d', PostgreSQL: '#1e40af', 'SQL Server': '#171717', Linux: '#b45309', Redis: '#991b1b', '其他': '#334155' };
+var _selectedScriptDB = '';
+// 全局数据库类型元数据（name/color），图标从仪表盘的 DOM 中提取
+var _scriptDBMeta = [
+  { name: 'Oracle', color: '#dc2626' },
+  { name: 'MySQL', color: '#16a34a' },
+  { name: 'PostgreSQL', color: '#2563eb' },
+  { name: 'SQL Server', color: '#404040' },
+  { name: 'Linux', color: '#f59e0b' },
+  { name: 'Redis', color: '#dc2626' },
+  { name: '其他', color: '#64748b' },
+];
+
+function _loadScriptDBIcons(){
+  // 从仪表盘的 dbChart 提取图标（仅 img/svg 部分，不含名称 span）
+  if(_scriptDBIcons && _scriptDBIcons.length===7) return;
+  var items=document.querySelectorAll('#dbChart .db-item');
+  if(items.length===7){
+    _scriptDBIcons=[];
+    items.forEach(function(el){
+      var icon=el.querySelector('.db-icon');
+      if(icon){
+        // 只提取 img 或 svg，去掉 db-name span 避免重复
+        var img=icon.querySelector('img');
+        var svg=icon.querySelector('svg');
+        _scriptDBIcons.push(img?img.outerHTML:(svg?svg.outerHTML:''));
+      } else {
+        _scriptDBIcons.push('');
+      }
+    });
+  }
+}
+
+function renderScripts(){ if(_selectedScriptDB){renderScriptsList();}else{renderScriptDBGrid();} }
+
+function renderScriptDBGrid(){
+  _loadScriptDBIcons();
+  // 如果仪表盘还没渲染过，先触发一次
+  if(!_scriptDBIcons||_scriptDBIcons.length<7){
+    renderDashboard();
+    _loadScriptDBIcons();
+  }
+  var scripts=gd('scripts');
+  var counts={};
+  _scriptDBMeta.forEach(function(d){counts[d.name]=0;});
+  scripts.forEach(function(s){ var k=s.db||'其他'; if(counts[k]===undefined) counts['其他']++; else counts[k]++; });
+  var total=scripts.length||1;
+  var grid=document.getElementById('scriptDBChart');
+  if(!grid) return;
+  grid.innerHTML=_scriptDBMeta.map(function(item,i){
+    var c=counts[item.name]||0;
+    var dark=_scriptDarkColors[item.name]||item.color;
+    var pct=c>0?Math.max(Math.round(c/total*100),8):0;
+    var iconHtml=(_scriptDBIcons&&_scriptDBIcons[i])?_scriptDBIcons[i]:('<span style="font-weight:600;font-size:14px;color:'+item.color+'">'+item.name.charAt(0)+'</span>');
+    return '<div class="db-item" onclick="scriptSelectDB(\''+item.name+'\')" style="cursor:pointer;transition:box-shadow .2s,transform .15s" onmouseenter="this.style.boxShadow=\'0 4px 12px rgba(0,0,0,.1)\';this.style.transform=\'translateY(-2px)\'" onmouseleave="this.style.boxShadow=\'none\';this.style.transform=\'none\'">'
+      +'<div class="db-icon" style="background:'+item.color+'15">'
+      +iconHtml
+      +'<span class="db-name" style="color:'+dark+'">'+item.name+'</span></div>'
+      +'<div class="db-bar-row"><div class="db-bar-track"><div class="db-bar-fill" style="width:'+pct+'%;background:'+item.color+'"></div></div>'
+      +'<span class="db-bar-num">'+c+'</span></div></div>';
+  }).join('');
+  document.getElementById('scriptDBGrid').style.display='';
+  document.getElementById('scriptList').style.display='none';
+}
+
+function scriptSelectDB(name){
+  _selectedScriptDB=name;
+  renderScriptTypeGrid();
+  updateBreadcrumb();
+  document.getElementById('scriptDBGrid').style.display='none';
+  document.getElementById('scriptTypeGrid').style.display='';
+  document.getElementById('scriptList').style.display='none';
+}
+
+function renderScriptTypeGrid(){
+  var scripts=gd('scripts').filter(function(s){ return s.db===_selectedScriptDB; });
+  var types=['巡检','备份','部署','监控','性能','其他'];
+  var typeColors={'巡检':'#3b82f6','备份':'#10b981','部署':'#f59e0b','监控':'#8b5cf6','性能':'#ef4444','其他':'#64748b'};
+  var typeIcons={
+    '巡检':'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>',
+    '备份':'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>',
+    '部署':'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>',
+    '监控':'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>',
+    '性能':'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.38 8.57l-1.23 1.85a8 8 0 0 1-.22 7.58H5.07A8 8 0 0 1 15.58 6.85l1.85-1.23A10 10 0 0 0 3.35 19a2 2 0 0 0 1.72 1h13.85a2 2 0 0 0 1.74-1 10 10 0 0 0-.27-10.44z"/><path d="M10.59 15.41a2 2 0 0 0 2.83 0l5.66-8.49-8.49 5.66a2 2 0 0 0 0 2.83z"/></svg>',
+    '其他':'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/></svg>'
+  };
+  var counts={};
+  types.forEach(function(t){counts[t]=0;});
+  scripts.forEach(function(s){ var t=s.type||'其他'; if(counts[t]===undefined) counts['其他']++; else counts[t]++; });
+  var total=scripts.length||1;
+  document.getElementById('scriptTypeTitle').textContent=_selectedScriptDB+' 脚本';
+  document.getElementById('scriptTypeCount').textContent='共 '+scripts.length+' 个脚本';
+  var chart=document.getElementById('scriptTypeChart');
+  chart.innerHTML=types.map(function(type){
+    var c=counts[type]||0;
+    var color=typeColors[type];
+    var pct=c>0?Math.max(Math.round(c/total*100),8):0;
+    return '<div class="db-item" onclick="scriptSelectType(\''+type+'\')" style="cursor:pointer;transition:box-shadow .2s,transform .15s" onmouseenter="this.style.boxShadow=\'0 4px 12px rgba(0,0,0,.1)\';this.style.transform=\'translateY(-2px)\'" onmouseleave="this.style.boxShadow=\'none\';this.style.transform=\'none\'">'
+      +'<div class="db-icon" style="background:'+color+'15;color:'+color+'">'
+      +typeIcons[type]
+      +'<span class="db-name" style="color:'+color+'">'+type+'</span></div>'
+      +'<div class="db-bar-row"><div class="db-bar-track"><div class="db-bar-fill" style="width:'+pct+'%;background:'+color+'"></div></div>'
+      +'<span class="db-bar-num">'+c+'</span></div></div>';
+  }).join('');
+}
+
+var _selectedScriptType='';
+
+function scriptSelectType(type){
+  _selectedScriptType=type;
+  document.getElementById('scriptListTitle').textContent=_selectedScriptDB+' · '+type;
+  renderScriptsList();
+  updateBreadcrumb();
+  document.getElementById('scriptTypeGrid').style.display='none';
+  document.getElementById('scriptList').style.display='';
+}
+
+function scriptBackToDB(){
+  _selectedScriptDB='';
+  _selectedScriptType='';
+  renderScriptDBGrid();
+  updateBreadcrumb();
+  document.getElementById('scriptDBGrid').style.display='';
+  document.getElementById('scriptTypeGrid').style.display='none';
+  document.getElementById('scriptList').style.display='none';
+}
+
+function scriptBackToType(){
+  _selectedScriptType='';
+  renderScriptTypeGrid();
+  updateBreadcrumb();
+  document.getElementById('scriptTypeGrid').style.display='';
+  document.getElementById('scriptList').style.display='none';
+}
+
+function updateBreadcrumb(){
+  var breadcrumb=document.getElementById('scriptBreadcrumb');
+  var parts=['<a href="#" onclick="scriptBackToDB();return false;" style="color:#3b82f6;text-decoration:none">脚本库</a>'];
+  if(_selectedScriptDB){
+    parts.push('<span style="margin:0 6px">›</span>');
+    parts.push('<a href="#" onclick="scriptBackToType();return false;" style="color:#3b82f6;text-decoration:none">'+_selectedScriptDB+'</a>');
+  }
+  if(_selectedScriptType){
+    parts.push('<span style="margin:0 6px">›</span>');
+    parts.push('<span style="color:#1e293b">'+_selectedScriptType+'</span>');
+  }
+  breadcrumb.innerHTML=parts.join('');
+}
+
+function renderScriptsList(){
+  var data=gd('scripts');
+  var f=data.filter(function(s){ return s.db===_selectedScriptDB && s.type===_selectedScriptType; });
+  document.getElementById('scriptListCount').textContent='共 '+f.length+' 个脚本';
+  document.getElementById('scriptsTableBody').innerHTML=f.length?f.map(function(s){
+    return '<tr><td><a href="#" onclick="openScriptFile(\''+s.path.replace(/\\/g,'\\\\').replace(/'/g,'\\\'')+'\');return false;" style="color:#2563eb;text-decoration:none;cursor:pointer"><strong>'+s.name+'</strong></a><br><small style="color:#64748b">'+s.desc+'</small></td>'
+      +'<td><code style="background:#f1f5f9;padding:4px 8px;border-radius:4px;font-size:12px">'+s.path+'</code></td>'
+      +'<td>'+s.tags.map(function(t){return '<span style="background:#e0e7ff;color:#3730a3;padding:2px 8px;border-radius:4px;font-size:11px;margin-right:4px">'+t+'</span>';}).join('')+'</td>'
+      +'<td><button class="action-btn btn-copy" onclick="copyPath(\''+s.path.replace(/\\/g,'\\\\')+'\')">复制路径</button>'
+      +'<button class="action-btn btn-edit" onclick="editScript('+s.id+')">编辑</button>'
+      +'<button class="action-btn btn-delete" onclick="deleteScript('+s.id+')">删除</button></td></tr>';
+  }).join(''):'<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:40px">暂无脚本</td></tr>';
+}
+
+function openScriptFile(path){
+  if(!path){
+    toast('文件路径为空');
+    return;
+  }
+  fetch('http://localhost:8686/api/launcher/path',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({path:path,mode:'edit'})
+  }).then(function(r){
+    if(!r.ok) throw new Error('打开失败');
+    return r.json();
+  }).then(function(){
+    toast('已打开: '+path);
+  }).catch(function(e){
+    // 如果edit模式失败，尝试open模式
+    fetch('http://localhost:8686/api/launcher/path',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({path:path,mode:'open'})
+    }).then(function(r){
+      if(!r.ok) throw new Error('打开失败');
+      return r.json();
+    }).then(function(){
+      toast('已打开: '+path);
+    }).catch(function(e2){
+      toast('打开失败: '+e2.message);
+    });
+  });
 }
 
 function renderKnowledge(){
@@ -737,7 +937,7 @@ function openModal(type,eid){
 }
 function closeModal(){document.getElementById('modalOverlay').classList.remove('active')}
 
-function saveScript(e,eid){e.preventDefault();const f=e.target,data=gd('scripts');const item={id:eid||Date.now(),name:f.name.value,type:f.type.value,db:f.db.value,path:f.path.value,desc:f.desc.value,tags:f.tags.value.split(',').map(t=>t.trim()).filter(t=>t),createdAt:eid?data.find(x=>x.id===eid).createdAt:now()};if(eid){const i=data.findIndex(x=>x.id===eid);data[i]=item}else data.push(item);sd('scripts',data);closeModal();renderScripts();renderDashboard();toast(eid?'脚本已更新':'脚本已添加')}
+function saveScript(e,eid){e.preventDefault();const f=e.target,data=gd('scripts');const item={id:eid||Date.now(),name:f.name.value,type:f.type.value,db:f.db.value,path:f.path.value,desc:f.desc.value,tags:f.tags.value.split(',').map(t=>t.trim()).filter(t=>t),createdAt:eid?data.find(x=>x.id===eid).createdAt:now()};if(eid){const i=data.findIndex(x=>x.id===eid);data[i]=item}else data.push(item);sd('scripts',data);closeModal();if(_selectedScriptDB){renderScriptsList();renderScriptDBGrid();}else{renderScripts();}renderDashboard();toast(eid?'脚本已更新':'脚本已添加')}
 function saveKnowledge(e,eid){e.preventDefault();const f=e.target,data=gd('knowledge');const item={id:eid||Date.now(),name:f.name.value,category:f.category.value,db:f.db.value,path:f.path.value,desc:f.desc.value,tags:f.tags.value.split(',').map(t=>t.trim()).filter(t=>t),createdAt:eid?data.find(x=>x.id===eid).createdAt:now()};if(eid){const i=data.findIndex(x=>x.id===eid);data[i]=item}else data.push(item);sd('knowledge',data);closeModal();renderKnowledge();renderDashboard();toast(eid?'文档已更新':'文档已添加')}
 function saveInstaller(e,eid){e.preventDefault();const f=e.target,data=gd('installers');const item={id:eid||Date.now(),name:f.name.value,version:f.version.value,type:f.type.value,path:f.path.value,size:f.size.value,createdAt:eid?data.find(x=>x.id===eid).createdAt:now()};if(eid){const i=data.findIndex(x=>x.id===eid);data[i]=item}else data.push(item);sd('installers',data);closeModal();renderInstallers();renderDashboard();toast(eid?'安装包已更新':'安装包已添加')}
 function saveTask(e,eid){e.preventDefault();const f=e.target,data=gd('tasks');const item={id:eid||Date.now(),title:f.title.value,deadline:f.deadline.value,priority:f.priority.value,status:f.status?f.status.value:'pending',notes:f.notes.value};if(eid){const i=data.findIndex(x=>x.id===eid);data[i]=item}else data.push(item);sd('tasks',data);closeModal();renderTasks();renderDashboard();toast(eid?'任务已更新':'任务已创建')}
@@ -745,7 +945,7 @@ function saveContact(e,eid){e.preventDefault();const f=e.target,data=gd('contact
 function saveAccount(e,eid){e.preventDefault();const f=e.target,data=gd('accounts');const item={id:eid||Date.now(),site:f.site.value,username:f.username.value,password:f.password.value,notes:f.notes.value};if(eid){const i=data.findIndex(x=>x.id===eid);data[i]=item}else data.push(item);sd('accounts',data);closeModal();renderAccounts();renderDashboard();toast(eid?'账号已更新':'账号已添加')}
 
 function editScript(id){openModal('script',id)}function editKnowledge(id){openModal('knowledge',id)}function editInstaller(id){openModal('installer',id)}function editTask(id){openModal('task',id)}function editContact(id){openModal('contact',id)}function editAccount(id){openModal('account',id)}
-function deleteScript(id){if(confirm('确定删除？')){sd('scripts',gd('scripts').filter(x=>x.id!==id));renderScripts();renderDashboard();toast('已删除')}}
+function deleteScript(id){if(confirm('确定删除？')){sd('scripts',gd('scripts').filter(x=>x.id!==id));if(_selectedScriptDB){renderScriptsList();renderScriptDBGrid();}else{renderScripts();}renderDashboard();toast('已删除')}}
 function deleteKnowledge(id){if(confirm('确定删除？')){sd('knowledge',gd('knowledge').filter(x=>x.id!==id));renderKnowledge();renderDashboard();toast('已删除')}}
 function deleteInstaller(id){if(confirm('确定删除？')){sd('installers',gd('installers').filter(x=>x.id!==id));renderInstallers();renderDashboard();toast('已删除')}}
 function deleteTask(id){if(confirm('确定删除？')){sd('tasks',gd('tasks').filter(x=>x.id!==id));renderTasks();renderDashboard();toast('已删除')}}

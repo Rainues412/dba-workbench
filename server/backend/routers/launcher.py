@@ -49,7 +49,8 @@ def open_path(req: OpenRequest):
     if req.mode == "folder":
         # Open the containing folder, select the file if possible
         if target.is_file():
-            subprocess.Popen(f'explorer /select,"{target.resolve()}"')
+            # 用列表形式调用 explorer，避免路径中引号/特殊字符触发 shell 注入
+            subprocess.Popen(["explorer", "/select,", str(target.resolve())])
         else:
             os.startfile(str(target.resolve()))  # noqa: S606
         return {"ok": True, "action": "explorer", "path": str(target)}

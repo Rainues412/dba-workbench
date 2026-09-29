@@ -1,8 +1,14 @@
 """Database connection and initialization for DBA Workspace."""
 import sqlite3
 import os
+from contextlib import contextmanager
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "workspace.db")
+
+# 分页参数上下限
+PAGE_SIZE_MIN = 1
+PAGE_SIZE_MAX = 200
+PAGE_SIZE_DEFAULT = 20
 
 
 def get_db():
@@ -12,6 +18,24 @@ def get_db():
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     return conn
+
+
+@contextmanager
+def get_db_ctx():
+    """上下文管理器：确保连接正常关闭，防止异常时连接泄漏。"""
+    conn = get_db()
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+def validate_page(page: int, page_size: int):
+    """校验分页参数，返回合法的 (offset, page_size)。"""
+    page = max(1, page)
+    page_size = max(PAGE_SIZE_MIN, min(page_size, PAGE_SIZE_MAX))
+    offset = (page - 1) * page_size
+    return offset, page_size
 
 
 def _column_names(c, table):
