@@ -81,14 +81,18 @@
       toApi: function (i) {
         return {
           name: i.name || '', kind: i.type || '数据库', path: i.path || '',
-          version: i.version || '', size_mb: parseFloat(i.size) || 0, notes: i.size && isNaN(parseFloat(i.size)) ? i.size : ''
+          version: i.version || '', size_mb: 0,
+          notes: '',
+          wb_db: i.db || '通用',
+          tags: (i.tags || []).join(',')
         };
       },
       fromApi: function (r) {
         return {
           id: r.id, name: r.name, version: r.version || '', type: r.kind,
-          path: r.path || '', size: r.notes || (r.size_mb ? r.size_mb + ' MB' : ''),
-          createdAt: r.created_at
+          path: r.path || '',
+          tags: (r.tags || '').split(',').map(function(t){ return t.trim(); }).filter(Boolean),
+          db: r.wb_db || '通用', createdAt: r.created_at
         };
       }
     },
@@ -258,10 +262,15 @@
         var bodyId = { scripts: 'scriptsTableBody', knowledge: 'knowledgeTableBody', installers: 'installersTableBody' }[key];
         var tbody = document.getElementById(bodyId);
         if (!tbody) return;
-        // For knowledge in hierarchical mode, gd() returns all items; use only visible rows
-        var rows = (key === 'knowledge' && typeof _selectedKbDB !== 'undefined' && _selectedKbDB && _selectedKbType)
-          ? window.gd(key).filter(function(k){ return k.db === _selectedKbDB && k.category === _selectedKbType; })
-          : window.gd(key);
+        // For hierarchical views, filter to only visible rows
+        var rows;
+        if (key === 'knowledge' && typeof _selectedKbDB !== 'undefined' && _selectedKbDB && _selectedKbType) {
+          rows = window.gd(key).filter(function(k){ return k.db === _selectedKbDB && k.category === _selectedKbType; });
+        } else if (key === 'installers' && typeof _selectedInstDB !== 'undefined' && _selectedInstDB) {
+          rows = window.gd(key).filter(function(i){ return i.db === _selectedInstDB; });
+        } else {
+          rows = window.gd(key);
+        }
         var trs = tbody.querySelectorAll('tr');
         for (var i = 0; i < trs.length && i < rows.length; i++) {
           (function (tr, row) {

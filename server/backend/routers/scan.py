@@ -366,9 +366,10 @@ def commit_scan(req: CommitRequest):
                 continue
 
             if it.kind == "resource":
+                tags_str = ",".join(it.tags) if it.tags else ""
                 conn.execute(
-                    "INSERT INTO resources (name, kind, path, size_mb, category, notes) VALUES (?, ?, ?, ?, ?, ?)",
-                    (it.name, it.res_kind, it.path, it.size_mb, "扫描入库", it.notes),
+                    "INSERT INTO resources (name, kind, path, size_mb, category, notes, wb_db, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (it.name, it.res_kind, it.path, it.size_mb, "扫描入库", it.notes, it.db_type, tags_str),
                 )
                 counts["resource"] += 1
             elif it.kind == "article":

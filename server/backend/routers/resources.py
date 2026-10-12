@@ -19,6 +19,7 @@ class ResourceCreate(BaseModel):
     category: str = ""
     tags: str = ""
     notes: str = ""
+    wb_db: str = "通用"
 
 
 class ResourceUpdate(BaseModel):
@@ -31,6 +32,7 @@ class ResourceUpdate(BaseModel):
     category: Optional[str] = None
     tags: Optional[str] = None
     notes: Optional[str] = None
+    wb_db: Optional[str] = None
     is_favorite: Optional[int] = None
 
 
@@ -40,6 +42,7 @@ def list_resources(
     kind: str = "",
     category: str = "",
     tag: str = "",
+    wb_db: str = "",
     favorite_only: int = 0,
     page: int = 1,
     page_size: int = 50,
@@ -58,6 +61,9 @@ def list_resources(
         if tag:
             conditions.append("tags LIKE ?")
             params.append(f"%{tag}%")
+        if wb_db:
+            conditions.append("wb_db = ?")
+            params.append(wb_db)
         if favorite_only:
             conditions.append("is_favorite = 1")
 
@@ -78,10 +84,10 @@ def list_resources(
 def create_resource(data: ResourceCreate):
     with get_db_ctx() as conn:
         c = conn.execute(
-            """INSERT INTO resources (name, kind, path, url, version, size_mb, category, tags, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO resources (name, kind, path, url, version, size_mb, category, tags, notes, wb_db)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (data.name, data.kind, data.path, data.url, data.version, data.size_mb,
-             data.category, data.tags, data.notes),
+             data.category, data.tags, data.notes, data.wb_db),
         )
         conn.commit()
         row = conn.execute("SELECT * FROM resources WHERE id = ?", (c.lastrowid,)).fetchone()
@@ -108,7 +114,7 @@ def update_resource(rid: int, data: ResourceUpdate):
         if not conn.execute("SELECT id FROM resources WHERE id = ?", (rid,)).fetchone():
             raise HTTPException(404, "Resource not found")
         updates, params = [], []
-        for field in ["name", "kind", "path", "url", "version", "size_mb", "category", "tags", "notes", "is_favorite"]:
+        for field in ["name", "kind", "path", "url", "version", "size_mb", "category", "tags", "notes", "wb_db", "is_favorite"]:
             val = getattr(data, field, None)
             if val is not None:
                 updates.append(f"{field} = ?")
