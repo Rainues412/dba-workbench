@@ -61,7 +61,6 @@ def migrate_db(conn):
     _add_column(c, "articles", "wb_db", "TEXT DEFAULT '通用'")
     _add_column(c, "customers", "wb_person", "TEXT DEFAULT ''")
     _add_column(c, "customers", "wb_contact", "TEXT DEFAULT ''")
-    _add_column(c, "resources", "wb_db", "TEXT DEFAULT '通用'")
 
     # ── 工具箱 / 资源索引（安装包、软件、本地文件、网址）──
     c.execute("""
@@ -81,6 +80,7 @@ def migrate_db(conn):
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    _add_column(c, "resources", "wb_db", "TEXT DEFAULT '通用'")
 
     # ── 密码本（Fernet 加密，密钥存本地 .workspace_secret）──
     c.execute("""

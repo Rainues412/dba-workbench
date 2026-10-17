@@ -35,6 +35,10 @@ _v.txt
 # Python
 __pycache__/
 *.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+test-results/
 
 # ── 合并版 server（2026-09-24）──
 server/workspace.db

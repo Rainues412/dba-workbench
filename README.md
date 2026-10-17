@@ -17,6 +17,20 @@ pip install -r requirements.txt
 python main.py
 ```
 
+### 运行隔离测试
+
+测试使用临时 SQLite 数据库和随机 localhost 端口，不会访问
+`server/workspace.db` 或浏览器 localStorage：
+
+```powershell
+python -m pip install -r server/requirements-dev.txt
+python -m pytest
+```
+
+浏览器烟雾测试优先使用本机 Microsoft Edge；Edge 或 Playwright 不可用时，
+该项会明确标记为跳过。根目录旧的 `test_installer_*.py` 仅作人工诊断，
+不在 pytest 自动收集范围内。
+
 服务启动后访问 http://localhost:8686
 
 > **依赖**：Python 3.8+，`fastapi` / `uvicorn` / `cryptography`（见 `server/requirements.txt`）
