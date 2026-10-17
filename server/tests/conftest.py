@@ -35,9 +35,6 @@ def isolated_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     from backend.routers import vault
 
     monkeypatch.setattr(vault, "KEY_FILE", tmp_path / ".workspace-test-secret")
-    database.init_db()
-
-    assert test_db.exists()
     assert Path(database.DB_PATH).resolve() == test_db
     yield main.app, test_db
 
@@ -45,7 +42,7 @@ def isolated_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture()
 def client(isolated_app) -> Generator[TestClient, None, None]:
     app, _ = isolated_app
-    with TestClient(app) as test_client:
+    with TestClient(app, base_url="http://localhost") as test_client:
         yield test_client
 
 

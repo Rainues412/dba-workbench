@@ -10,14 +10,18 @@ import io
 import sys
 import threading
 import webbrowser
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from backend.database import init_db
+from backend.config import settings
+from backend.database import run_startup_migrations
 from backend.routers import (articles, customers, dashboard, export_import,
                              launcher, resources, scan, scripts, search,
                              tasks, vault)
@@ -25,11 +29,27 @@ from backend.routers import (articles, customers, dashboard, export_import,
 BASE_DIR = Path(__file__).parent
 HTML_FILE = BASE_DIR.parent / "ops-workbench.html"
 
-app = FastAPI(title="DBA 工作台 API", version="0.5")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """Initialize new databases and reject incompatible schemas on every entry."""
+    run_startup_migrations()
+    yield
 
-# 服务仅绑定 127.0.0.1，供本机浏览器使用；不需要 CORS。
-# （公网发布形态已于 2026-09-28 下线，将来在独立服务器上重新发布时
-#   再按那时的部署形态决定 CORS/反代方案。）
+
+app = FastAPI(title="DBA 工作台 API", version="0.5", lifespan=lifespan)
+
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=list(settings.allowed_hosts),
+    www_redirect=False,
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=list(settings.cors_origins),
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Accept", "Content-Type"],
+)
 
 # Register routers
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
@@ -67,7 +87,7 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 def open_browser():
     import time
     time.sleep(1.5)
-    webbrowser.open("http://localhost:8686")
+    webbrowser.open(f"http://localhost:{settings.port}")
 
 
 if __name__ == "__main__":
@@ -75,18 +95,18 @@ if __name__ == "__main__":
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
     print("=" * 50)
     print("  DBA Workspace Server v0.5")
-    print("  http://localhost:8686")
+    print(f"  Mode: {settings.mode}")
+    print(f"  http://localhost:{settings.port}")
     print("  Press Ctrl+C to stop")
     print("=" * 50)
 
-    init_db()
-
-    threading.Thread(target=open_browser, daemon=True).start()
+    if settings.open_browser:
+        threading.Thread(target=open_browser, daemon=True).start()
 
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
-        port=8686,
-        reload=True,
+        host=settings.host,
+        port=settings.port,
+        reload=settings.reload,
         log_level="info",
     )

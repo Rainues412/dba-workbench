@@ -2,6 +2,7 @@
 import sqlite3
 import os
 from contextlib import contextmanager
+from pathlib import Path
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "workspace.db")
 
@@ -9,6 +10,20 @@ DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 PAGE_SIZE_MIN = 1
 PAGE_SIZE_MAX = 200
 PAGE_SIZE_DEFAULT = 20
+SUPPORTED_SCHEMA_VERSION = 0
+
+REQUIRED_TABLES = {
+    "articles",
+    "communications",
+    "contacts",
+    "customers",
+    "passwords",
+    "resources",
+    "scan_dirs",
+    "script_versions",
+    "scripts",
+    "tasks",
+}
 
 
 def get_db():
@@ -220,3 +235,45 @@ def init_db():
     migrate_db(conn)
     conn.commit()
     conn.close()
+
+
+def check_schema_compatibility():
+    """Read-only guard against opening a database from a newer schema version."""
+    path = Path(DB_PATH).resolve()
+    if not path.exists():
+        return
+
+    conn = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)
+    try:
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
+        if version > SUPPORTED_SCHEMA_VERSION:
+            raise RuntimeError(
+                f"database schema version {version} is newer than supported "
+                f"version {SUPPORTED_SCHEMA_VERSION}"
+            )
+    finally:
+        conn.close()
+
+
+def validate_required_schema():
+    """Fail startup when initialization did not produce the required tables."""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        ).fetchall()
+        present = {row[0] for row in rows}
+        missing = sorted(REQUIRED_TABLES - present)
+        if missing:
+            raise RuntimeError(
+                "database schema is incompatible; missing tables: " + ", ".join(missing)
+            )
+    finally:
+        conn.close()
+
+
+def run_startup_migrations():
+    """Current migration entry point; D-01 will replace it with numbered migrations."""
+    check_schema_compatibility()
+    init_db()
+    validate_required_schema()

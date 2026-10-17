@@ -31,7 +31,20 @@ python -m pytest
 该项会明确标记为跳过。根目录旧的 `test_installer_*.py` 仅作人工诊断，
 不在 pytest 自动收集范围内。
 
-服务启动后访问 http://localhost:8686
+服务启动后访问 http://localhost:8686。默认模式只监听 `127.0.0.1`，
+不会开启热重载。
+
+需要开发热重载时显式设置：
+
+```powershell
+$env:DBA_MODE = "development"
+python main.py
+```
+
+可选配置为 `DBA_PORT`、`DBA_OPEN_BROWSER`、`DBA_ALLOWED_HOSTS` 和
+`DBA_CORS_ORIGINS`。Host 与 CORS 均使用逗号分隔的明确白名单，拒绝 `*`。
+当前 `DBA_MODE=lan` 会拒绝启动；在认证、HTTPS 和 LAN 安全边界完成前，
+不提供局域网或公网运行模式。
 
 > **依赖**：Python 3.8+，`fastapi` / `uvicorn` / `cryptography`（见 `server/requirements.txt`）
 
@@ -50,6 +63,7 @@ D:\coding\workspace\
 │   ├── static/
 │   │   └── workbench.js          数据层桥接：劫持 gd()/sd()，读写走 REST API
 │   └── backend/
+│       ├── config.py             运行模式、监听地址与网络白名单
 │       ├── database.py           SQLite 建表 + 迁移 + 连接管理
 │       └── routers/              11 个路由模块
 │           ├── dashboard.py      统计/待办/收藏/最近文档
@@ -127,38 +141,11 @@ python main.py
 
 服务绑定 `127.0.0.1:8686`，仅本机可访问。启动后自动打开浏览器。
 
-### 独立服务器部署
+### 局域网或独立服务器部署
 
-```bash
-# 1. 克隆仓库并安装依赖
-git clone <repo-url> && cd dba-workbench/server
-pip install -r requirements.txt
-
-# 2. 用 uvicorn 生产模式启动
-uvicorn main:app --host 0.0.0.0 --port 8686
-
-# 3. （可选）配合 Nginx 反向代理
-```
-
-**Nginx 配置示例：**
-
-```nginx
-server {
-    listen 80;
-    server_name dba.your-domain.com;
-
-    location / {
-        proxy_pass http://127.0.0.1:8686;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-```
-
-**⚠️ 部署到公网前必须：**
-- 添加 API 认证（当前 API 无鉴权，仅靠绑定 `127.0.0.1` 防护）
-- 启用 HTTPS（Nginx + Let's Encrypt 或其他证书）
-- 修改 `workbench.js` 中的 `API_BASE` 为相对路径或域名
+当前版本没有身份认证，禁止部署到局域网或公网。`DBA_MODE=lan` 会主动
+拒绝启动，不能用修改监听地址的方式绕过。完成方案中的认证、授权、HTTPS
+和部署模式分离任务后，再提供受支持的 LAN 启动方式。
 
 ### 纯前端模式（无需后端）
 
