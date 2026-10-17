@@ -5,12 +5,20 @@ The workspace only stores *paths*; opening happens here via os.startfile
 """
 import os
 import subprocess
-import threading
+import sys
 import webbrowser
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+
+from backend.config import settings
+from backend.local_capabilities import (
+    audit_local_action,
+    require_local_action,
+    resolve_allowed_path,
+)
 
 router = APIRouter()
 
@@ -36,86 +44,110 @@ def _normalize(path: str) -> str:
     return path.strip().strip('"')
 
 
+def _target(path: str, *, expect: Optional[str] = None) -> Path:
+    try:
+        return resolve_allowed_path(path, expect=expect)
+    except HTTPException:
+        audit_local_action("path", "denied_path")
+        raise
+
+
 @router.post("/path")
 def open_path(req: OpenRequest):
     """Open a local path or URL according to mode."""
     p = _normalize(req.path)
-    if not p:
-        raise HTTPException(400, "路径为空")
+    mode = req.mode.strip().lower()
+    if mode not in {"open", "folder", "edit", "run"}:
+        raise HTTPException(400, "不支持的本机动作")
+    require_local_action(mode)
 
     # URL
-    if p.lower().startswith(("http://", "https://", "ftp://", "file://")):
+    if p.lower().startswith(("http://", "https://")):
+        if mode != "open":
+            raise HTTPException(400, "网址仅支持 open 动作")
         webbrowser.open(p)
+        audit_local_action(mode, "success")
         return {"ok": True, "action": "browser", "path": p}
+    if "://" in p:
+        audit_local_action(mode, "denied_scheme")
+        raise HTTPException(400, "仅允许 http/https 网址")
 
-    target = Path(p)
-    if not target.exists():
-        raise HTTPException(404, f"路径不存在: {p}")
+    target = _target(p)
 
-    if req.mode == "folder":
+    if mode == "folder":
         # Open the containing folder, select the file if possible
         if target.is_file():
             # 用列表形式调用 explorer，避免路径中引号/特殊字符触发 shell 注入
-            subprocess.Popen(["explorer", "/select,", str(target.resolve())])
+            subprocess.Popen(["explorer", "/select,", str(target)])
         else:
-            os.startfile(str(target.resolve()))  # noqa: S606
+            os.startfile(str(target))  # noqa: S606
+        audit_local_action(mode, "success", target)
         return {"ok": True, "action": "explorer", "path": str(target)}
 
-    if req.mode == "edit":
-        if target.is_dir():
-            raise HTTPException(400, "目录无法用编辑器打开")
+    if mode == "edit":
+        target = _target(p, expect="file")
         editor = next((e for e in EDITORS if os.path.exists(e)), None)
         if editor:
-            subprocess.Popen([editor, str(target.resolve())])
+            subprocess.Popen([editor, str(target)])
         else:
-            subprocess.Popen(["notepad.exe", str(target.resolve())])
+            subprocess.Popen(["notepad.exe", str(target)])
+        audit_local_action(mode, "success", target)
         return {"ok": True, "action": "editor", "path": str(target)}
 
-    if req.mode == "run":
-        if target.is_dir():
-            raise HTTPException(400, "目录无法执行")
+    if mode == "run":
+        target = _target(p, expect="file")
         suffix = target.suffix.lower()
+        if suffix not in settings.allowed_run_extensions:
+            audit_local_action(mode, "denied_extension", target)
+            raise HTTPException(403, f"文件类型未获执行许可: {suffix or '(无扩展名)'}")
         if suffix in (".bat", ".cmd"):
-            subprocess.Popen(["cmd.exe", "/c", str(target.resolve())], cwd=str(target.parent))
+            subprocess.Popen(
+                ["cmd.exe", "/d", "/s", "/c", f'"{target}"'],
+                cwd=str(target.parent),
+            )
         elif suffix == ".ps1":
             subprocess.Popen(
-                ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(target.resolve())],
+                ["powershell.exe", "-NoProfile", "-File", str(target)],
                 cwd=str(target.parent),
             )
         elif suffix == ".py":
-            subprocess.Popen(["python", str(target.resolve())], cwd=str(target.parent))
+            subprocess.Popen([sys.executable, str(target)], cwd=str(target.parent))
         elif suffix == ".sh":
             # Run via Git Bash if available
             bash = r"C:\Program Files\Git\bin\bash.exe"
             if os.path.exists(bash):
-                subprocess.Popen([bash, str(target.resolve())], cwd=str(target.parent))
+                subprocess.Popen([bash, str(target)], cwd=str(target.parent))
             else:
                 raise HTTPException(400, "未找到 Git Bash，无法执行 .sh")
-        else:
-            os.startfile(str(target.resolve()))  # noqa: S606
+        audit_local_action(mode, "success", target)
         return {"ok": True, "action": "run", "path": str(target)}
 
     # default: open
-    os.startfile(str(target.resolve()))  # noqa: S606
+    os.startfile(str(target))  # noqa: S606
+    audit_local_action(mode, "success", target)
     return {"ok": True, "action": "open", "path": str(target)}
 
 
 @router.post("/check")
 def check_path(req: OpenRequest):
     """Check whether a path exists (used to mark broken links in UI)."""
+    require_local_action("check")
     p = _normalize(req.path)
     if p.lower().startswith(("http://", "https://")):
+        audit_local_action("check", "success")
         return {"exists": True, "type": "url"}
-    target = Path(p)
+    target = _target(p)
+    audit_local_action("check", "success", target)
     return {
-        "exists": target.exists(),
         "type": "dir" if target.is_dir() else ("file" if target.is_file() else "missing"),
+        "exists": True,
     }
 
 
 @router.post("/pick-folder")
 def pick_folder(req: PickFolderRequest):
     """Open a native folder picker dialog and return the selected path."""
+    require_local_action("pick-folder")
     try:
         import tkinter as tk
         from tkinter import filedialog
@@ -125,15 +157,25 @@ def pick_folder(req: PickFolderRequest):
         root.attributes("-topmost", True)
 
         kwargs = {"title": req.title}
-        if req.initial_dir and Path(req.initial_dir).exists():
-            kwargs["initialdir"] = req.initial_dir
+        initial_dir = (
+            _target(req.initial_dir, expect="directory")
+            if req.initial_dir
+            else Path(settings.allowed_roots[0])
+        )
+        kwargs["initialdir"] = str(initial_dir)
 
         path = filedialog.askdirectory(**kwargs)
         root.destroy()
 
         if path:
-            return {"ok": True, "path": path}
+            selected = _target(path, expect="directory")
+            audit_local_action("pick-folder", "success", selected)
+            return {"ok": True, "path": str(selected)}
         else:
+            audit_local_action("pick-folder", "cancelled")
             return {"ok": False, "path": "", "reason": "cancelled"}
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(500, f"Failed to open folder picker: {str(e)}")
+        audit_local_action("pick-folder", "error")
+        raise HTTPException(500, "打开文件夹选择器失败") from e

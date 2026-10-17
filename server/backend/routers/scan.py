@@ -11,10 +11,15 @@ import re
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
 from backend.database import get_db_ctx
+from backend.local_capabilities import (
+    audit_local_action,
+    require_local_action,
+    resolve_allowed_path,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -232,6 +237,8 @@ def scan_dir(base: Path, known: set) -> list:
     if not base.exists():
         return proposals
     for fp in _walk(base):
+        if fp.is_symlink():
+            continue
         ext = fp.suffix.lower()
         kind = classify(ext)
         if not kind:
@@ -277,6 +284,7 @@ def scan_dir(base: Path, known: set) -> list:
 
 @router.get("/dirs")
 def list_scan_dirs():
+    require_local_action("scan")
     with get_db_ctx() as conn:
         rows = conn.execute("SELECT * FROM scan_dirs ORDER BY id").fetchall()
         return [dict(r) for r in rows]
@@ -284,11 +292,13 @@ def list_scan_dirs():
 
 @router.post("/dirs")
 def add_scan_dir(data: ScanDirCreate):
-    p = data.path.strip().strip('"')
-    if not p:
-        raise HTTPException(400, "路径为空")
-    if not Path(p).exists():
-        raise HTTPException(404, f"目录不存在: {p}")
+    require_local_action("scan")
+    try:
+        path = resolve_allowed_path(data.path, expect="directory")
+    except HTTPException:
+        audit_local_action("scan", "denied_path")
+        raise
+    p = str(path)
     with get_db_ctx() as conn:
         # 检查是否已存在
         if conn.execute("SELECT id FROM scan_dirs WHERE path = ?", (p,)).fetchone():
@@ -300,16 +310,19 @@ def add_scan_dir(data: ScanDirCreate):
             logger.warning("Failed to add scan dir: %s", e)
             raise HTTPException(500, f"添加失败: {e}")
         row = conn.execute("SELECT * FROM scan_dirs WHERE path = ?", (p,)).fetchone()
+        audit_local_action("scan", "directory_added", path)
         return dict(row)
 
 
 @router.delete("/dirs/{did}")
 def delete_scan_dir(did: int):
+    require_local_action("scan")
     with get_db_ctx() as conn:
         if not conn.execute("SELECT id FROM scan_dirs WHERE id = ?", (did,)).fetchone():
             raise HTTPException(404, "Scan dir not found")
         conn.execute("DELETE FROM scan_dirs WHERE id = ?", (did,))
         conn.commit()
+        audit_local_action("scan", "directory_removed")
         return {"ok": True}
 
 
@@ -318,6 +331,7 @@ def delete_scan_dir(did: int):
 @router.post("/run")
 def run_scan(req: ScanRequest):
     """Scan directories and return proposed new entries (nothing is written yet)."""
+    require_local_action("scan")
     with get_db_ctx() as conn:
         if req.paths:
             dirs = req.paths
@@ -326,10 +340,23 @@ def run_scan(req: ScanRequest):
                 "SELECT path FROM scan_dirs WHERE enabled = 1").fetchall()]
         known = _existing_paths(conn)
 
+    allowed_dirs = []
+    for directory in dirs:
+        try:
+            allowed_dirs.append(resolve_allowed_path(directory, expect="directory"))
+        except HTTPException:
+            audit_local_action("scan", "denied_path")
+            raise
+
     proposals = []
-    for d in dirs:
-        proposals.extend(scan_dir(Path(d), known))
-    return {"scanned_dirs": dirs, "proposed": len(proposals), "items": proposals}
+    for directory in allowed_dirs:
+        proposals.extend(scan_dir(directory, known))
+    audit_local_action("scan", "completed")
+    return {
+        "scanned_dirs": [str(directory) for directory in allowed_dirs],
+        "proposed": len(proposals),
+        "items": proposals,
+    }
 
 
 class CommitItem(BaseModel):
@@ -340,7 +367,7 @@ class CommitItem(BaseModel):
     res_kind: str = "其他"
     db_type: str = "通用"
     category: str = "学习笔记"
-    tags: list[str] = []
+    tags: list[str] = Field(default_factory=list)
     notes: str = ""
 
 
@@ -351,7 +378,21 @@ class CommitRequest(BaseModel):
 @router.post("/commit")
 def commit_scan(req: CommitRequest):
     """Write selected proposals into their tables (idempotent by path)."""
-    # 预加载已知路径，避免逐条查询（TOCTOU 风险由客户端保证仅提交 /run 返回的项目）
+    require_local_action("scan")
+    checked_items = []
+    for item in req.items:
+        try:
+            path = resolve_allowed_path(item.path, expect="file")
+        except HTTPException:
+            audit_local_action("scan", "denied_path")
+            raise
+        detected_kind = classify(path.suffix)
+        if detected_kind != item.kind:
+            audit_local_action("scan", "denied_kind", path)
+            raise HTTPException(400, "文件类型与导入类型不匹配")
+        checked_items.append((item, path))
+
+    # 预加载已知路径；客户端回传的每个文件已在上方重新执行边界和类型校验。
     with get_db_ctx() as conn:
         known_paths = set()
         for table, col in [("resources", "path"), ("articles", "file_path"), ("scripts", "file_path")]:
@@ -359,8 +400,9 @@ def commit_scan(req: CommitRequest):
                 known_paths.add(os.path.normpath(p).lower())
 
         counts = {"resource": 0, "article": 0, "script": 0, "skipped": 0}
-        for it in req.items:
-            norm = os.path.normpath(it.path).lower()
+        for it, path in checked_items:
+            normalized_path = str(path)
+            norm = os.path.normpath(normalized_path).lower()
             if norm in known_paths:
                 counts["skipped"] += 1
                 continue
@@ -369,7 +411,7 @@ def commit_scan(req: CommitRequest):
                 tags_str = ",".join(it.tags) if it.tags else ""
                 conn.execute(
                     "INSERT INTO resources (name, kind, path, size_mb, category, notes, wb_db, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    (it.name, it.res_kind, it.path, it.size_mb, "扫描入库", it.notes, it.db_type, tags_str),
+                    (it.name, it.res_kind, normalized_path, it.size_mb, "扫描入库", it.notes, it.db_type, tags_str),
                 )
                 counts["resource"] += 1
             elif it.kind == "article":
@@ -377,25 +419,26 @@ def commit_scan(req: CommitRequest):
                 tags_str = ",".join(it.tags) if it.tags else ""
                 conn.execute(
                     "INSERT INTO articles (title, summary, content, category, file_path, wb_db, tags) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (it.name, "", "", it.category, it.path, it.db_type, tags_str),
+                    (it.name, "", "", it.category, normalized_path, it.db_type, tags_str),
                 )
                 counts["article"] += 1
             elif it.kind == "script":
                 # 仅读取小型文本脚本内容
                 content = ""
                 try:
-                    p = Path(it.path)
+                    p = path
                     if p.suffix.lower() in (".sh", ".py", ".ps1", ".bat", ".cmd", ".sql") and p.stat().st_size < MAX_SCRIPT_READ:
                         content = p.read_text(encoding="utf-8", errors="replace")
                 except OSError as e:
-                    logger.warning("Failed to read script %s: %s", it.path, e)
+                    logger.warning("Failed to read an allowed script: %s", e)
                 conn.execute(
                     "INSERT INTO scripts (title, description, db_type, content, file_path) VALUES (?, ?, ?, ?, ?)",
-                    (it.name, "扫描入库", it.db_type, content, it.path),
+                    (it.name, "扫描入库", it.db_type, content, normalized_path),
                 )
                 counts["script"] += 1
 
             known_paths.add(norm)
 
         conn.commit()
+        audit_local_action("scan", "committed")
         return {"ok": True, "imported": counts}

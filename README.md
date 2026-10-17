@@ -46,6 +46,21 @@ python main.py
 当前 `DBA_MODE=lan` 会拒绝启动；在认证、HTTPS 和 LAN 安全边界完成前，
 不提供局域网或公网运行模式。
 
+打开本地文件、编辑文件、扫描目录和执行脚本属于高风险本机能力，默认关闭。
+确需使用时必须同时启用总开关并指定允许根目录，例如：
+
+```powershell
+$env:DBA_LOCAL_CAPABILITIES = "true"
+$env:DBA_ALLOWED_ROOTS = "D:\Database;D:\scripts"
+$env:DBA_ALLOWED_LOCAL_ACTIONS = "check,edit,folder,open,pick-folder,scan"
+python main.py
+```
+
+脚本执行默认不在动作白名单中。如确需执行，还需把 `run` 加入
+`DBA_ALLOWED_LOCAL_ACTIONS`，并通过 `DBA_ALLOWED_RUN_EXTENSIONS` 明确允许
+`.bat`、`.cmd`、`.ps1`、`.py` 或 `.sh` 中的必要类型。UNC、相对路径、越界路径
+和符号链接逃逸会被拒绝；PowerShell 不使用 `ExecutionPolicy Bypass`。
+
 > **依赖**：Python 3.8+，`fastapi` / `uvicorn` / `cryptography`（见 `server/requirements.txt`）
 
 ## 项目架构
