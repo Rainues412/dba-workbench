@@ -28,6 +28,37 @@ def test_home_and_empty_dashboard(client: TestClient) -> None:
         "password_count": 0,
     }
 
+    distribution = client.get("/api/dashboard/database-distribution")
+    assert distribution.status_code == 200
+    assert distribution.json() == [
+        {"name": "Oracle", "count": 0},
+        {"name": "MySQL", "count": 0},
+        {"name": "PostgreSQL", "count": 0},
+        {"name": "SQL Server", "count": 0},
+        {"name": "Linux", "count": 0},
+        {"name": "Redis", "count": 0},
+        {"name": "其他", "count": 0},
+    ]
+
+
+def test_database_distribution_combines_scripts_and_articles(client: TestClient) -> None:
+    assert client.post("/api/scripts/", json={"title": "Oracle script", "db_type": "Oracle"}).status_code == 200
+    assert client.post("/api/scripts/", json={"title": "Redis script", "db_type": "Redis"}).status_code == 200
+    assert client.post("/api/articles/", json={"title": "Oracle note", "wb_db": "Oracle"}).status_code == 200
+    assert client.post("/api/articles/", json={"title": "Unknown note", "wb_db": "DB2"}).status_code == 200
+
+    response = client.get("/api/dashboard/database-distribution")
+    assert response.status_code == 200
+    assert {item["name"]: item["count"] for item in response.json()} == {
+        "Oracle": 2,
+        "MySQL": 0,
+        "PostgreSQL": 0,
+        "SQL Server": 0,
+        "Linux": 0,
+        "Redis": 1,
+        "其他": 1,
+    }
+
 
 def test_script_crud_and_version_history(client: TestClient) -> None:
     created = client.post(

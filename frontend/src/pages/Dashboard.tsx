@@ -1,22 +1,41 @@
 import { useQuery } from "@tanstack/react-query";
 import {
-  ArrowRight, BookOpenText, Building2, CheckCircle2, Clock3, KeyRound,
+  ArrowRight, BookOpenText, Building2, CheckCircle2, Clock3, Database, KeyRound,
   ListTodo, PackageOpen, ScrollText, ShieldCheck, Sparkles, TriangleAlert,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
+import linuxIcon from "../../../linux-icon.png";
+import mysqlIcon from "../../../mysql-icon.png";
+import oracleIcon from "../../../oracle-icon.png";
+import otherIcon from "../../../other-icon.png";
+import postgresqlIcon from "../../../postgresql-icon.png";
+import sqlServerIcon from "../../../sqlserver-icon.png";
 
 type Stats = Record<"script_count" | "article_count" | "task_total" | "task_pending" | "task_overdue" | "customer_count" | "resource_count" | "password_count", number>;
 type Task = { id: number; title: string; priority: string; due_date?: string; is_overdue: number };
+type DatabaseDistribution = { name: DatabaseName; count: number }[];
+type DatabaseName = "Oracle" | "MySQL" | "PostgreSQL" | "SQL Server" | "Linux" | "Redis" | "其他";
+
+const databaseMeta: Record<DatabaseName, { color: string; tint: string; icon?: string }> = {
+  Oracle: { color: "#dc2626", tint: "#fef2f2", icon: oracleIcon },
+  MySQL: { color: "#16a34a", tint: "#f0fdf4", icon: mysqlIcon },
+  PostgreSQL: { color: "#2563eb", tint: "#eff6ff", icon: postgresqlIcon },
+  "SQL Server": { color: "#404040", tint: "#f5f5f5", icon: sqlServerIcon },
+  Linux: { color: "#f59e0b", tint: "#fffbeb", icon: linuxIcon },
+  Redis: { color: "#dc2626", tint: "#fef2f2" },
+  其他: { color: "#64748b", tint: "#f1f5f9", icon: otherIcon },
+};
 
 const numberFormat = new Intl.NumberFormat("zh-CN");
 
 export function Dashboard() {
   const stats = useQuery({ queryKey: ["dashboard", "stats"], queryFn: () => api<Stats>("/api/dashboard/stats") });
   const tasks = useQuery({ queryKey: ["dashboard", "tasks"], queryFn: () => api<Task[]>("/api/dashboard/recent-tasks") });
-  if (stats.isLoading || tasks.isLoading) return <Page><LoadingState label="正在整理工作台" /></Page>;
-  if (stats.error || tasks.error) return <Page><ErrorState message="概览加载失败" retry={() => { void stats.refetch(); void tasks.refetch(); }} /></Page>;
+  const distribution = useQuery({ queryKey: ["dashboard", "database-distribution"], queryFn: () => api<DatabaseDistribution>("/api/dashboard/database-distribution") });
+  if (stats.isLoading || tasks.isLoading || distribution.isLoading) return <Page><LoadingState label="正在整理工作台" /></Page>;
+  if (stats.error || tasks.error || distribution.error) return <Page><ErrorState message="概览加载失败" retry={() => { void stats.refetch(); void tasks.refetch(); void distribution.refetch(); }} /></Page>;
 
   const data = stats.data!;
   const cards = [
@@ -27,13 +46,7 @@ export function Dashboard() {
     { label: "资源索引", value: data.resource_count, hint: "工具、安装包与入口", to: "/resources", icon: PackageOpen, tone: "emerald" },
     { label: "保险箱条目", value: data.password_count, hint: "客户端加密保存", to: "/vault", icon: KeyRound, tone: "rose" },
   ];
-  const inventory = [
-    { label: "脚本", value: data.script_count, color: "var(--chart-blue)" },
-    { label: "知识", value: data.article_count, color: "var(--chart-violet)" },
-    { label: "资源", value: data.resource_count, color: "var(--chart-emerald)" },
-    { label: "客户", value: data.customer_count, color: "var(--chart-cyan)" },
-  ];
-  const largest = Math.max(1, ...inventory.map((item) => item.value));
+  const largestDatabaseCount = Math.max(1, ...(distribution.data ?? []).map((item) => item.count));
   const date = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" }).format(new Date());
 
   return <Page>
@@ -67,13 +80,24 @@ export function Dashboard() {
         </li>)}</ul>}
       </section>
 
-      <section className="panel inventory-panel">
-        <div className="panel-title"><div><p className="eyebrow">ASSET MIX</p><h2>资产构成</h2></div></div>
-        <div className="inventory-list">{inventory.map((item) => <div className="inventory-item" key={item.label}>
-          <div><span>{item.label}</span><strong>{numberFormat.format(item.value)}</strong></div>
-          <div className="progress-track"><span style={{ width: `${Math.max(item.value ? 8 : 0, item.value / largest * 100)}%`, background: item.color }} /></div>
-        </div>)}</div>
-        <div className="inventory-summary"><span>逾期任务</span><strong className={data.task_overdue ? "text-danger" : ""}>{data.task_overdue}</strong><small>{data.task_overdue ? "建议优先处理" : "当前没有逾期事项"}</small></div>
+      <section className="panel database-panel">
+        <div className="panel-title"><div><p className="eyebrow">DATABASE MIX</p><h2><Database size={18} />数据库类型分布</h2></div><small className="muted">脚本 + 知识</small></div>
+        <div className="database-distribution-grid">{distribution.data?.map((item) => {
+          const meta = databaseMeta[item.name];
+          const width = Math.max(item.count ? 8 : 0, item.count / largestDatabaseCount * 100);
+          return <article className="database-distribution-item" key={item.name}>
+            <div className="database-label" style={{ color: meta.color, background: meta.tint }}>
+              <span className="database-logo" aria-hidden="true">
+                {meta.icon ? <img src={meta.icon} alt="" /> : <RedisIcon />}
+              </span>
+              <strong>{item.name}</strong>
+            </div>
+            <div className="database-bar-row">
+              <div className="progress-track"><span style={{ width: `${width}%`, background: meta.color }} /></div>
+              <strong>{numberFormat.format(item.count)}</strong>
+            </div>
+          </article>;
+        })}</div>
       </section>
     </div>
 
@@ -91,6 +115,14 @@ export function Dashboard() {
 
 function QuickLink({ to, icon: Icon, title, detail }: { to: string; icon: typeof ScrollText; title: string; detail: string }) {
   return <Link className="quick-link" to={to}><span><Icon size={20} /></span><span><strong>{title}</strong><small>{detail}</small></span><ArrowRight size={17} /></Link>;
+}
+
+function RedisIcon() {
+  return <svg viewBox="2 1 20 20" fill="none" stroke="#dc2626" strokeWidth="1.25" strokeLinejoin="round" aria-hidden="true">
+    <path d="M12 3l8 4-8 4-8-4 8-4z" />
+    <path d="M4 11l8 4 8-4" />
+    <path d="M4 15l8 4 8-4" />
+  </svg>;
 }
 
 function Page({ children }: { children: React.ReactNode }) { return <div className="page dashboard-page">{children}</div>; }
