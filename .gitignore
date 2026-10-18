@@ -43,6 +43,7 @@ test-results/
 
 # Frontend dependencies (lockfile and reproducible build output are tracked)
 frontend/node_modules/
+frontend/*.tsbuildinfo
 
 # ── 合并版 server（2026-09-24）──
 server/workspace.db
