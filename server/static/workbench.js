@@ -19,7 +19,8 @@
 
   var apiUp = false;          // 服务器是否可用
   var cache = {};             // 集合名 -> 数组（API 模式下的内存缓存）
-  var pending = {};           // 集合名 -> 待落盘的防抖定时器
+  var shadow = {};            // 最近一次已知记录快照，用于计算单条变更
+  var writeQueue = {};        // 同一集合的写操作串行执行
   var bootstrapped = false;
 
   // ── 基础工具 ──────────────────────────────────────────────
@@ -28,13 +29,22 @@
   }
   function lsSet(k, d) { localStorage.setItem(P + k, JSON.stringify(d)); }
 
-  function api(method, path, body) {
+  function api(method, path, body, extraHeaders) {
+    var headers = { 'Content-Type': 'application/json' };
+    Object.keys(extraHeaders || {}).forEach(function (key) { headers[key] = extraHeaders[key]; });
     return fetch(API_BASE + path, {
       method: method,
-      headers: { 'Content-Type': 'application/json' },
+      headers: headers,
       body: body === undefined ? undefined : JSON.stringify(body)
     }).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
+      if (!r.ok) {
+        return r.json().catch(function () { return {}; }).then(function (problem) {
+          var message = problem.detail || (problem.error && problem.error.message) || ('HTTP ' + r.status);
+          var error = new Error(message);
+          error.status = r.status;
+          throw error;
+        });
+      }
       return r.json();
     });
   }
@@ -57,7 +67,7 @@
           id: r.id, name: r.title, type: r.wb_type || '其他', db: r.db_type,
           path: r.file_path || '', desc: r.description || '',
           tags: (r.tags || '').split(',').map(function (t) { return t.trim(); }).filter(Boolean),
-          content: r.content || '', createdAt: r.created_at
+          content: r.content || '', createdAt: r.created_at, revision: r.revision
         };
       }
     },
@@ -73,7 +83,7 @@
           id: r.id, name: r.title, category: r.category, db: r.wb_db || '通用',
           path: r.file_path || '', desc: r.summary || '',
           tags: (r.tags || '').split(',').map(function (t) { return t.trim(); }).filter(Boolean),
-          content: r.content || '', createdAt: r.created_at
+          content: r.content || '', createdAt: r.created_at, revision: r.revision
         };
       }
     },
@@ -92,7 +102,7 @@
           id: r.id, name: r.name, version: r.version || '', type: r.kind,
           path: r.path || '',
           tags: (r.tags || '').split(',').map(function(t){ return t.trim(); }).filter(Boolean),
-          db: r.wb_db || '通用', createdAt: r.created_at
+          db: r.wb_db || '通用', createdAt: r.created_at, revision: r.revision
         };
       }
     },
@@ -110,7 +120,7 @@
           id: r.id, title: r.title, deadline: r.due_date || '',
           priority: r.priority === '高' ? 'P0' : r.priority === '中' ? 'P1' : 'P2',
           status: r.status === '已完成' ? 'completed' : 'pending',
-          notes: r.description || '', createdAt: r.created_at
+          notes: r.description || '', createdAt: r.created_at, revision: r.revision
         };
       }
     },
@@ -126,7 +136,7 @@
         return {
           id: r.id, project: r.project_name, customer: r.name, groupName: r.group_name,
           personInCharge: r.wb_person || '', contact: r.wb_contact || '',
-          status: r.status, notes: r.notes || '', createdAt: r.created_at
+          status: r.status, notes: r.notes || '', createdAt: r.created_at, revision: r.revision
         };
       }
     }
@@ -134,40 +144,22 @@
 
   // ── 拉取 / 推送 ────────────────────────────────────────────
   var LIST_PATH = {
-    scripts: '/api/scripts/?page_size=500',
-    knowledge: '/api/articles/?page_size=1000',
-    installers: '/api/resources/?page_size=500',
-    tasks: '/api/tasks/?page_size=500',
-    contacts: '/api/customers/'
+    scripts: '/api/scripts/?page_size=200',
+    knowledge: '/api/articles/?page_size=200',
+    installers: '/api/resources/?page_size=200',
+    tasks: '/api/tasks/?page_size=200',
+    contacts: '/api/customers/?page_size=200'
   };
+
+  function copyRows(rows) { return JSON.parse(JSON.stringify(rows || [])); }
 
   function pull(key) {
     return api('GET', LIST_PATH[key]).then(function (d) {
       var rows = (d.items || []).map(M[key].fromApi);
       // 镜像到 localStorage：服务器不可用时回退看到的是真实数据而非示例种子
       try { lsSet(key, rows); } catch (e) {}
+      shadow[key] = copyRows(rows);
       return rows;
-    });
-  }
-
-  function pushAll(key) {
-    var rows = cache[key] || [];
-    // 全量替换：先删服务端多余的，再逐条 upsert
-    return api('GET', LIST_PATH[key]).then(function (d) {
-      var serverIds = {};
-      (d.items || []).forEach(function (r) { serverIds[r.id] = true; });
-      var localIds = {};
-      rows.forEach(function (r) { if (r.id) localIds[r.id] = true; });
-      var dels = Object.keys(serverIds).filter(function (id) { return !localIds[id]; })
-        .map(function (id) { return api('DELETE', delPath(key, id)).catch(function () {}); });
-      return Promise.all(dels).then(function () {
-        return rows.reduce(function (chain, row) {
-          return chain.then(function () { return upsert(key, row); });
-        }, Promise.resolve());
-      });
-    }).then(function () {
-      // 刷新缓存 id（新建条目拿到服务端 id）
-      return pull(key).then(function (fresh) { cache[key] = fresh; });
     });
   }
 
@@ -176,25 +168,73 @@
              tasks: '/api/tasks/', contacts: '/api/customers/' }[key] + id;
   }
 
-  function upsert(key, row) {
+  function payloadFor(key, row, forUpdate) {
     var payload = M[key].toApi(row);
     if (key === 'scripts') payload.wb_type = row.type || '其他';
     if (key === 'knowledge') payload.wb_db = row.db || '通用';
-    if (row.id && typeof row.id === 'number' && row.id < 1e12) {
-      return api('PUT', delPath(key, row.id), payload).catch(function () {
-        return api('POST', delPath(key, ''), payload);
-      });
+    // 列表响应刻意不含正文；旧页面也不编辑正文，更新时绝不能以空串覆盖它。
+    if (forUpdate && (key === 'scripts' || key === 'knowledge')) delete payload.content;
+    // 安装包表单未展示以下字段，更新时保持服务端原值。
+    if (forUpdate && key === 'installers') {
+      delete payload.size_mb;
+      delete payload.notes;
     }
-    return api('POST', delPath(key, ''), payload);
+    return payload;
   }
 
-  function schedulePush(key) {
-    clearTimeout(pending[key]);
-    pending[key] = setTimeout(function () {
-      pushAll(key).then(refreshUI).catch(function (e) {
-        console.warn('[workbench] 同步失败，数据保留在本地缓存:', key, e);
+  function findMutation(before, after) {
+    var oldById = {}, newById = {};
+    before.forEach(function (row) { oldById[row.id] = row; });
+    after.forEach(function (row) { newById[row.id] = row; });
+    var changes = [];
+    before.forEach(function (row) {
+      if (!newById[row.id]) changes.push({ type: 'delete', old: row });
+      else if (JSON.stringify(row) !== JSON.stringify(newById[row.id])) {
+        changes.push({ type: 'update', old: row, row: newById[row.id] });
+      }
+    });
+    after.forEach(function (row) {
+      if (!oldById[row.id]) changes.push({ type: 'create', row: row });
+    });
+    return changes;
+  }
+
+  function replaceCachedRow(key, oldId, apiRow) {
+    var mapped = M[key].fromApi(apiRow);
+    var index = (cache[key] || []).findIndex(function (row) { return row.id === oldId; });
+    if (index >= 0) cache[key][index] = mapped;
+    shadow[key] = copyRows(cache[key]);
+    try { lsSet(key, cache[key]); } catch (e) {}
+  }
+
+  function persistMutation(key, mutation) {
+    if (mutation.type === 'create') {
+      return api('POST', delPath(key, ''), payloadFor(key, mutation.row, false)).then(function (created) {
+        replaceCachedRow(key, mutation.row.id, created);
       });
-    }, 400);
+    }
+    var headers = { 'If-Match': String(mutation.old.revision) };
+    if (mutation.type === 'delete') {
+      return api('DELETE', delPath(key, mutation.old.id), undefined, headers).then(function () {
+        shadow[key] = copyRows(cache[key]);
+        try { lsSet(key, cache[key]); } catch (e) {}
+      });
+    }
+    var merged = Object.assign({}, mutation.old, mutation.row);
+    return api('PUT', delPath(key, mutation.row.id), payloadFor(key, merged, true), headers)
+      .then(function (updated) { replaceCachedRow(key, mutation.row.id, updated); });
+  }
+
+  function queueMutation(key, mutation) {
+    writeQueue[key] = (writeQueue[key] || Promise.resolve()).then(function () {
+      return persistMutation(key, mutation);
+    }).then(refreshUI).catch(function (error) {
+      toastMsg(error.status === 409 ? '保存冲突：数据已被其他窗口修改，已刷新' : '保存失败：' + error.message);
+      return pull(key).then(function (fresh) {
+        cache[key] = fresh;
+        refreshUI();
+      });
+    });
   }
 
   // ── 劫持 gd / sd ───────────────────────────────────────────
@@ -206,8 +246,15 @@
     };
     window.sd = function (k, d) {
       if (LOCAL_ONLY[k] || !apiUp) { lsSet(k, d); return; }
+      var changes = findMutation(shadow[k] || [], d || []);
+      if (changes.length !== 1) {
+        toastMsg('拒绝批量覆盖：每次只能修改一条记录');
+        pull(k).then(function (fresh) { cache[k] = fresh; refreshUI(); });
+        return;
+      }
       cache[k] = d;
-      schedulePush(k);
+      shadow[k] = copyRows(d);
+      queueMutation(k, changes[0]);
     };
   }
 

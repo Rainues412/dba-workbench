@@ -1,9 +1,10 @@
 """Customers API - customers, contacts (project owners), communication logs."""
 import re
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from backend.database import get_db_ctx, validate_page
+from backend.concurrency import expected_revision, raise_write_conflict
 
 router = APIRouter()
 
@@ -113,10 +114,9 @@ def get_customer(cid: int):
 
 
 @router.put("/{cid}")
-def update_customer(cid: int, data: CustomerUpdate):
+def update_customer(cid: int, data: CustomerUpdate, if_match: str | None = Header(None)):
     with get_db_ctx() as conn:
-        if not conn.execute("SELECT id FROM customers WHERE id = ?", (cid,)).fetchone():
-            raise HTTPException(404, "Customer not found")
+        expected = expected_revision(if_match)
         updates, params = [], []
         for field in ["name", "project_name", "group_name", "status", "notes", "wb_person", "wb_contact"]:
             val = getattr(data, field, None)
@@ -125,24 +125,35 @@ def update_customer(cid: int, data: CustomerUpdate):
                 params.append(val)
         if updates:
             updates.append("updated_at = CURRENT_TIMESTAMP")
-            params.append(cid)
-            conn.execute(f"UPDATE customers SET {', '.join(updates)} WHERE id = ?", params)
+            updates.append("revision = revision + 1")
+            params.extend([cid, expected])
+            changed = conn.execute(
+                f"UPDATE customers SET {', '.join(updates)} WHERE id = ? AND revision = ?",
+                params,
+            )
+            if changed.rowcount != 1:
+                raise_write_conflict(conn, "customers", cid)
             conn.commit()
         row = conn.execute("SELECT * FROM customers WHERE id = ?", (cid,)).fetchone()
         return dict(row)
 
 
 @router.delete("/{cid}")
-def delete_customer(cid: int):
+def delete_customer(cid: int, if_match: str | None = Header(None)):
     """Delete a customer and all related contacts/communications (cascade)."""
     with get_db_ctx() as conn:
-        if not conn.execute("SELECT id FROM customers WHERE id = ?", (cid,)).fetchone():
+        expected = expected_revision(if_match)
+        conn.execute("BEGIN IMMEDIATE")
+        current = conn.execute("SELECT revision FROM customers WHERE id = ?", (cid,)).fetchone()
+        if not current:
             raise HTTPException(404, "Customer not found")
+        if current["revision"] != expected:
+            raise HTTPException(409, "Record was changed by another client")
         # 显式清理子表，确保 FK 完整性（PRAGMA foreign_keys 已开启，CASCADE 也会生效）
         conn.execute("DELETE FROM communications WHERE customer_id = ?", (cid,))
         conn.execute("DELETE FROM contacts WHERE customer_id = ?", (cid,))
         conn.execute("UPDATE tasks SET customer_id = NULL WHERE customer_id = ?", (cid,))
-        conn.execute("DELETE FROM customers WHERE id = ?", (cid,))
+        conn.execute("DELETE FROM customers WHERE id = ? AND revision = ?", (cid, expected))
         conn.commit()
         return {"ok": True}
 

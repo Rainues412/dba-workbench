@@ -1,8 +1,9 @@
 """Tasks API - CRUD operations for the task list."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from backend.database import get_db_ctx, validate_page
+from backend.concurrency import expected_revision, raise_write_conflict
 
 router = APIRouter()
 
@@ -104,11 +105,10 @@ def get_task(task_id: int):
 
 
 @router.put("/{task_id}")
-def update_task(task_id: int, data: TaskUpdate):
+def update_task(task_id: int, data: TaskUpdate, if_match: str | None = Header(None)):
     """Update a task."""
     with get_db_ctx() as conn:
-        if not conn.execute("SELECT id FROM tasks WHERE id = ?", (task_id,)).fetchone():
-            raise HTTPException(404, "Task not found")
+        expected = expected_revision(if_match)
 
         # 验证 customer_id 存在性
         if data.customer_id is not None:
@@ -130,8 +130,14 @@ def update_task(task_id: int, data: TaskUpdate):
                     updates.append("completed_at = NULL")
 
         if updates:
-            params.append(task_id)
-            conn.execute(f"UPDATE tasks SET {', '.join(updates)} WHERE id = ?", params)
+            updates.extend(["updated_at = CURRENT_TIMESTAMP", "revision = revision + 1"])
+            params.extend([task_id, expected])
+            changed = conn.execute(
+                f"UPDATE tasks SET {', '.join(updates)} WHERE id = ? AND revision = ?",
+                params,
+            )
+            if changed.rowcount != 1:
+                raise_write_conflict(conn, "tasks", task_id)
             conn.commit()
 
         row = conn.execute(f"{_TASK_SELECT} WHERE t.id = ?", (task_id,)).fetchone()
@@ -139,20 +145,24 @@ def update_task(task_id: int, data: TaskUpdate):
 
 
 @router.delete("/{task_id}")
-def delete_task(task_id: int):
+def delete_task(task_id: int, if_match: str | None = Header(None)):
     """Delete a task."""
     with get_db_ctx() as conn:
-        if not conn.execute("SELECT id FROM tasks WHERE id = ?", (task_id,)).fetchone():
-            raise HTTPException(404, "Task not found")
-        conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        expected = expected_revision(if_match)
+        changed = conn.execute(
+            "DELETE FROM tasks WHERE id = ? AND revision = ?", (task_id, expected)
+        )
+        if changed.rowcount != 1:
+            raise_write_conflict(conn, "tasks", task_id)
         conn.commit()
         return {"ok": True}
 
 
 @router.post("/{task_id}/toggle-status")
-def toggle_status(task_id: int):
+def toggle_status(task_id: int, if_match: str | None = Header(None)):
     """Cycle task status: 待处理 → 进行中 → 已完成 → 待处理."""
     with get_db_ctx() as conn:
+        expected = expected_revision(if_match)
         row = conn.execute("SELECT status FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Task not found")
@@ -160,11 +170,14 @@ def toggle_status(task_id: int):
         cycle = {"待处理": "进行中", "进行中": "已完成", "已完成": "待处理"}
         new_status = cycle.get(row["status"], "待处理")
         # 用静态 SQL + CASE 避免 f-string 拼接
-        conn.execute(
+        changed = conn.execute(
             """UPDATE tasks SET status = ?,
-                      completed_at = CASE WHEN ? = '已完成' THEN datetime('now') ELSE NULL END
-               WHERE id = ?""",
-            (new_status, new_status, task_id),
+                      completed_at = CASE WHEN ? = '已完成' THEN datetime('now') ELSE NULL END,
+                      updated_at = CURRENT_TIMESTAMP, revision = revision + 1
+               WHERE id = ? AND revision = ?""",
+            (new_status, new_status, task_id, expected),
         )
+        if changed.rowcount != 1:
+            raise_write_conflict(conn, "tasks", task_id)
         conn.commit()
-        return {"status": new_status}
+        return {"status": new_status, "revision": expected + 1}

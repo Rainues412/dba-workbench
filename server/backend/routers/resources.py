@@ -1,8 +1,9 @@
 """Resources API - toolbox: installers, software, local files, URLs (index only)."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from backend.database import get_db_ctx, validate_page
+from backend.concurrency import expected_revision, raise_write_conflict
 
 router = APIRouter()
 
@@ -109,10 +110,9 @@ def get_resource(rid: int):
 
 
 @router.put("/{rid}")
-def update_resource(rid: int, data: ResourceUpdate):
+def update_resource(rid: int, data: ResourceUpdate, if_match: str | None = Header(None)):
     with get_db_ctx() as conn:
-        if not conn.execute("SELECT id FROM resources WHERE id = ?", (rid,)).fetchone():
-            raise HTTPException(404, "Resource not found")
+        expected = expected_revision(if_match)
         updates, params = [], []
         for field in ["name", "kind", "path", "url", "version", "size_mb", "category", "tags", "notes", "wb_db", "is_favorite"]:
             val = getattr(data, field, None)
@@ -121,30 +121,46 @@ def update_resource(rid: int, data: ResourceUpdate):
                 params.append(val)
         if updates:
             updates.append("updated_at = CURRENT_TIMESTAMP")
-            params.append(rid)
-            conn.execute(f"UPDATE resources SET {', '.join(updates)} WHERE id = ?", params)
+            updates.append("revision = revision + 1")
+            params.extend([rid, expected])
+            changed = conn.execute(
+                f"UPDATE resources SET {', '.join(updates)} WHERE id = ? AND revision = ?",
+                params,
+            )
+            if changed.rowcount != 1:
+                raise_write_conflict(conn, "resources", rid)
             conn.commit()
         row = conn.execute("SELECT * FROM resources WHERE id = ?", (rid,)).fetchone()
         return dict(row)
 
 
 @router.delete("/{rid}")
-def delete_resource(rid: int):
+def delete_resource(rid: int, if_match: str | None = Header(None)):
     with get_db_ctx() as conn:
-        if not conn.execute("SELECT id FROM resources WHERE id = ?", (rid,)).fetchone():
-            raise HTTPException(404, "Resource not found")
-        conn.execute("DELETE FROM resources WHERE id = ?", (rid,))
+        expected = expected_revision(if_match)
+        changed = conn.execute(
+            "DELETE FROM resources WHERE id = ? AND revision = ?", (rid, expected)
+        )
+        if changed.rowcount != 1:
+            raise_write_conflict(conn, "resources", rid)
         conn.commit()
         return {"ok": True}
 
 
 @router.post("/{rid}/toggle-favorite")
-def toggle_favorite(rid: int):
+def toggle_favorite(rid: int, if_match: str | None = Header(None)):
     with get_db_ctx() as conn:
+        expected = expected_revision(if_match)
         row = conn.execute("SELECT is_favorite FROM resources WHERE id = ?", (rid,)).fetchone()
         if not row:
             raise HTTPException(404, "Resource not found")
         new_val = 0 if row["is_favorite"] else 1
-        conn.execute("UPDATE resources SET is_favorite = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_val, rid))
+        changed = conn.execute(
+            """UPDATE resources SET is_favorite = ?, updated_at = CURRENT_TIMESTAMP,
+                      revision = revision + 1 WHERE id = ? AND revision = ?""",
+            (new_val, rid, expected),
+        )
+        if changed.rowcount != 1:
+            raise_write_conflict(conn, "resources", rid)
         conn.commit()
-        return {"is_favorite": new_val}
+        return {"is_favorite": new_val, "revision": expected + 1}

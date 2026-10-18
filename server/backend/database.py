@@ -77,6 +77,10 @@ def migrate_db(conn):
     _add_column(c, "customers", "wb_person", "TEXT DEFAULT ''")
     _add_column(c, "customers", "wb_contact", "TEXT DEFAULT ''")
 
+    # ── 乐观并发控制：所有工作台主记录使用独立修订号 ──
+    for table in ("scripts", "articles", "customers", "tasks"):
+        _add_column(c, table, "revision", "INTEGER NOT NULL DEFAULT 1")
+
     # ── 工具箱 / 资源索引（安装包、软件、本地文件、网址）──
     c.execute("""
         CREATE TABLE IF NOT EXISTS resources (
@@ -96,6 +100,7 @@ def migrate_db(conn):
         )
     """)
     _add_column(c, "resources", "wb_db", "TEXT DEFAULT '通用'")
+    _add_column(c, "resources", "revision", "INTEGER NOT NULL DEFAULT 1")
 
     # ── 密码本（Fernet 加密，密钥存本地 .workspace_secret）──
     c.execute("""

@@ -1,8 +1,9 @@
 """Articles API - CRUD operations for the knowledge base."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from backend.database import get_db_ctx, validate_page
+from backend.concurrency import expected_revision, raise_write_conflict
 
 router = APIRouter()
 
@@ -65,7 +66,7 @@ def list_articles(
         offset, ps = validate_page(page, page_size)
         rows = conn.execute(
             f"""SELECT id, title, summary, category, tags, file_path, wb_db, is_favorite, is_pinned,
-                       view_count, created_at, updated_at
+                       view_count, created_at, updated_at, revision
                 FROM articles {where}
                 ORDER BY is_pinned DESC, updated_at DESC LIMIT ? OFFSET ?""",
             params + [ps, offset],
@@ -103,11 +104,10 @@ def get_article(article_id: int):
 
 
 @router.put("/{article_id}")
-def update_article(article_id: int, data: ArticleUpdate):
+def update_article(article_id: int, data: ArticleUpdate, if_match: str | None = Header(None)):
     """Update an article."""
     with get_db_ctx() as conn:
-        if not conn.execute("SELECT id FROM articles WHERE id = ?", (article_id,)).fetchone():
-            raise HTTPException(404, "Article not found")
+        expected = expected_revision(if_match)
 
         updates = []
         params = []
@@ -119,8 +119,14 @@ def update_article(article_id: int, data: ArticleUpdate):
 
         if updates:
             updates.append("updated_at = CURRENT_TIMESTAMP")
-            params.append(article_id)
-            conn.execute(f"UPDATE articles SET {', '.join(updates)} WHERE id = ?", params)
+            updates.append("revision = revision + 1")
+            params.extend([article_id, expected])
+            changed = conn.execute(
+                f"UPDATE articles SET {', '.join(updates)} WHERE id = ? AND revision = ?",
+                params,
+            )
+            if changed.rowcount != 1:
+                raise_write_conflict(conn, "articles", article_id)
             conn.commit()
 
         row = conn.execute("SELECT * FROM articles WHERE id = ?", (article_id,)).fetchone()
@@ -128,24 +134,34 @@ def update_article(article_id: int, data: ArticleUpdate):
 
 
 @router.delete("/{article_id}")
-def delete_article(article_id: int):
+def delete_article(article_id: int, if_match: str | None = Header(None)):
     """Delete an article."""
     with get_db_ctx() as conn:
-        if not conn.execute("SELECT id FROM articles WHERE id = ?", (article_id,)).fetchone():
-            raise HTTPException(404, "Article not found")
-        conn.execute("DELETE FROM articles WHERE id = ?", (article_id,))
+        expected = expected_revision(if_match)
+        changed = conn.execute(
+            "DELETE FROM articles WHERE id = ? AND revision = ?", (article_id, expected)
+        )
+        if changed.rowcount != 1:
+            raise_write_conflict(conn, "articles", article_id)
         conn.commit()
         return {"ok": True}
 
 
 @router.post("/{article_id}/toggle-favorite")
-def toggle_favorite(article_id: int):
+def toggle_favorite(article_id: int, if_match: str | None = Header(None)):
     """Toggle favorite status."""
     with get_db_ctx() as conn:
+        expected = expected_revision(if_match)
         row = conn.execute("SELECT is_favorite FROM articles WHERE id = ?", (article_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Article not found")
         new_val = 0 if row["is_favorite"] else 1
-        conn.execute("UPDATE articles SET is_favorite = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_val, article_id))
+        changed = conn.execute(
+            """UPDATE articles SET is_favorite = ?, updated_at = CURRENT_TIMESTAMP,
+                      revision = revision + 1 WHERE id = ? AND revision = ?""",
+            (new_val, article_id, expected),
+        )
+        if changed.rowcount != 1:
+            raise_write_conflict(conn, "articles", article_id)
         conn.commit()
-        return {"is_favorite": new_val}
+        return {"is_favorite": new_val, "revision": expected + 1}

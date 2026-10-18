@@ -45,6 +45,8 @@ def test_edge_ui_smoke_and_vault_starts_locked(live_server: str) -> None:
     )
     created.raise_for_status()
     script_id = created.json()["id"]
+    assert created.json()["revision"] == 1
+    assert httpx.get(f"{live_server}/api/scripts/", timeout=5).json()["items"][0]["revision"] == 1
 
     with sync_playwright() as playwright:
         try:
@@ -63,6 +65,7 @@ def test_edge_ui_smoke_and_vault_starts_locked(live_server: str) -> None:
             assert page.locator("#apiBadge").inner_text() == "已连接服务器"
 
             page.locator('[data-view="scripts"]').click()
+            assert page.evaluate("gd('scripts')[0]")["revision"] == 1
             page.locator("#scriptDBChart .db-item").filter(has_text="Oracle").click()
             page.locator("#scriptTypeChart .db-item").filter(has_text="巡检").click()
 
@@ -70,8 +73,18 @@ def test_edge_ui_smoke_and_vault_starts_locked(live_server: str) -> None:
             row.wait_for(state="visible")
             row.get_by_role("button", name="编辑").click()
             page.locator('#modalContent input[name="name"]').fill("Browser smoke script edited")
-            page.locator('#modalContent button[type="submit"]').click()
+            with page.expect_response(
+                lambda response: response.request.method == "PUT"
+                and f"/api/scripts/{script_id}" in response.url
+            ) as update_info:
+                page.locator('#modalContent button[type="submit"]').click()
+            assert update_info.value.status == 200, (
+                update_info.value.text(), update_info.value.request.headers
+            )
             _wait_for_script(live_server, script_id, "Browser smoke script edited")
+            assert httpx.get(
+                f"{live_server}/api/scripts/{script_id}", timeout=5
+            ).json()["content"] == "select 1 from dual;"
 
             # The current UI returns to the database grid after an edit.
             page.locator("#scriptDBChart .db-item").filter(has_text="Oracle").click()

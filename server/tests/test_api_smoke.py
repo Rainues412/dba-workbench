@@ -56,6 +56,7 @@ def test_script_crud_and_version_history(client: TestClient) -> None:
     updated = client.put(
         f"/api/scripts/{script_id}",
         json={"title": "Backup smoke script v2", "content": "select 2 from dual;"},
+        headers={"If-Match": str(detail.json()["revision"])},
     )
     assert updated.status_code == 200
     assert updated.json()["version"] == 2
@@ -63,7 +64,10 @@ def test_script_crud_and_version_history(client: TestClient) -> None:
     versioned = client.get(f"/api/scripts/{script_id}")
     assert versioned.json()["versions"][0]["version"] == 1
 
-    deleted = client.delete(f"/api/scripts/{script_id}")
+    deleted = client.delete(
+        f"/api/scripts/{script_id}",
+        headers={"If-Match": str(updated.json()["revision"])},
+    )
     assert deleted.status_code == 200
     assert deleted.json() == {"ok": True}
     assert client.get(f"/api/scripts/{script_id}").status_code == 404
@@ -112,12 +116,16 @@ def test_task_validation_and_crud(client: TestClient) -> None:
     updated = client.put(
         f"/api/tasks/{task_id}",
         json={"status": "已完成"},
+        headers={"If-Match": str(created.json()["revision"])},
     )
     assert updated.status_code == 200
     assert updated.json()["status"] == "已完成"
     assert updated.json()["completed_at"] is not None
 
-    assert client.delete(f"/api/tasks/{task_id}").json() == {"ok": True}
+    assert client.delete(
+        f"/api/tasks/{task_id}",
+        headers={"If-Match": str(updated.json()["revision"])},
+    ).json() == {"ok": True}
 
 
 def test_resource_crud(client: TestClient) -> None:
@@ -139,4 +147,39 @@ def test_resource_crud(client: TestClient) -> None:
     assert listing.json()["total"] == 1
     assert listing.json()["items"][0]["name"] == "PostgreSQL package"
 
-    assert client.delete(f"/api/resources/{resource_id}").json() == {"ok": True}
+    assert client.delete(
+        f"/api/resources/{resource_id}",
+        headers={"If-Match": str(created.json()["revision"])},
+    ).json() == {"ok": True}
+
+
+def test_optimistic_concurrency_rejects_missing_and_stale_revision(client: TestClient) -> None:
+    created = client.post("/api/articles/", json={"title": "Concurrent edit"})
+    assert created.status_code == 200
+    article = created.json()
+    path = f"/api/articles/{article['id']}"
+
+    missing = client.put(path, json={"summary": "no precondition"})
+    assert missing.status_code == 428
+
+    first = client.put(
+        path,
+        json={"summary": "first writer"},
+        headers={"If-Match": str(article["revision"])},
+    )
+    assert first.status_code == 200
+    assert first.json()["revision"] == article["revision"] + 1
+
+    stale = client.put(
+        path,
+        json={"summary": "stale writer"},
+        headers={"If-Match": str(article["revision"])},
+    )
+    assert stale.status_code == 409
+    assert client.get(path).json()["summary"] == "first writer"
+
+    stale_delete = client.delete(
+        path,
+        headers={"If-Match": str(article["revision"])},
+    )
+    assert stale_delete.status_code == 409

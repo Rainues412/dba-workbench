@@ -1,8 +1,9 @@
 """Scripts API - CRUD operations for the script library."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from backend.database import get_db_ctx, validate_page
+from backend.concurrency import expected_revision, raise_write_conflict
 
 router = APIRouter()
 
@@ -65,7 +66,7 @@ def list_scripts(
         # 列表接口排除content字段，避免大文本导致JSON序列化问题
         rows = conn.execute(
             f"""SELECT id, title, description, db_type, wb_type, tags, file_path,
-                       is_favorite, created_at, updated_at, version
+                       is_favorite, created_at, updated_at, version, revision
                 FROM scripts {where}
                 ORDER BY updated_at DESC LIMIT ? OFFSET ?""",
             params + [ps, offset],
@@ -104,9 +105,10 @@ def get_script(script_id: int):
 
 
 @router.put("/{script_id}")
-def update_script(script_id: int, data: ScriptUpdate):
+def update_script(script_id: int, data: ScriptUpdate, if_match: str | None = Header(None)):
     """Update a script. Saves previous content as a version."""
     with get_db_ctx() as conn:
+        expected = expected_revision(if_match)
         old = conn.execute("SELECT * FROM scripts WHERE id = ?", (script_id,)).fetchone()
         if not old:
             raise HTTPException(404, "Script not found")
@@ -131,8 +133,15 @@ def update_script(script_id: int, data: ScriptUpdate):
 
         if updates:
             updates.append("updated_at = CURRENT_TIMESTAMP")
-            params.append(script_id)
-            conn.execute(f"UPDATE scripts SET {', '.join(updates)} WHERE id = ?", params)
+            updates.append("revision = revision + 1")
+            params.extend([script_id, expected])
+            changed = conn.execute(
+                f"UPDATE scripts SET {', '.join(updates)} WHERE id = ? AND revision = ?",
+                params,
+            )
+            if changed.rowcount != 1:
+                conn.rollback()
+                raise_write_conflict(conn, "scripts", script_id)
             conn.commit()
 
         row = conn.execute("SELECT * FROM scripts WHERE id = ?", (script_id,)).fetchone()
@@ -140,24 +149,34 @@ def update_script(script_id: int, data: ScriptUpdate):
 
 
 @router.delete("/{script_id}")
-def delete_script(script_id: int):
+def delete_script(script_id: int, if_match: str | None = Header(None)):
     """Delete a script."""
     with get_db_ctx() as conn:
-        if not conn.execute("SELECT id FROM scripts WHERE id = ?", (script_id,)).fetchone():
-            raise HTTPException(404, "Script not found")
-        conn.execute("DELETE FROM scripts WHERE id = ?", (script_id,))
+        expected = expected_revision(if_match)
+        changed = conn.execute(
+            "DELETE FROM scripts WHERE id = ? AND revision = ?", (script_id, expected)
+        )
+        if changed.rowcount != 1:
+            raise_write_conflict(conn, "scripts", script_id)
         conn.commit()
         return {"ok": True}
 
 
 @router.post("/{script_id}/toggle-favorite")
-def toggle_favorite(script_id: int):
+def toggle_favorite(script_id: int, if_match: str | None = Header(None)):
     """Toggle favorite status."""
     with get_db_ctx() as conn:
+        expected = expected_revision(if_match)
         row = conn.execute("SELECT is_favorite FROM scripts WHERE id = ?", (script_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Script not found")
         new_val = 0 if row["is_favorite"] else 1
-        conn.execute("UPDATE scripts SET is_favorite = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_val, script_id))
+        changed = conn.execute(
+            """UPDATE scripts SET is_favorite = ?, updated_at = CURRENT_TIMESTAMP,
+                      revision = revision + 1 WHERE id = ? AND revision = ?""",
+            (new_val, script_id, expected),
+        )
+        if changed.rowcount != 1:
+            raise_write_conflict(conn, "scripts", script_id)
         conn.commit()
-        return {"is_favorite": new_val}
+        return {"is_favorite": new_val, "revision": expected + 1}
