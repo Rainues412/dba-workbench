@@ -3,7 +3,7 @@ import re
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from backend.database import get_db_ctx, validate_page
+from backend.database import get_db_ctx, page_response, validate_page
 from backend.concurrency import expected_revision, raise_write_conflict
 
 router = APIRouter()
@@ -67,15 +67,16 @@ def list_customers(keyword: str = "", status: str = "", page: int = 1, page_size
         total = conn.execute(f"SELECT COUNT(*) FROM customers c {where}", params).fetchone()[0]
         offset, ps = validate_page(page, page_size)
         rows = conn.execute(
-            f"""SELECT c.*,
+            f"""SELECT c.id, c.name, c.project_name, c.group_name, c.status,
+                       c.wb_person, c.wb_contact, c.created_at, c.updated_at, c.revision,
                        (SELECT COUNT(*) FROM contacts ct WHERE ct.customer_id = c.id) AS contact_count,
                        (SELECT COUNT(*) FROM tasks t WHERE t.customer_id = c.id AND t.status != '已完成') AS open_task_count
                 FROM customers c {where}
-                ORDER BY c.updated_at DESC
+                ORDER BY c.updated_at DESC, c.id DESC
                 LIMIT ? OFFSET ?""",
             params + [ps, offset],
         ).fetchall()
-        return {"total": total, "items": [dict(r) for r in rows], "page": page, "page_size": ps}
+        return page_response(total, rows, page, ps)
 
 
 @router.post("/")

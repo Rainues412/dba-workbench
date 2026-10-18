@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from backend.database import get_db_ctx, validate_page
+from backend.database import get_db_ctx, page_response, validate_page
 from backend.concurrency import expected_revision, raise_write_conflict
 
 router = APIRouter()
@@ -69,11 +69,11 @@ def list_tasks(
                      THEN 0 ELSE 1 END,
                 CASE t.status WHEN '进行中' THEN 0 WHEN '待处理' THEN 1 WHEN '已完成' THEN 2 END,
                 CASE t.priority WHEN '高' THEN 1 WHEN '中' THEN 2 WHEN '低' THEN 3 END,
-                t.due_date ASC NULLS LAST
+                t.due_date ASC NULLS LAST, t.id DESC
             LIMIT ? OFFSET ?""",
             params + [ps, offset],
         ).fetchall()
-        return {"total": total, "items": [dict(r) for r in rows], "page": page, "page_size": ps}
+        return page_response(total, rows, page, ps)
 
 
 @router.post("/")

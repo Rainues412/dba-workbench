@@ -21,7 +21,17 @@
   var cache = {};             // 集合名 -> 数组（API 模式下的内存缓存）
   var shadow = {};            // 最近一次已知记录快照，用于计算单条变更
   var writeQueue = {};        // 同一集合的写操作串行执行
+  var pageState = {};         // 集合名 -> 当前服务端分页状态
+  var facets = {};            // 层级导航的服务端聚合计数
+  var dashboardStats = {};
+  var dashboardRows = {};
   var bootstrapped = false;
+  var PAGE_SIZE = 50;
+
+  window.wbPageState = pageState;
+  window.wbFacets = facets;
+  window.wbDashboardStats = dashboardStats;
+  window.wbDashboardRows = dashboardRows;
 
   // ── 基础工具 ──────────────────────────────────────────────
   function lsGet(k) {
@@ -144,22 +154,66 @@
 
   // ── 拉取 / 推送 ────────────────────────────────────────────
   var LIST_PATH = {
-    scripts: '/api/scripts/?page_size=200',
-    knowledge: '/api/articles/?page_size=200',
-    installers: '/api/resources/?page_size=200',
-    tasks: '/api/tasks/?page_size=200',
-    contacts: '/api/customers/?page_size=200'
+    scripts: '/api/scripts/',
+    knowledge: '/api/articles/',
+    installers: '/api/resources/',
+    tasks: '/api/tasks/',
+    contacts: '/api/customers/'
+  };
+  var FACET_PATH = {
+    scripts: '/api/scripts/facets',
+    knowledge: '/api/articles/facets',
+    installers: '/api/resources/facets'
   };
 
   function copyRows(rows) { return JSON.parse(JSON.stringify(rows || [])); }
 
-  function pull(key) {
-    return api('GET', LIST_PATH[key]).then(function (d) {
+  function listUrl(key, page, filters) {
+    var params = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) });
+    Object.keys(filters || {}).forEach(function (name) {
+      if (filters[name] !== '' && filters[name] !== null && filters[name] !== undefined) {
+        params.set(name, filters[name]);
+      }
+    });
+    return LIST_PATH[key] + '?' + params.toString();
+  }
+
+  function pull(key, page, filters) {
+    var previous = pageState[key] || {};
+    page = page || previous.page || 1;
+    filters = filters || previous.filters || {};
+    return api('GET', listUrl(key, page, filters)).then(function (d) {
       var rows = (d.items || []).map(M[key].fromApi);
       // 镜像到 localStorage：服务器不可用时回退看到的是真实数据而非示例种子
       try { lsSet(key, rows); } catch (e) {}
       shadow[key] = copyRows(rows);
+      pageState[key] = {
+        page: d.page, pageSize: d.page_size, pages: d.pages,
+        total: d.total, hasNext: d.has_next, hasPrevious: d.has_previous,
+        filters: Object.assign({}, filters)
+      };
+      if (page === 1 && Object.keys(filters).length === 0) dashboardRows[key] = copyRows(rows);
       return rows;
+    });
+  }
+
+  function pullFacets(key) {
+    if (!FACET_PATH[key]) return Promise.resolve();
+    return api('GET', FACET_PATH[key]).then(function (data) { facets[key] = data; });
+  }
+
+  function pullDashboardStats() {
+    return api('GET', '/api/dashboard/stats').then(function (data) {
+      Object.keys(dashboardStats).forEach(function (key) { delete dashboardStats[key]; });
+      Object.assign(dashboardStats, data);
+    });
+  }
+
+  function reloadCurrent(key) {
+    var state = pageState[key] || { page: 1, filters: {} };
+    return Promise.all([pull(key, state.page, state.filters), pullFacets(key), pullDashboardStats()]).then(function (result) {
+      cache[key] = result[0];
+      refreshUI();
     });
   }
 
@@ -228,12 +282,11 @@
   function queueMutation(key, mutation) {
     writeQueue[key] = (writeQueue[key] || Promise.resolve()).then(function () {
       return persistMutation(key, mutation);
-    }).then(refreshUI).catch(function (error) {
+    }).then(function () {
+      return reloadCurrent(key);
+    }).catch(function (error) {
       toastMsg(error.status === 409 ? '保存冲突：数据已被其他窗口修改，已刷新' : '保存失败：' + error.message);
-      return pull(key).then(function (fresh) {
-        cache[key] = fresh;
-        refreshUI();
-      });
+      return reloadCurrent(key);
     });
   }
 
@@ -260,16 +313,19 @@
 
   // ── 启动 ───────────────────────────────────────────────────
   function bootstrap() {
-    return api('GET', '/api/dashboard/stats').then(function () {
+    return pullDashboardStats().then(function () {
       apiUp = true;
-      return Promise.all(Object.keys(LIST_PATH).map(function (k) {
-        return pull(k).then(function (rows) { cache[k] = rows; });
-      }));
+      var lists = Object.keys(LIST_PATH).map(function (k) {
+        return pull(k, 1, {}).then(function (rows) { cache[k] = rows; });
+      });
+      var counts = Object.keys(FACET_PATH).map(pullFacets);
+      return Promise.all(lists.concat(counts));
     }).then(function () {
       hijack();
       bootstrapped = true;
       // 服务器有数据而本地 localStorage 还是种子数据时，以服务器为准
       refreshUI();
+      renderAllPagers();
       showApiBadge(true);
     }).catch(function () {
       apiUp = false;
@@ -281,6 +337,140 @@
     ['renderDashboard', 'renderScripts', 'renderKnowledge', 'renderInstallers',
      'renderTasks', 'renderContacts'].forEach(function (fn) {
       if (typeof window[fn] === 'function') { try { window[fn](); } catch (e) {} }
+    });
+    renderAllPagers();
+  }
+
+  function renderPager(key) {
+    var bodyId = {
+      scripts: 'scriptsTableBody', knowledge: 'knowledgeTableBody',
+      installers: 'installersTableBody', tasks: 'tasksTableBody', contacts: 'contactsTableBody'
+    }[key];
+    var body = document.getElementById(bodyId);
+    var state = pageState[key];
+    if (!body || !state) return;
+    var table = body.closest('table');
+    if (!table) return;
+    var pager = document.getElementById('wbPager-' + key);
+    if (!pager) {
+      pager = document.createElement('div');
+      pager.id = 'wbPager-' + key;
+      pager.style.cssText = 'display:flex;justify-content:flex-end;align-items:center;gap:10px;padding:12px 0;color:#64748b;font-size:13px';
+      table.insertAdjacentElement('afterend', pager);
+    }
+    var pages = state.pages || 0;
+    pager.replaceChildren();
+    var label = document.createElement('span');
+    label.textContent = '共 ' + state.total + ' 条 · 第 ' + (pages ? state.page : 0) + ' / ' + pages + ' 页';
+    var prev = document.createElement('button');
+    prev.className = 'btn-secondary';
+    prev.textContent = '上一页';
+    prev.disabled = !state.hasPrevious;
+    prev.onclick = function () { window.wbChangePage(key, state.page - 1); };
+    var next = document.createElement('button');
+    next.className = 'btn-secondary';
+    next.textContent = '下一页';
+    next.disabled = !state.hasNext;
+    next.onclick = function () { window.wbChangePage(key, state.page + 1); };
+    pager.append(label, prev, next);
+  }
+
+  function renderAllPagers() { Object.keys(LIST_PATH).forEach(renderPager); }
+
+  window.wbChangePage = function (key, page) {
+    var state = pageState[key];
+    if (!state || page < 1 || (state.pages && page > state.pages)) return;
+    pull(key, page, state.filters).then(function (rows) {
+      cache[key] = rows;
+      refreshUI();
+    }).catch(function (error) { toastMsg('翻页失败：' + error.message); });
+  };
+
+  function installServerPagination() {
+    var originalSwitchView = window.switchView;
+    if (typeof originalSwitchView === 'function') {
+      window.switchView = function (view) {
+        originalSwitchView(view);
+        var request;
+        if (view === 'scripts' && window._selectedScriptDB && window._selectedScriptType) {
+          request = pull('scripts', 1, { db_type: window._selectedScriptDB, wb_type: window._selectedScriptType });
+        } else if (view === 'knowledge' && window._selectedKbDB && window._selectedKbType) {
+          request = pull('knowledge', 1, { wb_db: window._selectedKbDB, category: window._selectedKbType });
+        } else if (view === 'installers' && window._selectedInstDB) {
+          request = pull('installers', 1, { wb_db: window._selectedInstDB });
+        }
+        if (request) request.then(function (rows) {
+          cache[view === 'knowledge' ? 'knowledge' : view] = rows;
+          refreshUI();
+        });
+      };
+    }
+    var originalScriptType = window.scriptSelectType;
+    if (typeof originalScriptType === 'function') {
+      window.scriptSelectType = function (type) {
+        originalScriptType(type);
+        pull('scripts', 1, { db_type: window._selectedScriptDB, wb_type: type }).then(function (rows) {
+          cache.scripts = rows; refreshUI();
+        });
+      };
+    }
+    var originalKbType = window.kbSelectType;
+    if (typeof originalKbType === 'function') {
+      window.kbSelectType = function (type) {
+        originalKbType(type);
+        pull('knowledge', 1, { wb_db: window._selectedKbDB, category: type }).then(function (rows) {
+          cache.knowledge = rows; refreshUI();
+        });
+      };
+    }
+    var originalInstDb = window.instSelectDB;
+    if (typeof originalInstDb === 'function') {
+      window.instSelectDB = function (name) {
+        originalInstDb(name);
+        pull('installers', 1, { wb_db: name }).then(function (rows) {
+          cache.installers = rows; refreshUI();
+        });
+      };
+    }
+    window.wbTaskFiltersChanged = function () {
+      var priority = document.getElementById('filterTaskPriority').value;
+      var status = document.getElementById('filterTaskStatus').value;
+      var priorities = { P0: '高', P1: '中', P2: '低' };
+      var statuses = { pending: '待处理', completed: '已完成' };
+      pull('tasks', 1, {
+        priority: priorities[priority] || '', status: statuses[status] || ''
+      }).then(function (rows) { cache.tasks = rows; refreshUI(); })
+        .catch(function (error) { toastMsg('筛选失败：' + error.message); });
+    };
+  }
+
+  var searchTimer;
+  window.wbSearch = function (query) {
+    clearTimeout(searchTimer);
+    if (!query.trim()) return;
+    searchTimer = setTimeout(function () {
+      api('GET', '/api/search/?q=' + encodeURIComponent(query) + '&limit=100').then(function (result) {
+        var count = Object.keys(result).reduce(function (sum, key) {
+          return sum + (Array.isArray(result[key]) ? result[key].length : 0);
+        }, 0);
+        toastMsg(count ? '找到 ' + count + ' 个相关结果' : '没有找到相关结果');
+      }).catch(function (error) { toastMsg('搜索失败：' + error.message); });
+    }, 250);
+  };
+
+  function installDetailLoading() {
+    [
+      ['editScript', 'scripts'], ['editKnowledge', 'knowledge'],
+      ['editInstaller', 'installers'], ['editTask', 'tasks'], ['editContact', 'contacts']
+    ].forEach(function (pair) {
+      var original = window[pair[0]], key = pair[1];
+      if (typeof original !== 'function') return;
+      window[pair[0]] = function (id) {
+        api('GET', delPath(key, id)).then(function (record) {
+          replaceCachedRow(key, id, record);
+          original(id);
+        }).catch(function (error) { toastMsg('加载详情失败：' + error.message); });
+      };
     });
   }
 
@@ -402,7 +592,7 @@
         el.textContent = '入库完成: 资源 ' + (c.imported.resource || 0) + ' / 文档 ' +
           (c.imported.article || 0) + ' / 脚本 ' + (c.imported.script || 0);
         return Promise.all(Object.keys(LIST_PATH).map(function (k) {
-          return pull(k).then(function (rows) { cache[k] = rows; });
+          return reloadCurrent(k);
         })).then(refreshUI);
       });
     }).catch(function (e) { el.textContent = '扫描失败: ' + (e.message || e); });
@@ -413,6 +603,9 @@
     bootstrap().then(function () {
       enhanceOpenButtons();
       enhanceSettings();
+      installServerPagination();
+      installDetailLoading();
+      renderAllPagers();
     });
   }
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sqlite3
+
 from fastapi.testclient import TestClient
 
 
@@ -183,3 +185,36 @@ def test_optimistic_concurrency_rejects_missing_and_stale_revision(client: TestC
         headers={"If-Match": str(article["revision"])},
     )
     assert stale_delete.status_code == 409
+
+
+def test_pagination_and_detail_after_two_hundred_rows(client: TestClient, isolated_app) -> None:
+    _, test_db = isolated_app
+    with sqlite3.connect(test_db) as conn:
+        conn.executemany(
+            """INSERT INTO scripts (title, content, db_type, wb_type)
+               VALUES (?, ?, 'Oracle', '巡检')""",
+            [(f"Paged script {index:03d}", f"body {index:03d}") for index in range(205)],
+        )
+
+    page = client.get("/api/scripts/?page=5&page_size=50&db_type=Oracle&wb_type=巡检")
+    assert page.status_code == 200
+    data = page.json()
+    assert data["total"] == 205
+    assert data["page"] == 5
+    assert data["pages"] == 5
+    assert data["has_previous"] is True
+    assert data["has_next"] is False
+    assert len(data["items"]) == 5
+    assert "content" not in data["items"][0]
+
+    record = data["items"][0]
+    detail = client.get(f"/api/scripts/{record['id']}")
+    assert detail.status_code == 200
+    original_body = detail.json()["content"]
+    updated = client.put(
+        f"/api/scripts/{record['id']}",
+        json={"title": "Edited beyond row 200"},
+        headers={"If-Match": str(record["revision"])},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["content"] == original_body

@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from backend.database import get_db_ctx, validate_page
+from backend.database import get_db_ctx, page_response, validate_page
 from backend.concurrency import expected_revision, raise_write_conflict
 
 router = APIRouter()
@@ -68,10 +68,22 @@ def list_articles(
             f"""SELECT id, title, summary, category, tags, file_path, wb_db, is_favorite, is_pinned,
                        view_count, created_at, updated_at, revision
                 FROM articles {where}
-                ORDER BY is_pinned DESC, updated_at DESC LIMIT ? OFFSET ?""",
+                ORDER BY is_pinned DESC, updated_at DESC, id DESC LIMIT ? OFFSET ?""",
             params + [ps, offset],
         ).fetchall()
-        return {"total": total, "items": [dict(r) for r in rows], "page": page, "page_size": ps}
+        return page_response(total, rows, page, ps)
+
+
+@router.get("/facets")
+def article_facets():
+    with get_db_ctx() as conn:
+        rows = conn.execute(
+            "SELECT wb_db, category, COUNT(*) AS count FROM articles GROUP BY wb_db, category"
+        ).fetchall()
+        return {
+            "total": sum(row["count"] for row in rows),
+            "items": [dict(row) for row in rows],
+        }
 
 
 @router.post("/")

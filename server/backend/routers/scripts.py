@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from backend.database import get_db_ctx, validate_page
+from backend.database import get_db_ctx, page_response, validate_page
 from backend.concurrency import expected_revision, raise_write_conflict
 
 router = APIRouter()
@@ -68,10 +68,23 @@ def list_scripts(
             f"""SELECT id, title, description, db_type, wb_type, tags, file_path,
                        is_favorite, created_at, updated_at, version, revision
                 FROM scripts {where}
-                ORDER BY updated_at DESC LIMIT ? OFFSET ?""",
+                ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?""",
             params + [ps, offset],
         ).fetchall()
-        return {"total": total, "items": [dict(r) for r in rows], "page": page, "page_size": ps}
+        return page_response(total, rows, page, ps)
+
+
+@router.get("/facets")
+def script_facets():
+    """Counts for the category navigation without loading every row."""
+    with get_db_ctx() as conn:
+        rows = conn.execute(
+            "SELECT db_type, wb_type, COUNT(*) AS count FROM scripts GROUP BY db_type, wb_type"
+        ).fetchall()
+        return {
+            "total": sum(row["count"] for row in rows),
+            "items": [dict(row) for row in rows],
+        }
 
 
 @router.post("/")

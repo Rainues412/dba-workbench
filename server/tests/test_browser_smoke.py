@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import sqlite3
 
 import httpx
 import pytest
@@ -229,5 +230,64 @@ def test_user_content_is_rendered_as_text_in_edge(live_server: str) -> None:
             page.locator("#accountsTableBody").get_by_text(payload, exact=True).first.wait_for()
             assert page.locator('#accountsTableBody img[src="x"]').count() == 0
             assert page.evaluate("window.__xssFired") == 0
+        finally:
+            browser.close()
+
+
+@pytest.mark.browser
+def test_edge_can_page_to_and_edit_records_after_200(live_server: str, isolated_app) -> None:
+    _, test_db = isolated_app
+    with sqlite3.connect(test_db) as conn:
+        conn.executemany(
+            """INSERT INTO scripts (title, content, db_type, wb_type, file_path)
+               VALUES (?, ?, 'Oracle', '巡检', ?)""",
+            [
+                (f"Browser paged {index:03d}", f"body {index:03d}", rf"D:\tests\paged-{index:03d}.sql")
+                for index in range(205)
+            ],
+        )
+
+    with sync_playwright() as playwright:
+        try:
+            browser = playwright.chromium.launch(channel="msedge", headless=True)
+        except PlaywrightError as error:
+            pytest.skip(f"Microsoft Edge is unavailable: {error}")
+
+        try:
+            page = browser.new_page()
+            page.set_default_timeout(8_000)
+            page.goto(live_server, wait_until="networkidle")
+            page.locator('[data-view="scripts"]').click()
+            page.locator("#scriptDBChart .db-item").filter(has_text="Oracle").click()
+            page.locator("#scriptTypeChart .db-item").filter(has_text="巡检").click()
+            page.locator("#wbPager-scripts").get_by_text("共 205 条").wait_for()
+
+            for expected_page in range(2, 6):
+                with page.expect_response(
+                    lambda response, target=expected_page: response.request.method == "GET"
+                    and "/api/scripts/" in response.url
+                    and f"page={target}" in response.url
+                ):
+                    page.locator("#wbPager-scripts").get_by_role("button", name="下一页").click()
+                page.locator("#wbPager-scripts").get_by_text(
+                    f"第 {expected_page} / 5 页", exact=False
+                ).wait_for()
+
+            row = page.locator("#scriptsTableBody tr").first
+            original_title = row.locator("strong").inner_text()
+            with page.expect_response(
+                lambda response: response.request.method == "GET"
+                and "/api/scripts/" in response.url
+                and response.url.rstrip("/").split("/")[-1].isdigit()
+            ):
+                row.get_by_role("button", name="编辑").click()
+            page.locator('#modalContent input[name="name"]').fill(original_title + " edited")
+            with page.expect_response(
+                lambda response: response.request.method == "PUT"
+                and "/api/scripts/" in response.url
+            ) as update_info:
+                page.locator('#modalContent button[type="submit"]').click()
+            assert update_info.value.status == 200
+            assert update_info.value.json()["content"].startswith("body ")
         finally:
             browser.close()

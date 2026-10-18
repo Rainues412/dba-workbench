@@ -430,13 +430,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
         </button>
       </div>
       <div class="filter-bar" data-page-node-id="1nsdARcWIqrUl2Sb7AuI9C">
-        <select class="filter-select" id="filterTaskPriority" onchange="renderTasks()" data-page-node-id="77HhETMdmhbQ1bStbsyCUt">
+        <select class="filter-select" id="filterTaskPriority" onchange="window.wbTaskFiltersChanged?window.wbTaskFiltersChanged():renderTasks()" data-page-node-id="77HhETMdmhbQ1bStbsyCUt">
           <option value="" data-page-node-id="usqsKaFjWFOSq3BTDZDu18">全部优先级</option>
           <option value="P0" data-page-node-id="DvPvVZ0DF1jrxMu8Vvo9hg">P0 - 紧急</option>
           <option value="P1" data-page-node-id="iJArSNfqzBduBS5ethomDR">P1 - 重要</option>
           <option value="P2" data-page-node-id="0aXMfL7r4mZtw8OwhNT6Sp">P2 - 一般</option>
         </select>
-        <select class="filter-select" id="filterTaskStatus" onchange="renderTasks()" data-page-node-id="Rmg3HF2hByemMxUIu6MqGQ">
+        <select class="filter-select" id="filterTaskStatus" onchange="window.wbTaskFiltersChanged?window.wbTaskFiltersChanged():renderTasks()" data-page-node-id="Rmg3HF2hByemMxUIu6MqGQ">
           <option value="" data-page-node-id="QUTg3eCcXKCpcdq7tfTCg8">全部状态</option>
           <option value="pending" data-page-node-id="AOuv1s1uR4k4EKJTmS9wex">待处理</option>
           <option value="completed" data-page-node-id="Cipun1MRaHnnV8EXZWnErt">已完成</option>
@@ -663,11 +663,13 @@ document.querySelectorAll('.nav-item').forEach(i=>i.addEventListener('click',()=
 function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open')}
 
 function renderDashboard(){
-  const scripts=gd('scripts'),kb=gd('knowledge'),inst=gd('installers'),tasks=gd('tasks'),contacts=gd('contacts');
-  document.getElementById('statScripts').textContent=scripts.length;
-  document.getElementById('statKnowledge').textContent=kb.length;
-  document.getElementById('statInstallers').textContent=inst.length;
-  document.getElementById('statTasks').textContent=tasks.filter(t=>t.status==='pending').length;
+  const dashboardRows=window.wbDashboardRows||{};
+  const scripts=dashboardRows.scripts||gd('scripts'),kb=dashboardRows.knowledge||gd('knowledge'),inst=dashboardRows.installers||gd('installers'),tasks=dashboardRows.tasks||gd('tasks'),contacts=dashboardRows.contacts||gd('contacts');
+  const stats=window.wbDashboardStats||{};
+  document.getElementById('statScripts').textContent=stats.script_count??scripts.length;
+  document.getElementById('statKnowledge').textContent=stats.article_count??kb.length;
+  document.getElementById('statInstallers').textContent=stats.resource_count??inst.length;
+  document.getElementById('statTasks').textContent=stats.task_pending??tasks.filter(t=>t.status==='pending').length;
   const h=new Date().getHours();
   const g=h<12?'上午好':h<18?'下午好':'晚上好';
   document.getElementById('greetingText').textContent=g+'，admin';
@@ -676,7 +678,8 @@ function renderDashboard(){
   const todayT=tasks.filter(t=>t.status==='pending'&&t.deadline===today);
   const dot=document.getElementById('statusDot');
   const st=document.getElementById('statusText');
-  if(overdue.length>0){st.textContent='有 '+overdue.length+' 个逾期任务需要处理';dot.style.background='#ef4444'}
+  const overdueCount=stats.task_overdue??overdue.length;
+  if(overdueCount>0){st.textContent='有 '+overdueCount+' 个逾期任务需要处理';dot.style.background='#ef4444'}
   else if(todayT.length>0){st.textContent='今天有 '+todayT.length+' 个任务待处理';dot.style.background='#f59e0b'}
   else{st.textContent='当前没有待处理故障，系统状态平稳';dot.style.background='#22c55e'}
 
@@ -702,8 +705,16 @@ function renderDashboard(){
     if(!db||_dbCounts[db]===undefined){_dbCounts['其他']++;return}
     _dbCounts[db]++;
   }
-  scripts.forEach(function(s){_tally(s.db)});
-  kb.forEach(function(k){_tally(k.db)});
+  function _tallyN(db,count){
+    var key=(!db||_dbCounts[db]===undefined)?'其他':db;
+    _dbCounts[key]+=count;
+  }
+  var scriptFacet=window.wbFacets&&window.wbFacets.scripts;
+  var articleFacet=window.wbFacets&&window.wbFacets.knowledge;
+  if(scriptFacet)scriptFacet.items.forEach(function(row){_tallyN(row.db_type,row.count)});
+  else scripts.forEach(function(s){_tally(s.db)});
+  if(articleFacet)articleFacet.items.forEach(function(row){_tallyN(row.wb_db,row.count)});
+  else kb.forEach(function(k){_tally(k.db)});
   dbData.forEach(function(d){d.count=_dbCounts[d.name]||0});
 
   const maxCount = Math.max(...dbData.map(d => d.count)) || 1;
@@ -783,8 +794,11 @@ function renderScriptDBGrid(){
   var scripts=gd('scripts');
   var counts={};
   _scriptDBMeta.forEach(function(d){counts[d.name]=0;});
-  scripts.forEach(function(s){ var k=s.db||'其他'; if(counts[k]===undefined) counts['其他']++; else counts[k]++; });
-  var total=scripts.length||1;
+  var facet=window.wbFacets&&window.wbFacets.scripts;
+  if(facet){
+    facet.items.forEach(function(row){var k=row.db_type||'其他';if(counts[k]===undefined)counts['其他']+=row.count;else counts[k]+=row.count;});
+  }else scripts.forEach(function(s){ var k=s.db||'其他'; if(counts[k]===undefined) counts['其他']++; else counts[k]++; });
+  var total=(facet?facet.total:scripts.length)||1;
   var grid=document.getElementById('scriptDBChart');
   if(!grid) return;
   grid.innerHTML=_scriptDBMeta.map(function(item,i){
@@ -828,10 +842,13 @@ function renderScriptTypeGrid(){
   };
   var counts={};
   types.forEach(function(t){counts[t]=0;});
-  scripts.forEach(function(s){ var t=s.type||'其他'; if(counts[t]===undefined) counts['其他']++; else counts[t]++; });
-  var total=scripts.length||1;
+  var facet=window.wbFacets&&window.wbFacets.scripts;
+  if(facet){
+    facet.items.filter(function(row){return row.db_type===_selectedScriptDB;}).forEach(function(row){var t=row.wb_type||'其他';if(counts[t]===undefined)counts['其他']+=row.count;else counts[t]+=row.count;});
+  }else scripts.forEach(function(s){ var t=s.type||'其他'; if(counts[t]===undefined) counts['其他']++; else counts[t]++; });
+  var total=Object.keys(counts).reduce(function(sum,key){return sum+counts[key];},0)||1;
   document.getElementById('scriptTypeTitle').textContent=_selectedScriptDB+' 脚本';
-  document.getElementById('scriptTypeCount').textContent='共 '+scripts.length+' 个脚本';
+  document.getElementById('scriptTypeCount').textContent='共 '+(total===1&&Object.keys(counts).every(function(k){return counts[k]===0;})?0:total)+' 个脚本';
   var chart=document.getElementById('scriptTypeChart');
   chart.innerHTML=types.map(function(type){
     var c=counts[type]||0;
@@ -896,7 +913,8 @@ function updateBreadcrumb(){
 function renderScriptsList(){
   var data=gd('scripts');
   var f=data.filter(function(s){ return s.db===_selectedScriptDB && s.type===_selectedScriptType; });
-  document.getElementById('scriptListCount').textContent='共 '+f.length+' 个脚本';
+  var state=window.wbPageState&&window.wbPageState.scripts;
+  document.getElementById('scriptListCount').textContent='共 '+(state?state.total:f.length)+' 个脚本';
   document.getElementById('scriptsTableBody').innerHTML=f.length?f.map(function(s){
     var path=escapeHTML(s.path),id=safeId(s.id);
     return '<tr><td><a href="#" data-path="'+path+'" onclick="openScriptFile(this.dataset.path);return false;" style="color:#2563eb;text-decoration:none;cursor:pointer"><strong>'+escapeHTML(s.name)+'</strong></a><br><small style="color:#64748b">'+escapeHTML(s.desc)+'</small></td>'
@@ -985,8 +1003,11 @@ function renderKbDBGrid(){
   var articles=gd('knowledge');
   var counts={};
   _scriptDBMeta.forEach(function(d){counts[d.name]=0;});
-  articles.forEach(function(k){ var db=k.db||'其他'; if(counts[db]===undefined) counts['其他']++; else counts[db]++; });
-  var total=articles.length||1;
+  var facet=window.wbFacets&&window.wbFacets.knowledge;
+  if(facet){
+    facet.items.forEach(function(row){var db=row.wb_db||'其他';if(counts[db]===undefined)counts['其他']+=row.count;else counts[db]+=row.count;});
+  }else articles.forEach(function(k){ var db=k.db||'其他'; if(counts[db]===undefined) counts['其他']++; else counts[db]++; });
+  var total=(facet?facet.total:articles.length)||1;
   var grid=document.getElementById('kbDBChart');
   if(!grid) return;
   grid.innerHTML=_scriptDBMeta.map(function(item,i){
@@ -1021,10 +1042,13 @@ function renderKbTypeGrid(){
   var articles=gd('knowledge').filter(function(k){ return k.db===_selectedKbDB; });
   var counts={};
   _kbTypes.forEach(function(t){counts[t]=0;});
-  articles.forEach(function(k){ var cat=k.category||'学习笔记'; if(counts[cat]===undefined) counts['学习笔记']++; else counts[cat]++; });
-  var total=articles.length||1;
+  var facet=window.wbFacets&&window.wbFacets.knowledge;
+  if(facet){
+    facet.items.filter(function(row){return row.wb_db===_selectedKbDB;}).forEach(function(row){var cat=row.category||'学习笔记';if(counts[cat]===undefined)counts['学习笔记']+=row.count;else counts[cat]+=row.count;});
+  }else articles.forEach(function(k){ var cat=k.category||'学习笔记'; if(counts[cat]===undefined) counts['学习笔记']++; else counts[cat]++; });
+  var total=Object.keys(counts).reduce(function(sum,key){return sum+counts[key];},0)||1;
   document.getElementById('kbTypeTitle').textContent=_selectedKbDB+' 文档';
-  document.getElementById('kbTypeCount').textContent='共 '+articles.length+' 篇文档';
+  document.getElementById('kbTypeCount').textContent='共 '+(total===1&&Object.keys(counts).every(function(k){return counts[k]===0;})?0:total)+' 篇文档';
   var chart=document.getElementById('kbTypeChart');
   chart.innerHTML=_kbTypes.map(function(type){
     var c=counts[type]||0;
@@ -1087,7 +1111,8 @@ function kbBackToType(){
 function renderKnowledgeList(){
   var data=gd('knowledge');
   var f=data.filter(function(k){ return k.db===_selectedKbDB && k.category===_selectedKbType; });
-  document.getElementById('kbListCount').textContent='共 '+f.length+' 篇文档';
+  var state=window.wbPageState&&window.wbPageState.knowledge;
+  document.getElementById('kbListCount').textContent='共 '+(state?state.total:f.length)+' 篇文档';
   document.getElementById('knowledgeTableBody').innerHTML=f.length?f.map(function(k){
     var path=escapeHTML(k.path),id=safeId(k.id);
     return '<tr><td><a href="#" data-path="'+path+'" onclick="openScriptFile(this.dataset.path);return false;" style="color:#2563eb;text-decoration:none;cursor:pointer"><strong>'+escapeHTML(k.name)+'</strong></a><br><small style="color:#64748b">'+escapeHTML(k.desc)+'</small></td>'
@@ -1114,8 +1139,11 @@ function renderInstDBGrid(){
   var installers=gd('installers');
   var counts={};
   _scriptDBMeta.forEach(function(d){counts[d.name]=0;});
-  installers.forEach(function(i){ var db=i.db||'其他'; if(counts[db]===undefined) counts['其他']++; else counts[db]++; });
-  var total=installers.length||1;
+  var facet=window.wbFacets&&window.wbFacets.installers;
+  if(facet){
+    facet.items.forEach(function(row){var db=row.wb_db||'其他';if(counts[db]===undefined)counts['其他']+=row.count;else counts[db]+=row.count;});
+  }else installers.forEach(function(i){ var db=i.db||'其他'; if(counts[db]===undefined) counts['其他']++; else counts[db]++; });
+  var total=(facet?facet.total:installers.length)||1;
   var grid=document.getElementById('instDBChart');
   if(!grid) return;
   grid.innerHTML=_scriptDBMeta.map(function(item,i){
@@ -1166,7 +1194,8 @@ function instBackToDB(){
 function renderInstList(){
   var data=gd('installers');
   var f=data.filter(function(i){ return i.db===_selectedInstDB; });
-  document.getElementById('instListCount').textContent='共 '+f.length+' 个安装包';
+  var state=window.wbPageState&&window.wbPageState.installers;
+  document.getElementById('instListCount').textContent='共 '+(state?state.total:f.length)+' 个安装包';
   document.getElementById('installersTableBody').innerHTML=f.length?f.map(function(i){
     var path=escapeHTML(i.path),id=safeId(i.id);
     return '<tr><td><a href="#" data-path="'+path+'" onclick="openScriptFile(this.dataset.path);return false;" style="color:#2563eb;text-decoration:none;cursor:pointer"><strong>'+escapeHTML(i.name)+'</strong></a></td>'
@@ -1433,6 +1462,7 @@ function deleteAccount(id){if(confirm('确定删除？')){sd('accounts',gd('acco
 
 document.getElementById('globalSearch').addEventListener('input',function(e){
   const q=e.target.value.toLowerCase();if(!q)return;
+  if(window.wbSearch){window.wbSearch(q);return}
   let n=0;
   gd('scripts').forEach(s=>{if(s.name.toLowerCase().includes(q)||s.desc.toLowerCase().includes(q))n++});
   gd('knowledge').forEach(k=>{if(k.name.toLowerCase().includes(q)||k.desc.toLowerCase().includes(q))n++});

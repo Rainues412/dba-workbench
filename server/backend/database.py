@@ -1,6 +1,7 @@
 """Database connection and initialization for DBA Workspace."""
 import sqlite3
 import os
+import math
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -51,6 +52,22 @@ def validate_page(page: int, page_size: int):
     page_size = max(PAGE_SIZE_MIN, min(page_size, PAGE_SIZE_MAX))
     offset = (page - 1) * page_size
     return offset, page_size
+
+
+def page_response(total: int, rows, page: int, page_size: int, **extra):
+    """Return the shared list contract used by every paginated endpoint."""
+    page = max(1, page)
+    pages = math.ceil(total / page_size) if total else 0
+    return {
+        "total": total,
+        "items": [dict(row) for row in rows],
+        "page": page,
+        "page_size": page_size,
+        "pages": pages,
+        "has_next": page < pages,
+        "has_previous": page > 1 and pages > 0,
+        **extra,
+    }
 
 
 def _column_names(c, table):

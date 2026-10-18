@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from backend.database import get_db_ctx, validate_page
+from backend.database import get_db_ctx, page_response, validate_page
 from backend.concurrency import expected_revision, raise_write_conflict
 
 router = APIRouter()
@@ -72,13 +72,27 @@ def list_resources(
         total = conn.execute(f"SELECT COUNT(*) FROM resources {where}", params).fetchone()[0]
         offset, ps = validate_page(page, page_size)
         rows = conn.execute(
-            f"SELECT * FROM resources {where} ORDER BY is_favorite DESC, updated_at DESC LIMIT ? OFFSET ?",
+            f"""SELECT id, name, kind, path, url, version, size_mb, category, tags,
+                       is_favorite, wb_db, created_at, updated_at, revision
+                FROM resources {where}
+                ORDER BY is_favorite DESC, updated_at DESC, id DESC LIMIT ? OFFSET ?""",
             params + [ps, offset],
         ).fetchall()
         categories = [r[0] for r in conn.execute(
             "SELECT DISTINCT category FROM resources WHERE category != '' ORDER BY category").fetchall()]
-        return {"total": total, "items": [dict(r) for r in rows], "categories": categories,
-                "page": page, "page_size": ps}
+        return page_response(total, rows, page, ps, categories=categories)
+
+
+@router.get("/facets")
+def resource_facets():
+    with get_db_ctx() as conn:
+        rows = conn.execute(
+            "SELECT wb_db, COUNT(*) AS count FROM resources GROUP BY wb_db"
+        ).fetchall()
+        return {
+            "total": sum(row["count"] for row in rows),
+            "items": [dict(row) for row in rows],
+        }
 
 
 @router.post("/")
