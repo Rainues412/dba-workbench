@@ -49,7 +49,8 @@ def test_local_capabilities_are_closed_by_default(
 ) -> None:
     response = client.request(method, path, json=payload)
     assert response.status_code == 403
-    assert response.json()["detail"] == "本机能力已关闭"
+    assert response.json()["error"]["code"] == "FORBIDDEN"
+    assert response.json()["error"]["message"] == "本机能力已关闭"
 
 
 def test_allowed_root_rejects_outside_traversal_and_unc(
@@ -206,9 +207,14 @@ def test_local_actions_emit_non_secret_audit_events(
     target = allowed / "secret-name.txt"
     target.write_text("secret-content", encoding="utf-8")
     _enable_local_capabilities(monkeypatch, allowed)
+    from backend.local_capabilities import audit_logger
 
-    with caplog.at_level(logging.INFO, logger="dba.audit"):
-        response = client.post("/api/launcher/check", json={"path": str(target)})
+    audit_logger.addHandler(caplog.handler)
+    try:
+        with caplog.at_level(logging.INFO, logger="dba.audit"):
+            response = client.post("/api/launcher/check", json={"path": str(target)})
+    finally:
+        audit_logger.removeHandler(caplog.handler)
 
     assert response.status_code == 200
     audit_text = " ".join(record.getMessage() for record in caplog.records)

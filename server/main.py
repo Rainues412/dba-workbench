@@ -9,12 +9,15 @@ REST API it talks to. UI lives in ../ops-workbench.html and is served as-is.
 import io
 import sys
 import threading
+import time
+import uuid
 import webbrowser
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
@@ -22,6 +25,9 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from backend.config import settings
 from backend.database import run_startup_migrations
+from backend.errors import (http_exception_handler, unhandled_exception_handler,
+                            validation_exception_handler)
+from backend.observability import (logger, record_audit, request_id_var)
 from backend.routers import (articles, customers, dashboard, export_import,
                              launcher, resources, scan, scripts, search,
                              tasks, vault)
@@ -48,8 +54,13 @@ app.add_middleware(
     allow_origins=list(settings.cors_origins),
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Accept", "Content-Type"],
+    allow_headers=["Accept", "Content-Type", "If-Match", "X-Request-ID"],
+    expose_headers=["X-Request-ID"],
 )
+
+app.add_exception_handler(HTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(Exception, unhandled_exception_handler)
 
 
 @app.middleware("http")
@@ -69,6 +80,60 @@ async def add_security_headers(request, call_next):
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response
+
+
+@app.middleware("http")
+async def request_context(request: Request, call_next):
+    """Attach a request ID, emit metadata-only logs, and audit state changes."""
+    request_id = str(uuid.uuid4())
+    request.state.request_id = request_id
+    token = request_id_var.set(request_id)
+    started = time.perf_counter()
+    response = None
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        status_code = response.status_code if response is not None else 500
+        duration_ms = round((time.perf_counter() - started) * 1000, 2)
+        logger.info(
+            "request completed",
+            extra={
+                "event": "http_request",
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": status_code,
+                "duration_ms": duration_ms,
+            },
+        )
+        if response is not None:
+            response.headers["X-Request-ID"] = request_id
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.url.path.startswith("/api/"):
+            parts = [part for part in request.url.path.split("/") if part]
+            object_type = parts[1] if len(parts) > 1 else "api"
+            object_id = next((part for part in parts[2:] if part.isdigit()), "")
+            if status_code < 400:
+                result = "success"
+            elif status_code in {401, 403}:
+                result = "denied"
+            else:
+                result = "failed"
+            try:
+                record_audit(
+                    request_id=request_id,
+                    action=request.method.lower(),
+                    object_type=object_type,
+                    object_id=object_id,
+                    result=result,
+                    source=request.client.host if request.client else "unknown",
+                )
+            except Exception:
+                logger.error(
+                    "audit write failed",
+                    extra={"event": "audit_error", "request_id": request_id},
+                )
+        request_id_var.reset(token)
 
 # Register routers
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])

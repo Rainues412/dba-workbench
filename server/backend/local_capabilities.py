@@ -8,6 +8,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from backend.config import settings
+from backend.observability import record_audit
 
 
 audit_logger = logging.getLogger("dba.audit")
@@ -26,6 +27,12 @@ def audit_local_action(action: str, result: str, target: Optional[Path] = None) 
         result,
         target_type,
         target_suffix,
+    )
+    record_audit(
+        action=f"local.{action}",
+        object_type=target_type,
+        result=result,
+        source="localhost",
     )
 
 

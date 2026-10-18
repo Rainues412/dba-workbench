@@ -63,6 +63,15 @@
     if (typeof window.toast === 'function') window.toast(m);
   }
 
+  function friendlyError(error) {
+    if (error.status === 400 || error.status === 422 || error.status === 428) return '数据校验失败：' + error.message;
+    if (error.status === 401) return '登录已失效，请重新登录';
+    if (error.status === 403) return '没有权限执行此操作';
+    if (error.status === 409) return '保存冲突：数据已被其他窗口修改，已刷新';
+    if (error.status >= 500) return '服务暂时异常，请稍后重试';
+    return '请求失败：' + error.message;
+  }
+
   // ── 字段映射：localStorage 结构 <-> API 结构 ────────────────
   var M = {
     scripts: {
@@ -285,7 +294,7 @@
     }).then(function () {
       return reloadCurrent(key);
     }).catch(function (error) {
-      toastMsg(error.status === 409 ? '保存冲突：数据已被其他窗口修改，已刷新' : '保存失败：' + error.message);
+      toastMsg(friendlyError(error));
       return reloadCurrent(key);
     });
   }

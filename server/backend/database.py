@@ -15,6 +15,7 @@ SUPPORTED_SCHEMA_VERSION = 0
 
 REQUIRED_TABLES = {
     "articles",
+    "audit_events",
     "communications",
     "contacts",
     "customers",
@@ -141,6 +142,21 @@ def migrate_db(conn):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             path TEXT NOT NULL UNIQUE,
             enabled INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # ── 最小审计事件：不保存请求体、秘密或文件内容 ──
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS audit_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            action TEXT NOT NULL,
+            object_type TEXT NOT NULL,
+            object_id TEXT DEFAULT '',
+            result TEXT NOT NULL,
+            source TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
