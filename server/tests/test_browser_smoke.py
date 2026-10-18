@@ -48,7 +48,7 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
             page.get_by_role("button", name="创建并登录").click()
             page.get_by_role("heading", name="今天的工作台").wait_for()
 
-            page.get_by_role("link", name="脚本").click()
+            page.get_by_role("navigation", name="主导航").get_by_role("link", name="脚本库").click()
             page.get_by_role("button", name="新增").click()
             page.get_by_label("名称").fill("Browser smoke script")
             page.get_by_label("数据库").fill("Oracle")
@@ -113,7 +113,7 @@ def test_user_content_is_rendered_as_text_in_react_ui(live_server: str) -> None:
             page = browser.new_page()
             page.add_init_script("window.__xssFired = 0")
             _login(page, live_server)
-            page.get_by_role("link", name="脚本").click()
+            page.get_by_role("navigation", name="主导航").get_by_role("link", name="脚本库").click()
             page.get_by_text(payload, exact=True).wait_for()
             assert page.locator('img[src="x"]').count() == 0
             assert page.evaluate("window.__xssFired") == 0
@@ -131,7 +131,10 @@ def test_navigation_remains_keyboard_usable_at_narrow_200_percent_view(live_serv
             page = browser.new_page(viewport={"width": 375, "height": 800})
             _login(page, live_server)
             page.evaluate("document.documentElement.style.fontSize = '200%'")
-            scripts_link = page.get_by_role("link", name="脚本")
+            assert page.evaluate(
+                "document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1"
+            )
+            scripts_link = page.get_by_role("navigation", name="主导航").get_by_role("link", name="脚本库")
             scripts_link.focus()
             assert scripts_link.evaluate("element => element === document.activeElement")
             page.keyboard.press("Enter")
@@ -159,7 +162,7 @@ def test_edge_can_page_to_and_edit_records_after_200(live_server: str, isolated_
             page = browser.new_page()
             page.set_default_timeout(10_000)
             _login(page, live_server)
-            page.get_by_role("link", name="脚本").click()
+            page.get_by_role("navigation", name="主导航").get_by_role("link", name="脚本库").click()
             for _ in range(10):
                 next_button = page.get_by_role("button", name="下一页")
                 if next_button.is_disabled():
