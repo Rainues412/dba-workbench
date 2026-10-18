@@ -88,3 +88,133 @@ def test_edge_ui_smoke_and_vault_starts_locked(live_server: str) -> None:
             assert page.locator("#accountsContent").is_hidden()
         finally:
             browser.close()
+
+
+@pytest.mark.browser
+def test_user_content_is_rendered_as_text_in_edge(live_server: str) -> None:
+    payload = '<img src=x onerror="window.__xssFired=(window.__xssFired||0)+1">'
+    script_payload = "<script>window.__xssFired=99</script>"
+    url_payload = "javascript:window.__xssFired=100"
+    records = [
+        (
+            "/api/scripts/",
+            {
+                "title": script_payload,
+                "description": payload,
+                "db_type": "Oracle",
+                "wb_type": "巡检",
+                "tags": payload,
+                "content": payload,
+                "file_path": url_payload,
+            },
+        ),
+        (
+            "/api/articles/",
+            {
+                "title": payload,
+                "summary": payload,
+                "content": payload,
+                "category": "巡检规范",
+                "tags": payload,
+                "wb_db": "Oracle",
+                "file_path": payload,
+            },
+        ),
+        (
+            "/api/resources/",
+            {
+                "name": payload,
+                "kind": "安装包",
+                "path": payload,
+                "version": payload,
+                "tags": payload,
+                "wb_db": "Oracle",
+            },
+        ),
+        (
+            "/api/tasks/",
+            {"title": payload, "description": payload, "priority": "高"},
+        ),
+        (
+            "/api/customers/",
+            {
+                "name": payload,
+                "project_name": payload,
+                "group_name": payload,
+                "status": "进行中",
+                "wb_person": payload,
+                "wb_contact": payload,
+            },
+        ),
+    ]
+    for path, body in records:
+        response = httpx.post(f"{live_server}{path}", json=body, timeout=5)
+        response.raise_for_status()
+
+    with sync_playwright() as playwright:
+        try:
+            browser = playwright.chromium.launch(channel="msedge", headless=True)
+        except PlaywrightError as error:
+            pytest.skip(f"Microsoft Edge is unavailable: {error}")
+
+        try:
+            page = browser.new_page()
+            page.set_default_timeout(5_000)
+            page.add_init_script("window.__xssFired = 0")
+            page.goto(live_server, wait_until="networkidle")
+
+            page.locator('[data-view="scripts"]').click()
+            page.locator("#scriptDBChart .db-item").filter(has_text="Oracle").click()
+            page.locator("#scriptTypeChart .db-item").filter(has_text="巡检").click()
+            page.locator("#scriptsTableBody").get_by_text(script_payload, exact=True).wait_for()
+            page.locator("#scriptsTableBody").get_by_text(payload, exact=True).first.wait_for()
+            assert page.locator('#scriptsTableBody img[src="x"]').count() == 0
+            assert page.locator("#scriptsTableBody script").count() == 0
+            page.locator("#scriptsTableBody").get_by_role("button", name="编辑").click()
+            assert page.locator('#modalContent input[name="name"]').input_value() == script_payload
+            assert page.locator('#modalContent input[name="path"]').input_value() == url_payload
+            page.locator("#modalContent .modal-close").click()
+
+            page.locator('[data-view="knowledge"]').click()
+            page.locator("#kbDBChart .db-item").filter(has_text="Oracle").click()
+            page.locator("#kbTypeChart .db-item").filter(has_text="巡检规范").click()
+            page.locator("#knowledgeTableBody").get_by_text(payload, exact=True).first.wait_for()
+            assert page.locator('#knowledgeTableBody img[src="x"]').count() == 0
+
+            page.locator('[data-view="installers"]').click()
+            page.locator("#instDBChart .db-item").filter(has_text="Oracle").click()
+            page.locator("#installersTableBody").get_by_text(payload, exact=True).first.wait_for()
+            assert page.locator('#installersTableBody img[src="x"]').count() == 0
+
+            page.locator('[data-view="tasks"]').click()
+            page.locator("#tasksTableBody").get_by_text(payload, exact=True).first.wait_for()
+            assert page.locator('#tasksTableBody img[src="x"]').count() == 0
+
+            page.locator('[data-view="contacts"]').click()
+            page.locator("#contactsTableBody").get_by_text(payload, exact=True).first.wait_for()
+            assert page.locator('#contactsTableBody img[src="x"]').count() == 0
+
+            page.evaluate(
+                "([key, value]) => localStorage.setItem(key, JSON.stringify(value))",
+                [
+                    "wb_dba_workbench_accounts",
+                    [
+                        {
+                            "id": 1,
+                            "site": payload,
+                            "username": payload,
+                            "password": payload,
+                            "notes": payload,
+                        }
+                    ],
+                ],
+            )
+            page.reload(wait_until="networkidle")
+            page.locator('[data-view="accounts"]').click()
+            for digit, value in zip(page.locator(".pin-digit").all(), "1234"):
+                digit.fill(value)
+            page.locator("#accountsTableBody").get_by_text(payload, exact=True).first.wait_for()
+            assert page.locator('#accountsTableBody img[src="x"]').count() == 0
+            assert page.evaluate("window.__xssFired") == 0
+        finally:
+            browser.close()

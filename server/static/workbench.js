@@ -325,9 +325,18 @@
     if (!apiUp) { toastMsg('需要启动本地服务器'); return; }
     api('GET', '/api/scan/dirs').then(function (dirs) {
       var el = document.getElementById('wbScanResult');
-      el.innerHTML = dirs.length
-        ? dirs.map(function (d) { return '<div>• ' + d.path + '</div>'; }).join('')
-        : '<div>尚未配置扫描目录，请先用 wbAddScanDir("路径") 添加（浏览器控制台）</div>';
+      el.replaceChildren();
+      if (dirs.length) {
+        dirs.forEach(function (d) {
+          var row = document.createElement('div');
+          row.textContent = '• ' + d.path;
+          el.appendChild(row);
+        });
+      } else {
+        var empty = document.createElement('div');
+        empty.textContent = '尚未配置扫描目录，请先用 wbAddScanDir("路径") 添加（浏览器控制台）';
+        el.appendChild(empty);
+      }
     });
   };
   window.wbAddScanDir = function (p) {

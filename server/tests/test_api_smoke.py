@@ -8,6 +8,9 @@ def test_home_and_empty_dashboard(client: TestClient) -> None:
     assert home.status_code == 200
     assert "<title>DBA 工作台</title>" in home.text
     assert '<script src="/static/workbench.js"></script>' in home.text
+    assert "object-src 'none'" in home.headers["content-security-policy"]
+    assert "base-uri 'none'" in home.headers["content-security-policy"]
+    assert home.headers["x-content-type-options"] == "nosniff"
 
     stats = client.get("/api/dashboard/stats")
     assert stats.status_code == 200
