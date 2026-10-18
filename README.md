@@ -1,297 +1,116 @@
 # DBA 工作台
 
-个人 DBA 运维工作台，单文件前端 + FastAPI 后端 + SQLite 数据层。
-管理脚本库、知识库、安装包、任务排期、客户通讯录等运维资源。
-
-- **GitHub**：https://github.com/Rainues412/dba-workbench （private，源码备份）
-- **前端**：`ops-workbench.html`（CSS/JS 全内联，零外部依赖）
+本机运行的 DBA 运维工作台，使用 React + TypeScript 前端、FastAPI 后端和 SQLite 数据库，管理脚本、知识、资源、任务、客户资料与加密保险箱。
 
 ## 快速开始
 
-```bash
-# 1. 安装依赖
-cd server
-pip install -r requirements.txt
+```powershell
+# 后端依赖
+python -m pip install -r server/requirements.txt
 
-# 2. 启动服务（自动打开浏览器）
-python main.py
+# 仅在修改前端后需要重新构建
+cd frontend
+npm ci
+npm run build
+
+# 启动（仓库根目录）
+cd ..
+python server/main.py
 ```
 
-### Windows 桌面启动
+浏览器访问 `http://localhost:8686`。首次启动没有默认账号或默认密码，必须在页面创建第一个所有者账号。
 
-安装依赖后，可以直接运行仓库内的 Windows 启动器：
+也可以使用 Windows 启动器：
 
 ```powershell
 python tools/windows/launch_dba_workbench.py
 ```
 
-启动器会使用当前 Python 解释器启动服务，并在默认浏览器中打开工作台。
-运行日志默认写入 `.runtime/logs/server.log`；可通过
-`DBA_WORKBENCH_LOG_DIR` 指定其他日志目录。Windows 快捷方式应在本机创建，
-目标指向此脚本，不要把包含绝对路径的 `.lnk` 文件提交到仓库。
+服务默认仅监听 `127.0.0.1`，不支持局域网或公网部署。生产前端构建产物位于 `server/frontend_dist`；旧单文件页面仅作为短期回退入口保留在 `/legacy`，其 API 同样受登录保护。
 
-### 运行隔离测试
-
-测试使用临时 SQLite 数据库和随机 localhost 端口，不会访问
-`server/workspace.db` 或浏览器 localStorage：
+## 验证
 
 ```powershell
 python -m pip install -r server/requirements-dev.txt
 python -m pytest
+
+cd frontend
+npm test -- --run
+npm run build
 ```
 
-浏览器烟雾测试优先使用本机 Microsoft Edge；Edge 或 Playwright 不可用时，
-该项会明确标记为跳过。根目录旧的 `test_installer_*.py` 仅作人工诊断，
-不在 pytest 自动收集范围内。
+测试使用临时数据库和随机本机端口，不访问 `server/workspace.db`。浏览器测试优先调用本机 Microsoft Edge；不可用时会明确标记为跳过。
 
-服务启动后访问 http://localhost:8686。默认模式只监听 `127.0.0.1`，
-不会开启热重载。
+## 架构
 
-需要开发热重载时显式设置：
+```text
+frontend/                    React、TypeScript、Vite 源码
+server/frontend_dist/        已构建的生产前端
+server/main.py               FastAPI 入口
+server/backend/auth.py       登录会话、CSRF、Argon2id
+server/backend/migrations/   有序、前向、逐版本事务迁移
+server/backend/routers/      类型化 REST API
+server/backend/admin.py      仅离线可用的管理员恢复命令
+server/workspace.db          SQLite 数据库（Git 忽略）
+ops-workbench.html           旧界面回退页
+```
+
+所有业务模块都通过统一 API 客户端访问后端。列表接口统一分页；更新使用 `revision` 做并发冲突检测。数据库启动时自动检查版本并执行尚未应用的 SQL 迁移，高版本数据库会被拒绝打开。
+
+## 保险箱安全模型
+
+- 主密码与登录密码分离，不保存主密码。
+- 浏览器以 Argon2id 派生密钥，并用 AES-256-GCM 在客户端加解密；服务端只保存密文、随机 nonce、AAD 和密钥信封。
+- 查看、复制、编辑、删除、迁移、备份和恢复前需要近期重新验证登录密码。
+- 保险箱默认锁定，闲置五分钟或页面隐藏时自动清除内存密钥；复制到剪贴板的密码会在 30 秒后尽力清除。
+- 管理员恢复只允许在服务器本机离线执行，不存在 HTTP 解密或绕过接口。
+- 普通 JSON 导出不包含保险箱；保险箱使用独立的加密备份与摘要校验。
+
+保险箱创建后，应立即将恢复密钥备份到 `D:\Software\AI\Codex` 下，并将副本与数据库分开保存：
 
 ```powershell
-$env:DBA_MODE = "development"
-python main.py
+cd server
+python -m backend.admin backup-recovery-key --output D:\Software\AI\Codex\dba-vault-recovery
+python -m backend.admin verify-recovery-key
 ```
 
-可选配置为 `DBA_PORT`、`DBA_OPEN_BROWSER`、`DBA_ALLOWED_HOSTS` 和
-`DBA_CORS_ORIGINS`。Host 与 CORS 均使用逗号分隔的明确白名单，拒绝 `*`。
-当前 `DBA_MODE=lan` 会拒绝启动；在认证、HTTPS 和 LAN 安全边界完成前，
-不提供局域网或公网运行模式。
+遗忘保险箱主密码时，停止服务后在 `server` 目录执行：
 
-打开本地文件、编辑文件、扫描目录和执行脚本属于高风险本机能力，默认关闭。
-确需使用时必须同时启用总开关并指定允许根目录，例如：
+```powershell
+python -m backend.admin recover-vault <用户名>
+```
+
+该命令使用本机恢复私钥重新包裹同一数据密钥，不会逐条重加密业务数据，并会撤销该用户全部登录会话。若恢复私钥和数据库同时遗失，保险箱密文无法恢复。
+
+遗忘登录密码时：
+
+```powershell
+python -m backend.admin reset-login-password <用户名>
+```
+
+## 数据与升级
+
+数据库文件是 `server/workspace.db`。升级或迁移机器前应在服务停止状态下复制数据库和恢复密钥备份。旧 Fernet 密码记录与浏览器 localStorage 记录通过新界面的迁移入口一次性转换；迁移确认成功前不会删除旧数据。
+
+常规 JSON 导入导出覆盖脚本、知识、资源、任务和客户资料，不包含认证数据、会话、恢复私钥或保险箱密文。
+
+## 本机能力
+
+打开文件、编辑文件、扫描目录和执行脚本默认关闭。确需使用时必须启用总开关并明确允许根目录：
 
 ```powershell
 $env:DBA_LOCAL_CAPABILITIES = "true"
 $env:DBA_ALLOWED_ROOTS = "D:\Database;D:\scripts"
 $env:DBA_ALLOWED_LOCAL_ACTIONS = "check,edit,folder,open,pick-folder,scan"
-python main.py
+python server/main.py
 ```
 
-脚本执行默认不在动作白名单中。如确需执行，还需把 `run` 加入
-`DBA_ALLOWED_LOCAL_ACTIONS`，并通过 `DBA_ALLOWED_RUN_EXTENSIONS` 明确允许
-`.bat`、`.cmd`、`.ps1`、`.py` 或 `.sh` 中的必要类型。UNC、相对路径、越界路径
-和符号链接逃逸会被拒绝；PowerShell 不使用 `ExecutionPolicy Bypass`。
+脚本执行还需把 `run` 加入动作白名单，并通过 `DBA_ALLOWED_RUN_EXTENSIONS` 指定允许的扩展名。UNC、相对路径、越界路径和符号链接逃逸会被拒绝。
 
-> **依赖**：Python 3.8+，`fastapi` / `uvicorn` / `cryptography`（见 `server/requirements.txt`）
+## 安全边界
 
-## 项目架构
-
-```
-D:\coding\workspace\
-├── ops-workbench.html            单文件前端（CSS/JS 全内联）
-├── README.md
-├── .gitignore / .gitattributes
-├── assets/                       项目图标源文件与 Windows 图标
-├── tools/windows/                可移植的 Windows 启动器
-├── server/                       FastAPI 后端
-│   ├── main.py                   入口 :8686（绑 127.0.0.1）
-│   ├── requirements.txt          Python 依赖
-│   ├── workspace.db              SQLite 数据库（git 忽略）
-│   ├── .workspace_secret         Fernet 密钥（git 忽略）
-│   ├── static/
-│   │   └── workbench.js          数据层桥接：劫持 gd()/sd()，读写走 REST API
-│   └── backend/
-│       ├── config.py             运行模式、监听地址与网络白名单
-│       ├── database.py           SQLite 建表 + 迁移 + 连接管理
-│       └── routers/              11 个路由模块
-│           ├── dashboard.py      统计/待办/收藏/最近文档
-│           ├── scripts.py        脚本库 CRUD + 版本管理
-│           ├── articles.py       知识库 CRUD + 浏览计数
-│           ├── resources.py      安装包索引 CRUD
-│           ├── tasks.py          任务排期 CRUD + 状态流转
-│           ├── customers.py      客户/联系人/沟通记录
-│           ├── vault.py          密码本（Fernet 加密）
-│           ├── launcher.py       打开本地文件/目录/URL
-│           ├── scan.py           扫描目录配置 + 文件入库
-│           ├── search.py         全局搜索
-│           └── export_import.py  JSON 导出导入
-└── import_scripts.py             脚本批量导入工具
-```
-
-### 技术栈
-
-| 层级 | 技术 | 说明 |
-|---|---|---|
-| 前端 | 原生 HTML/CSS/JS | 单文件，零构建，零外部依赖 |
-| 数据桥接 | `workbench.js` | 劫持页面 gd()/sd()，读写改走 REST API |
-| 后端 | FastAPI + Uvicorn | 11 个路由模块，JSON API |
-| 存储 | SQLite (WAL) | 本地文件数据库，PRAGMA foreign_keys ON |
-| 加密 | Fernet (AES-128-CBC + HMAC) | 密码本模块，密钥存 `.workspace_secret` |
-
-### 数据流
-
-```
-页面 render*() ──读──> gd(key) ──> [API 模式] 内存 cache（pull 自 REST API）
-                                └─> [回退模式] localStorage
-页面 sd(key, data) ─写─> [API 模式] cache + 400ms 防抖 → 全量对账推送
-                                （删服务端多余 + 逐条 upsert）→ SQLite
-                        └─> [回退模式] localStorage
-```
-
-- 6 个集合中 5 个走 SQLite：scripts / knowledge / installers / tasks / contacts
-- **accounts（账号保险箱）始终留在 localStorage**：明文密码不进 API、不上云
-
-### API 路由一览（前缀 `/api`）
-
-| 路由 | 用途 |
-|---|---|
-| `dashboard` | 统计数 / 待办 / 收藏 / 最近文档 |
-| `scripts` | 脚本库 CRUD（支持 db_type + wb_type 二级筛选） |
-| `articles` | 知识库 CRUD（支持 category 筛选） |
-| `resources` | 安装包索引 CRUD |
-| `tasks` | 任务排期 CRUD（支持状态流转、逾期检测） |
-| `customers` | 客户通讯录（含联系人与沟通记录子表） |
-| `vault` | 密码本（Fernet 加密，前端未启用） |
-| `launcher` | 打开本地文件/目录/URL |
-| `scan` | 扫描目录 + 文件分类入库 |
-| `search` | 全局搜索（跨 6 个模块） |
-| `export` | JSON 导出 / 导入（含外键 ID 重映射） |
-
-### 脚本库三级导航
-
-```
-第一层：数据库类型（Oracle / MySQL / PostgreSQL / SQL Server / Linux / Redis / 其他）
-  └─ 第二层：脚本类型（巡检 / 备份 / 部署 / 监控 / 性能 / 其他）
-       └─ 第三层：脚本列表（名称可点击直接打开文件）
-```
-
-面包屑导航支持任意层级直接跳转，无需逐层返回。
-
-## 部署方式
-
-### 本地开发（推荐）
-
-```bash
-cd server
-pip install -r requirements.txt
-python main.py
-```
-
-服务绑定 `127.0.0.1:8686`，仅本机可访问。启动后自动打开浏览器。
-
-### 局域网或独立服务器部署
-
-当前版本没有身份认证，禁止部署到局域网或公网。`DBA_MODE=lan` 会主动
-拒绝启动，不能用修改监听地址的方式绕过。完成方案中的认证、授权、HTTPS
-和部署模式分离任务后，再提供受支持的 LAN 启动方式。
-
-### 纯前端模式（无需后端）
-
-双击 `ops-workbench.html` 直接在浏览器中打开，数据存储在 localStorage。
-此模式下无持久化存储，不支持打开文件、扫描入库等后端功能。
-
-## 数据导入方式
-
-### 方式一：JSON 导入（从旧版本迁移）
-
-在页面右上角 **设置** → **导入恢复** → 选择 JSON 文件。
-
-JSON 格式示例：
-
-```json
-{
-  "scripts": [
-    {"name": "脚本名", "type": "巡检", "db": "Oracle", "path": "D:/scripts/...", "desc": "说明", "tags": ["标签1"]}
-  ],
-  "knowledge": [...],
-  "installers": [...],
-  "tasks": [...],
-  "contacts": [...],
-  "accounts": [...]
-}
-```
-
-### 方式二：API 批量导入
-
-```python
-import requests
-
-API = "http://localhost:8686"
-
-# 导入单个脚本
-requests.post(f"{API}/api/scripts", json={
-    "title": "脚本名称",
-    "description": "脚本说明",
-    "db_type": "Oracle",       # 数据库类型
-    "wb_type": "巡检",          # 脚本类型：巡检/备份/部署/监控/性能/其他
-    "tags": "巡检,Oracle",
-    "file_path": "D:/scripts/oracle/check.sql",
-    "content": ""              # 只记录路径时留空
-})
-
-# 导入知识库文档
-requests.post(f"{API}/api/articles", json={
-    "title": "文档名称",
-    "summary": "摘要",
-    "content": "",
-    "category": "排障手册",
-    "tags": "Oracle,故障",
-    "file_path": "D:/docs/oracle/troubleshooting.md"
-})
-
-# 导入安装包
-requests.post(f"{API}/api/resources", json={
-    "name": "oracle-19c.zip",
-    "kind": "安装包",
-    "path": "D:/installers/oracle/",
-    "version": "19.3.0",
-    "size_mb": 2900
-})
-```
-
-### 方式三：扫描入库
-
-配置扫描目录后，自动发现并分类文件：
-
-```python
-# 添加扫描目录
-requests.post(f"{API}/api/scan/dirs", json={"path": "D:/Database"})
-
-# 执行扫描（返回建议入库的文件列表）
-result = requests.post(f"{API}/api/scan/run", json={}).json()
-
-# 确认入库
-requests.post(f"{API}/api/scan/commit", json={"items": result["items"]})
-```
-
-扫描规则：
-- **安装包**：`.msi` `.exe` `.zip` `.7z` `.iso` `.tar.gz` 等 → 入库为 resource
-- **文档**：`.md` `.pdf` `.doc` `.docx` `.txt` `.html` 等 → 入库为 article
-- **脚本**：`.sh` `.py` `.ps1` `.bat` `.cmd` `.sql` → 入库为 script（自动读取内容）
-- 已入库的路径不会重复导入
-
-### 方式四：脚本批量导入工具
-
-仓库中提供了 `import_scripts.py`，可批量导入指定路径的脚本：
-
-```bash
-cd D:\coding\workspace
-python import_scripts.py
-```
-
-修改脚本中的 `SCRIPTS_TO_IMPORT` 列表即可自定义导入内容。
-
-### 数据库文件迁移
-
-直接拷贝 `server/workspace.db`（和 `.workspace_secret`，若启用密码本）到新机器即可。
-
-## 模块说明
-
-| 模块 | 功能 |
-|---|---|
-| 仪表盘 | 统计总览、待办任务、数据库类型分布 |
-| 脚本库 | 三级导航管理运维脚本（按数据库+类型分类） |
-| 知识库 | 技术文档管理（排障/规范/架构/调优/迁移） |
-| 安装包 | 软件/工具安装包索引 |
-| 任务排期 | 任务管理（优先级/截止日期/逾期检测） |
-| 客户通讯录 | 客户信息、联系人、沟通记录 |
-| 账号保险箱 | 密码管理（localStorage，PIN 保护） |
-
-## 安全说明
-
-- API 仅绑定 `127.0.0.1`，无鉴权——**不要暴露到公网**
-- 账号保险箱密码只在本机浏览器 localStorage，PIN 校验在前端
-- `server/workspace.db` 和 `.workspace_secret` 均被 git 忽略
-- 含真实密码的导出 JSON 勿外传
+- 仅支持本机回环地址；`DBA_MODE=lan` 会拒绝启动。
+- 登录密码使用 Argon2id；会话 Cookie 为 HttpOnly、SameSite=Strict，状态修改要求 CSRF 令牌。
+- Host、Origin 和 CORS 使用明确白名单，不接受 `*`。
+- `server/workspace.db`、恢复私钥和旧 Fernet 密钥均被 Git 忽略。
+- 本机管理员与能够读取数据库和恢复私钥的人仍属于信任边界；请使用操作系统磁盘加密和账户权限保护这些文件。

@@ -473,14 +473,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
         </button>
       </div>
       <div id="pinLockSection" class="pin-lock" data-page-node-id="7OAqStwHsRvijlNtOtP2oL">
-        <h3 data-page-node-id="mCC05lQLBVNe9VZaEg6w5d">请输入 4 位 PIN 码解锁</h3>
-        <div class="pin-input" data-page-node-id="hhdrFKvEQYlkct4QHuFZAE">
-          <input type="password" class="pin-digit" maxlength="1" oninput="moveToNextPin(this,0)" data-page-node-id="HcyT7MHcHVVz2auN2QJFxI">
-          <input type="password" class="pin-digit" maxlength="1" oninput="moveToNextPin(this,1)" data-page-node-id="PtIUDrrF95Qc6yjLlsmjcG">
-          <input type="password" class="pin-digit" maxlength="1" oninput="moveToNextPin(this,2)" data-page-node-id="DsTayGwp12viAyQCoVuKk1">
-          <input type="password" class="pin-digit" maxlength="1" oninput="checkPin(this)" data-page-node-id="rENsjLYbRcG1LLnNCsV8Gy">
-        </div>
-        <p style="color:#64748b;font-size:13px" data-page-node-id="crcwGHeX4aA5jgENMRHMch">默认 PIN: 1234（可在设置中修改）</p>
+        <h3 data-page-node-id="mCC05lQLBVNe9VZaEg6w5d">旧版账号保险箱已停用</h3>
+        <p style="color:#64748b;font-size:13px" data-page-node-id="crcwGHeX4aA5jgENMRHMch">请返回新版工作台，在客户端加密保险箱中迁移现有本地数据。</p>
       </div>
       <div id="accountsContent" style="display:none" data-page-node-id="0trYSfUo7wbcicf6TxO2Uu">
         <div class="data-table" data-page-node-id="eAjrBbHZMxQ66BItfUSAVD"><table data-page-node-id="6IoybPFHzav1MN3W5EFYHv">
@@ -527,7 +521,6 @@ function safeRecord(record){
   });
   return safe;
 }
-let currentPin=localStorage.getItem(P+'pin')||'1234';
 let accountsUnlocked=false;
 
 function ds(o){const d=new Date();d.setDate(d.getDate()+o);return d.toISOString().split('T')[0]}
@@ -568,13 +561,7 @@ contacts:[
   {id:2,project:'电商订单库',customer:'YY科技',groupName:'电商订单库迁移群',personInCharge:'李总工',contact:'139****5678',status:'进行中',notes:'MySQL 分库分表迁移，每日同步进度'},
   {id:3,project:'政务数据平台',customer:'ZZ政府',groupName:'政务云数据库项目组',personInCharge:'王主任',contact:'137****9012',status:'规划中',notes:'PostgreSQL 高可用部署，月度汇报'}
 ],
-accounts:[
-  {id:1,site:'Oracle Cloud',username:'dba_admin',password:'Oracle@Cloud2024!',notes:'云数据库管理控制台'},
-  {id:2,site:'MySQL Enterprise Monitor',username:'monitor_dba',password:'MEM#Secure2024',notes:'MySQL 企业版监控平台'},
-  {id:3,site:'pgAdmin',username:'postgres_admin',password:'pgAdmin$Pass',notes:'PostgreSQL 管理工具'},
-  {id:4,site:'Prometheus + Grafana',username:'admin',password:'Prom@Grafana2024',notes:'数据库监控大盘'},
-  {id:5,site:'Navicat License Server',username:'dba_team',password:'Nav#License',notes:'团队共享 License'}
-]};
+accounts:[]};
 
 function initData(){
   if(!localStorage.getItem(P+'init')){
@@ -1238,14 +1225,8 @@ function renderContacts(){
 }
 
 function renderAccounts(){
-  if(!accountsUnlocked){document.getElementById('pinLockSection').style.display='block';document.getElementById('accountsContent').style.display='none';return}
-  document.getElementById('pinLockSection').style.display='none';
-  document.getElementById('accountsContent').style.display='block';
-  const data=gd('accounts');
-  document.getElementById('accountsTableBody').innerHTML=data.map(a=>{
-    const id=safeId(a.id),password=escapeHTML(a.password);
-    return '<tr><td><strong>'+escapeHTML(a.site)+'</strong></td><td>'+escapeHTML(a.username)+'</td><td><span class="password-field" id="pwd-'+id+'" data-password="'+password+'" style="cursor:pointer" onclick="togglePwd('+id+',this.dataset.password)">••••••••</span></td><td>'+escapeHTML(a.notes)+'</td><td><button class="action-btn btn-copy" data-password="'+password+'" onclick="copyText(this.dataset.password)">复制密码</button><button class="action-btn btn-edit" onclick="editAccount('+id+')">编辑</button><button class="action-btn btn-delete" onclick="deleteAccount('+id+')">删除</button></td></tr>';
-  }).join('');
+  document.getElementById('pinLockSection').style.display='block';
+  document.getElementById('accountsContent').style.display='none';
 }
 
 function renderArchive(){
@@ -1292,7 +1273,7 @@ function toast(m){const d=document.createElement('div');d.className='toast';d.te
 function toggleTask(id){const t=gd('tasks'),task=t.find(x=>x.id===id);if(task){if(task.status==='completed'){task.status='pending';delete task.completedAt}else{task.status='completed';task.completedAt=new Date().toISOString()}sd('tasks',t);autoArchive();renderTasks();renderDashboard()}}
 function togglePwd(id,pw){const e=document.getElementById('pwd-'+id);e.textContent=e.textContent==='••••••••'?pw:'••••••••'}
 function moveToNextPin(el,i){if(el.value&&i<3)document.querySelectorAll('.pin-digit')[i+1].focus()}
-function checkPin(el){if(el.value){const pins=Array.from(document.querySelectorAll('.pin-digit')).map(e=>e.value).join('');if(pins===currentPin){accountsUnlocked=true;renderAccounts();toast('解锁成功')}else{toast('PIN 码错误');document.querySelectorAll('.pin-digit').forEach(e=>e.value='');document.querySelectorAll('.pin-digit')[0].focus()}}}
+function checkPin(){toast('旧版 PIN 已停用，请使用新版工作台')}
 
 // ── Batch folder scan ─────────────────────────────────────
 function pickFolder(type){
@@ -1438,8 +1419,7 @@ function openModal(type,eid){
     const r=safeRecord(eid?gd('contacts').find(x=>x.id===eid):null);
     h='<div class="modal-header"><h3 class="modal-title">'+(eid?'编辑联系人':'添加联系人')+'</h3><button class="modal-close" onclick="closeModal()">✕</button></div><form onsubmit="saveContact(event,'+eid+')"><div class="form-group"><label class="form-label">项目名称</label><input type="text" class="form-input" name="project" value="'+(r?.project||'')+'" required></div><div class="form-group"><label class="form-label">客户名称</label><input type="text" class="form-input" name="customer" value="'+(r?.customer||'')+'" required></div><div class="form-group"><label class="form-label">对接群名</label><input type="text" class="form-input" name="groupName" value="'+(r?.groupName||'')+'" required></div><div class="form-group"><label class="form-label">负责人</label><input type="text" class="form-input" name="personInCharge" value="'+(r?.personInCharge||'')+'" required></div><div class="form-group"><label class="form-label">联系方式</label><input type="text" class="form-input" name="contact" value="'+(r?.contact||'')+'" required></div><div class="form-group"><label class="form-label">项目状态</label><select class="form-select" name="status" required><option value="规划中" '+(r?.status==='规划中'?'selected':'')+'>规划中</option><option value="进行中" '+(r?.status==='进行中'?'selected':'')+'>进行中</option><option value="已完成" '+(r?.status==='已完成'?'selected':'')+'>已完成</option></select></div><div class="form-group"><label class="form-label">备注</label><textarea class="form-textarea" name="notes">'+(r?.notes||'')+'</textarea></div><div class="modal-actions"><button type="button" class="btn-secondary" onclick="closeModal()">取消</button><button type="submit" class="btn-primary">保存</button></div></form>';
   }else if(type==='account'){
-    const r=safeRecord(eid?gd('accounts').find(x=>x.id===eid):null);
-    h='<div class="modal-header"><h3 class="modal-title">'+(eid?'编辑账号':'添加账号')+'</h3><button class="modal-close" onclick="closeModal()">✕</button></div><form onsubmit="saveAccount(event,'+eid+')"><div class="form-group"><label class="form-label">系统/平台</label><input type="text" class="form-input" name="site" value="'+(r?.site||'')+'" required></div><div class="form-group"><label class="form-label">账号</label><input type="text" class="form-input" name="username" value="'+(r?.username||'')+'" required></div><div class="form-group"><label class="form-label">密码</label><input type="text" class="form-input password-field" name="password" value="'+(r?.password||'')+'" required></div><div class="form-group"><label class="form-label">备注</label><textarea class="form-textarea" name="notes">'+(r?.notes||'')+'</textarea></div><div class="modal-actions"><button type="button" class="btn-secondary" onclick="closeModal()">取消</button><button type="submit" class="btn-primary">保存</button></div></form>';
+    h='<div class="modal-header"><h3 class="modal-title">旧版保险箱已停用</h3><button class="modal-close" onclick="closeModal()">✕</button></div><p>请使用新版工作台完成客户端加密迁移。</p>';
   }
   ct.innerHTML=h;ov.classList.add('active');
 }
@@ -1450,7 +1430,7 @@ function saveKnowledge(e,eid){e.preventDefault();const f=e.target,data=gd('knowl
 function saveInstaller(e,eid){e.preventDefault();const f=e.target,data=gd('installers');const item={id:eid||Date.now(),name:f.name.value,version:f.version.value,db:f.db.value,path:f.path.value,tags:f.tags.value.split(',').map(t=>t.trim()).filter(t=>t),createdAt:eid?data.find(x=>x.id===eid).createdAt:now()};if(eid){const i=data.findIndex(x=>x.id===eid);data[i]=item}else data.push(item);sd('installers',data);closeModal();renderInstallers();renderInstDBGrid();renderDashboard();toast(eid?'安装包已更新':'安装包已添加')}
 function saveTask(e,eid){e.preventDefault();const f=e.target,data=gd('tasks');const item={id:eid||Date.now(),title:f.title.value,deadline:f.deadline.value,priority:f.priority.value,status:f.status?f.status.value:'pending',notes:f.notes.value};if(eid){const i=data.findIndex(x=>x.id===eid);data[i]=item}else data.push(item);sd('tasks',data);closeModal();renderTasks();renderDashboard();toast(eid?'任务已更新':'任务已创建')}
 function saveContact(e,eid){e.preventDefault();const f=e.target,data=gd('contacts');const item={id:eid||Date.now(),project:f.project.value,customer:f.customer.value,groupName:f.groupName.value,personInCharge:f.personInCharge.value,contact:f.contact.value,status:f.status.value,notes:f.notes.value};if(eid){const i=data.findIndex(x=>x.id===eid);data[i]=item}else data.push(item);sd('contacts',data);closeModal();renderContacts();renderDashboard();toast(eid?'联系人已更新':'联系人已添加')}
-function saveAccount(e,eid){e.preventDefault();const f=e.target,data=gd('accounts');const item={id:eid||Date.now(),site:f.site.value,username:f.username.value,password:f.password.value,notes:f.notes.value};if(eid){const i=data.findIndex(x=>x.id===eid);data[i]=item}else data.push(item);sd('accounts',data);closeModal();renderAccounts();renderDashboard();toast(eid?'账号已更新':'账号已添加')}
+function saveAccount(e){e.preventDefault();toast('旧版保险箱已停用，请使用新版工作台')}
 
 function editScript(id){openModal('script',id)}function editKnowledge(id){openModal('knowledge',id)}function editInstaller(id){openModal('installer',id)}function editTask(id){openModal('task',id)}function editContact(id){openModal('contact',id)}function editAccount(id){openModal('account',id)}
 function deleteScript(id){if(confirm('确定删除？')){sd('scripts',gd('scripts').filter(x=>x.id!==id));if(_selectedScriptDB){renderScriptsList();renderScriptDBGrid();}else{renderScripts();}renderDashboard();toast('已删除')}}
@@ -1458,7 +1438,7 @@ function deleteKnowledge(id){if(confirm('确定删除？')){sd('knowledge',gd('k
 function deleteInstaller(id){if(confirm('确定删除？')){sd('installers',gd('installers').filter(x=>x.id!==id));renderInstallers();renderInstDBGrid();renderDashboard();toast('已删除')}}
 function deleteTask(id){if(confirm('确定删除？')){sd('tasks',gd('tasks').filter(x=>x.id!==id));renderTasks();renderDashboard();toast('已删除')}}
 function deleteContact(id){if(confirm('确定删除？')){sd('contacts',gd('contacts').filter(x=>x.id!==id));renderContacts();renderDashboard();toast('已删除')}}
-function deleteAccount(id){if(confirm('确定删除？')){sd('accounts',gd('accounts').filter(x=>x.id!==id));renderAccounts();renderDashboard();toast('已删除')}}
+function deleteAccount(){toast('旧版保险箱已停用，请使用新版工作台')}
 
 document.getElementById('globalSearch').addEventListener('input',function(e){
   const q=e.target.value.toLowerCase();if(!q)return;
@@ -1475,13 +1455,13 @@ document.addEventListener('keydown',function(e){if(e.ctrlKey&&e.key==='k'){e.pre
 
 function showSettings(){
   const ov=document.getElementById('modalOverlay'),ct=document.getElementById('modalContent');
-  ct.innerHTML='<div class="modal-header"><h3 class="modal-title">设置</h3><button class="modal-close" onclick="closeModal()">✕</button></div><div class="form-group"><label class="form-label">修改 PIN 码（账号保险箱）</label><input type="password" class="form-input" id="newPin" maxlength="4" placeholder="输入4位新PIN码"></div><div class="form-group"><label class="form-label">数据管理</label><div style="display:flex;gap:12px;flex-wrap:wrap"><button class="btn-secondary" onclick="exportData()">导出 JSON 备份</button><button class="btn-secondary" onclick="document.getElementById(\'importFile\').click()">导入恢复</button><input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)"></div></div><div class="form-group" style="margin-top:16px"><label class="form-label" style="color:#dc2626">危险操作</label><button class="action-btn btn-delete" onclick="clearAllData()" style="padding:10px 20px;font-size:14px">清空所有数据</button></div><div class="modal-actions"><button type="button" class="btn-secondary" onclick="closeModal()">取消</button><button type="button" class="btn-primary" onclick="savePin()">保存 PIN</button></div>';
+  ct.innerHTML='<div class="modal-header"><h3 class="modal-title">设置</h3><button class="modal-close" onclick="closeModal()">✕</button></div><div class="form-group"><label class="form-label">数据管理</label><div style="display:flex;gap:12px;flex-wrap:wrap"><button class="btn-secondary" onclick="exportData()">导出普通模块 JSON 备份</button><button class="btn-secondary" onclick="document.getElementById(\'importFile\').click()">导入恢复</button><input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)"></div></div><div class="form-group" style="margin-top:16px"><label class="form-label" style="color:#dc2626">危险操作</label><button class="action-btn btn-delete" onclick="clearAllData()" style="padding:10px 20px;font-size:14px">清空普通模块数据</button></div><div class="modal-actions"><button type="button" class="btn-secondary" onclick="closeModal()">关闭</button></div>';
   ov.classList.add('active');
 }
-function savePin(){const v=document.getElementById('newPin').value;if(v.length===4){currentPin=v;localStorage.setItem(P+'pin',v);toast('PIN 码已更新');closeModal()}else toast('请输入4位PIN码')}
-function exportData(){const d={scripts:gd('scripts'),knowledge:gd('knowledge'),installers:gd('installers'),tasks:gd('tasks'),contacts:gd('contacts'),accounts:gd('accounts')};const blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='dba_workbench_backup_'+ds(0)+'.json';a.click();toast('备份已导出')}
+function savePin(){toast('旧版 PIN 已停用')}
+function exportData(){const d={scripts:gd('scripts'),knowledge:gd('knowledge'),installers:gd('installers'),tasks:gd('tasks'),contacts:gd('contacts')};const blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='dba_workbench_backup_'+ds(0)+'.json';a.click();toast('备份已导出')}
 function importData(e){const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=function(ev){try{const d=JSON.parse(ev.target.result);Object.keys(d).forEach(k=>sd(k,d[k]));toast('数据已恢复');closeModal();renderDashboard()}catch(err){toast('导入失败：文件格式错误')}};reader.readAsText(file)}
-function clearAllData(){if(confirm('确定清空所有数据？此操作不可恢复！')&&confirm('再次确认：真的要清空吗？')){['scripts','knowledge','installers','tasks','contacts','accounts'].forEach(k=>sd(k,[]));toast('数据已清空');closeModal();renderDashboard()}}
+function clearAllData(){if(confirm('确定清空普通模块数据？此操作不可恢复！')&&confirm('再次确认：真的要清空吗？')){['scripts','knowledge','installers','tasks','contacts'].forEach(k=>sd(k,[]));toast('普通模块数据已清空');closeModal();renderDashboard()}}
 
 // 任务表图标按钮 tooltip：自定义气泡替代原生 title（无延迟、样式统一）
 // 事件委托挂 document，因按钮由 renderTasks() 动态生成

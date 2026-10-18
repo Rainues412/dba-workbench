@@ -47,7 +47,8 @@ def test_lifespan_initializes_a_fresh_database(isolated_app) -> None:
     assert not Path(test_db).exists()
 
     with TestClient(app, base_url="http://localhost") as test_client:
-        assert test_client.get("/api/dashboard/stats").status_code == 200
+        assert test_client.get("/api/auth/status").status_code == 200
+        assert test_client.get("/api/dashboard/stats").status_code == 401
 
     assert Path(test_db).exists()
 
@@ -55,7 +56,7 @@ def test_lifespan_initializes_a_fresh_database(isolated_app) -> None:
 def test_lifespan_rejects_a_newer_database_schema(isolated_app) -> None:
     app, test_db = isolated_app
     with sqlite3.connect(test_db) as conn:
-        conn.execute("PRAGMA user_version = 1")
+        conn.execute("PRAGMA user_version = 999")
 
     with pytest.raises(RuntimeError, match="newer than supported"):
         with TestClient(app, base_url="http://localhost"):

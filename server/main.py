@@ -1,11 +1,4 @@
-"""DBA Workspace Server - API backend for ops-workbench.html.
-
-Run:  python main.py
-API at http://localhost:8686 (serves this directory's ops-workbench.html at /)
-
-The frontend is a single static HTML file; this server only provides the
-REST API it talks to. UI lives in ../ops-workbench.html and is served as-is.
-"""
+"""DBA Workspace local server and built React application host."""
 import io
 import sys
 import threading
@@ -25,15 +18,17 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from backend.config import settings
 from backend.database import run_startup_migrations
-from backend.errors import (http_exception_handler, unhandled_exception_handler,
+from backend.auth import PUBLIC_API_PATHS, load_session, verify_csrf
+from backend.errors import (error_response, http_exception_handler, unhandled_exception_handler,
                             validation_exception_handler)
 from backend.observability import (logger, record_audit, request_id_var)
-from backend.routers import (articles, customers, dashboard, export_import,
+from backend.routers import (articles, auth, customers, dashboard, export_import,
                              launcher, resources, scan, scripts, search,
                              tasks, vault)
 
 BASE_DIR = Path(__file__).parent
 HTML_FILE = BASE_DIR.parent / "ops-workbench.html"
+FRONTEND_DIR = BASE_DIR / "frontend_dist"
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -52,9 +47,9 @@ app.add_middleware(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(settings.cors_origins),
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Accept", "Content-Type", "If-Match", "X-Request-ID"],
+    allow_headers=["Accept", "Content-Type", "If-Match", "X-CSRF-Token", "X-Request-ID"],
     expose_headers=["X-Request-ID"],
 )
 
@@ -66,6 +61,7 @@ app.add_exception_handler(Exception, unhandled_exception_handler)
 @app.middleware("http")
 async def add_security_headers(request, call_next):
     response = await call_next(request)
+    legacy = request.url.path == "/legacy"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "base-uri 'none'; "
@@ -74,8 +70,8 @@ async def add_security_headers(request, call_next):
         "form-action 'self'; "
         "img-src 'self' data:; "
         "object-src 'none'; "
-        "script-src 'self' 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline'"
+        + ("script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'" if legacy
+           else "script-src 'self' 'wasm-unsafe-eval'; style-src 'self'")
     )
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -91,6 +87,37 @@ async def request_context(request: Request, call_next):
     started = time.perf_counter()
     response = None
     try:
+        if request.url.path.startswith("/api/") and request.method != "OPTIONS":
+            if request.url.path not in PUBLIC_API_PATHS:
+                session = load_session(request)
+                if not session:
+                    response = error_response(
+                        request,
+                        status_code=401,
+                        message="Authentication required",
+                    )
+                    return response
+                request.state.session = session
+                if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+                    if not verify_csrf(session, request.headers.get("X-CSRF-Token")):
+                        response = error_response(
+                            request,
+                            status_code=403,
+                            message="Invalid CSRF token",
+                            code="CSRF_FAILED",
+                        )
+                        return response
+            elif request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+                origin = request.headers.get("Origin")
+                same_origin = f"{request.url.scheme}://{request.headers.get('host', '')}"
+                if origin and origin != same_origin and origin not in settings.cors_origins:
+                    response = error_response(
+                        request,
+                        status_code=403,
+                        message="Untrusted request origin",
+                        code="ORIGIN_REJECTED",
+                    )
+                    return response
         response = await call_next(request)
         return response
     finally:
@@ -120,6 +147,7 @@ async def request_context(request: Request, call_next):
             else:
                 result = "failed"
             try:
+                audit_session = getattr(request.state, "session", None)
                 record_audit(
                     request_id=request_id,
                     action=request.method.lower(),
@@ -127,6 +155,11 @@ async def request_context(request: Request, call_next):
                     object_id=object_id,
                     result=result,
                     source=request.client.host if request.client else "unknown",
+                    actor=(
+                        audit_session.get("username", "local-user")
+                        if isinstance(audit_session, dict)
+                        else "local-user"
+                    ),
                 )
             except Exception:
                 logger.error(
@@ -136,6 +169,7 @@ async def request_context(request: Request, call_next):
         request_id_var.reset(token)
 
 # Register routers
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
 app.include_router(scripts.router, prefix="/api/scripts", tags=["scripts"])
 app.include_router(articles.router, prefix="/api/articles", tags=["articles"])
@@ -151,14 +185,20 @@ app.include_router(scan.router, prefix="/api/scan", tags=["scan"])
 
 @app.get("/")
 async def index():
-    """Serve the single-file frontend.
+    """Serve the built React application."""
+    built_index = FRONTEND_DIR / "index.html"
+    if built_index.exists():
+        return Response(content=built_index.read_bytes(), media_type="text/html; charset=utf-8")
+    return Response(
+        content="Frontend build is missing. Run npm install and npm run build in frontend/.",
+        status_code=503,
+        media_type="text/plain; charset=utf-8",
+    )
 
-    The file on disk (and in git, and published on workbuddy.link) stays
-    byte-for-byte unchanged. Only when served by this API server do we
-    append the bridge script that switches the page's data layer from
-    localStorage to the REST API. Opening the file directly (or the
-    published URL) keeps the original localStorage behaviour.
-    """
+
+@app.get("/legacy")
+async def legacy_index():
+    """Short-term rollback page; protected APIs still require authentication."""
     html = HTML_FILE.read_bytes()
     bridge = b'<script src="/static/workbench.js"></script>\n</body>'
     html = html.replace(b'</body>', bridge, 1)
@@ -166,6 +206,17 @@ async def index():
 
 
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+app.mount(
+    "/app-assets",
+    StaticFiles(directory=str(FRONTEND_DIR), check_dir=False),
+    name="app-assets",
+)
+
+
+@app.get("/{frontend_path}")
+async def frontend_fallback(frontend_path: str):
+    """Let BrowserRouter handle the one-segment UI routes."""
+    return await index()
 
 
 def open_browser():

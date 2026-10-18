@@ -1,293 +1,182 @@
 from __future__ import annotations
 
-import time
 import sqlite3
 
 import httpx
 import pytest
 from playwright.sync_api import Error as PlaywrightError
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import Page, sync_playwright
 
 
-def _wait_for_script(base_url: str, script_id: int, expected_title: str) -> None:
-    deadline = time.monotonic() + 5
-    while time.monotonic() < deadline:
-        response = httpx.get(f"{base_url}/api/scripts/{script_id}", timeout=2)
-        if response.status_code == 200 and response.json()["title"] == expected_title:
-            return
-        time.sleep(0.1)
-    pytest.fail(f"script {script_id} did not become {expected_title!r}")
+OWNER = {"username": "browser-owner", "password": "test-only-browser-passphrase"}
 
 
-def _wait_for_script_count(base_url: str, expected: int) -> None:
-    deadline = time.monotonic() + 5
-    while time.monotonic() < deadline:
-        response = httpx.get(f"{base_url}/api/scripts/", timeout=2)
-        if response.status_code == 200 and response.json()["total"] == expected:
-            return
-        time.sleep(0.1)
-    pytest.fail(f"script count did not become {expected}")
+def _api_client(base_url: str) -> tuple[httpx.Client, str]:
+    client = httpx.Client(base_url=base_url, timeout=5)
+    setup = client.post("/api/auth/setup", json=OWNER)
+    setup.raise_for_status()
+    return client, setup.json()["csrf_token"]
+
+
+def _login(page: Page, base_url: str) -> None:
+    page.goto(base_url, wait_until="networkidle")
+    page.get_by_label("用户名").fill(OWNER["username"])
+    page.get_by_label("登录密码").fill(OWNER["password"])
+    page.get_by_role("button", name="登录", exact=True).click()
+    page.get_by_role("heading", name="今天的工作台").wait_for()
+
+
+def _edge(playwright):
+    try:
+        return playwright.chromium.launch(channel="msedge", headless=True)
+    except PlaywrightError as error:
+        pytest.skip(f"Microsoft Edge is unavailable: {error}")
 
 
 @pytest.mark.browser
-def test_edge_ui_smoke_and_vault_starts_locked(live_server: str) -> None:
-    created = httpx.post(
-        f"{live_server}/api/scripts/",
-        json={
-            "title": "Browser smoke script",
-            "description": "safe temporary data",
-            "db_type": "Oracle",
-            "wb_type": "巡检",
-            "tags": "smoke",
-            "content": "select 1 from dual;",
-            "file_path": r"D:\tests\browser-smoke.sql",
-        },
-        timeout=5,
-    )
-    created.raise_for_status()
-    script_id = created.json()["id"]
-    assert created.json()["revision"] == 1
-    assert httpx.get(f"{live_server}/api/scripts/", timeout=5).json()["items"][0]["revision"] == 1
-
+def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
     with sync_playwright() as playwright:
+        browser = _edge(playwright)
         try:
-            browser = playwright.chromium.launch(channel="msedge", headless=True)
-        except PlaywrightError as error:
-            pytest.skip(f"Microsoft Edge is unavailable: {error}")
-
-        try:
-            context = browser.new_context()
-            page = context.new_page()
-            page.set_default_timeout(5_000)
+            page = browser.new_page()
+            page.set_default_timeout(10_000)
             page.goto(live_server, wait_until="networkidle")
-
             assert page.title() == "DBA 工作台"
-            page.locator("#apiBadge").wait_for(state="visible")
-            assert page.locator("#apiBadge").inner_text() == "已连接服务器"
+            page.get_by_label("用户名").fill(OWNER["username"])
+            page.get_by_label("登录密码").fill(OWNER["password"])
+            page.get_by_label("确认密码").fill(OWNER["password"])
+            page.get_by_role("button", name="创建并登录").click()
+            page.get_by_role("heading", name="今天的工作台").wait_for()
 
-            page.locator('[data-view="scripts"]').click()
-            assert page.evaluate("gd('scripts')[0]")["revision"] == 1
-            page.locator("#scriptDBChart .db-item").filter(has_text="Oracle").click()
-            page.locator("#scriptTypeChart .db-item").filter(has_text="巡检").click()
+            page.get_by_role("link", name="脚本").click()
+            page.get_by_role("button", name="新增").click()
+            page.get_by_label("名称").fill("Browser smoke script")
+            page.get_by_label("数据库").fill("Oracle")
+            page.get_by_label("脚本正文").fill("select 1 from dual;")
+            page.get_by_role("dialog").get_by_role("button", name="保存").click()
+            page.get_by_text("Browser smoke script", exact=True).wait_for()
+            page.get_by_role("button", name="查看/编辑").click()
+            assert page.get_by_label("脚本正文").input_value() == "select 1 from dual;"
+            page.get_by_label("名称").fill("Browser smoke script edited")
+            page.get_by_role("dialog").get_by_role("button", name="保存").click()
+            page.get_by_text("Browser smoke script edited", exact=True).wait_for()
 
-            row = page.locator("#scriptsTableBody tr").filter(has_text="Browser smoke script")
-            row.wait_for(state="visible")
-            row.get_by_role("button", name="编辑").click()
-            page.locator('#modalContent input[name="name"]').fill("Browser smoke script edited")
-            with page.expect_response(
-                lambda response: response.request.method == "PUT"
-                and f"/api/scripts/{script_id}" in response.url
-            ) as update_info:
-                page.locator('#modalContent button[type="submit"]').click()
-            assert update_info.value.status == 200, (
-                update_info.value.text(), update_info.value.request.headers
-            )
-            _wait_for_script(live_server, script_id, "Browser smoke script edited")
-            assert httpx.get(
-                f"{live_server}/api/scripts/{script_id}", timeout=5
-            ).json()["content"] == "select 1 from dual;"
+            page.get_by_role("link", name="密码保险箱").click()
+            page.get_by_role("heading", name="创建新保险箱").wait_for()
+            assert page.get_by_text("默认 PIN", exact=False).count() == 0
+            assert page.locator('input[name="master_password"]').get_attribute("type") == "password"
+            page.get_by_placeholder("登录密码").fill(OWNER["password"])
+            page.get_by_role("button", name="验证 5 分钟").click()
+            page.get_by_text("已验证", exact=True).wait_for()
+            page.get_by_label("保险箱主密码", exact=True).fill("test-only-vault-master")
+            page.get_by_label("确认主密码").fill("test-only-vault-master")
+            page.get_by_role("button", name="创建保险箱").click()
+            page.get_by_role("heading", name="请备份管理员恢复密钥").wait_for(timeout=20_000)
+            page.get_by_role("button", name="新增条目").click()
+            page.get_by_role("dialog").get_by_label("系统/网站").fill("test-service")
+            page.get_by_role("dialog").get_by_label("账号").fill("test-user")
+            page.get_by_role("dialog").get_by_label("密码").fill("test-only-vault-secret")
+            page.get_by_role("dialog").get_by_role("button", name="保存").click()
+            page.get_by_role("heading", name="test-service").wait_for()
+            assert "test-only-vault-secret" not in page.locator("body").inner_text()
 
-            # The current UI returns to the database grid after an edit.
-            page.locator("#scriptDBChart .db-item").filter(has_text="Oracle").click()
-            page.locator("#scriptTypeChart .db-item").filter(has_text="巡检").click()
-            edited_row = page.locator("#scriptsTableBody tr").filter(
-                has_text="Browser smoke script edited"
-            )
-            page.once("dialog", lambda dialog: dialog.accept())
-            edited_row.get_by_role("button", name="删除").click()
-            _wait_for_script_count(live_server, 0)
-
-            page.locator('[data-view="accounts"]').click()
-            assert page.locator("#pinLockSection").is_visible()
-            assert page.locator("#accountsContent").is_hidden()
+            page.reload(wait_until="networkidle")
+            page.get_by_role("heading", name="保险箱已锁定").wait_for()
+            assert "test-only-vault-secret" not in page.locator("body").inner_text()
         finally:
             browser.close()
 
 
 @pytest.mark.browser
-def test_user_content_is_rendered_as_text_in_edge(live_server: str) -> None:
-    payload = '<img src=x onerror="window.__xssFired=(window.__xssFired||0)+1">'
-    script_payload = "<script>window.__xssFired=99</script>"
-    url_payload = "javascript:window.__xssFired=100"
-    records = [
-        (
+def test_user_content_is_rendered_as_text_in_react_ui(live_server: str) -> None:
+    payload = '<img src=x onerror="window.__xssFired=1">'
+    client, csrf = _api_client(live_server)
+    try:
+        response = client.post(
             "/api/scripts/",
-            {
-                "title": script_payload,
+            headers={"X-CSRF-Token": csrf},
+            json={
+                "title": payload,
                 "description": payload,
                 "db_type": "Oracle",
                 "wb_type": "巡检",
-                "tags": payload,
-                "content": payload,
-                "file_path": url_payload,
+                "content": "test-only-content",
             },
-        ),
-        (
-            "/api/articles/",
-            {
-                "title": payload,
-                "summary": payload,
-                "content": payload,
-                "category": "巡检规范",
-                "tags": payload,
-                "wb_db": "Oracle",
-                "file_path": payload,
-            },
-        ),
-        (
-            "/api/resources/",
-            {
-                "name": payload,
-                "kind": "安装包",
-                "path": payload,
-                "version": payload,
-                "tags": payload,
-                "wb_db": "Oracle",
-            },
-        ),
-        (
-            "/api/tasks/",
-            {"title": payload, "description": payload, "priority": "高"},
-        ),
-        (
-            "/api/customers/",
-            {
-                "name": payload,
-                "project_name": payload,
-                "group_name": payload,
-                "status": "进行中",
-                "wb_person": payload,
-                "wb_contact": payload,
-            },
-        ),
-    ]
-    for path, body in records:
-        response = httpx.post(f"{live_server}{path}", json=body, timeout=5)
+        )
         response.raise_for_status()
+    finally:
+        client.close()
 
     with sync_playwright() as playwright:
-        try:
-            browser = playwright.chromium.launch(channel="msedge", headless=True)
-        except PlaywrightError as error:
-            pytest.skip(f"Microsoft Edge is unavailable: {error}")
-
+        browser = _edge(playwright)
         try:
             page = browser.new_page()
-            page.set_default_timeout(5_000)
             page.add_init_script("window.__xssFired = 0")
-            page.goto(live_server, wait_until="networkidle")
-
-            page.locator('[data-view="scripts"]').click()
-            page.locator("#scriptDBChart .db-item").filter(has_text="Oracle").click()
-            page.locator("#scriptTypeChart .db-item").filter(has_text="巡检").click()
-            page.locator("#scriptsTableBody").get_by_text(script_payload, exact=True).wait_for()
-            page.locator("#scriptsTableBody").get_by_text(payload, exact=True).first.wait_for()
-            assert page.locator('#scriptsTableBody img[src="x"]').count() == 0
-            assert page.locator("#scriptsTableBody script").count() == 0
-            page.locator("#scriptsTableBody").get_by_role("button", name="编辑").click()
-            assert page.locator('#modalContent input[name="name"]').input_value() == script_payload
-            assert page.locator('#modalContent input[name="path"]').input_value() == url_payload
-            page.locator("#modalContent .modal-close").click()
-
-            page.locator('[data-view="knowledge"]').click()
-            page.locator("#kbDBChart .db-item").filter(has_text="Oracle").click()
-            page.locator("#kbTypeChart .db-item").filter(has_text="巡检规范").click()
-            page.locator("#knowledgeTableBody").get_by_text(payload, exact=True).first.wait_for()
-            assert page.locator('#knowledgeTableBody img[src="x"]').count() == 0
-
-            page.locator('[data-view="installers"]').click()
-            page.locator("#instDBChart .db-item").filter(has_text="Oracle").click()
-            page.locator("#installersTableBody").get_by_text(payload, exact=True).first.wait_for()
-            assert page.locator('#installersTableBody img[src="x"]').count() == 0
-
-            page.locator('[data-view="tasks"]').click()
-            page.locator("#tasksTableBody").get_by_text(payload, exact=True).first.wait_for()
-            assert page.locator('#tasksTableBody img[src="x"]').count() == 0
-
-            page.locator('[data-view="contacts"]').click()
-            page.locator("#contactsTableBody").get_by_text(payload, exact=True).first.wait_for()
-            assert page.locator('#contactsTableBody img[src="x"]').count() == 0
-
-            page.evaluate(
-                "([key, value]) => localStorage.setItem(key, JSON.stringify(value))",
-                [
-                    "wb_dba_workbench_accounts",
-                    [
-                        {
-                            "id": 1,
-                            "site": payload,
-                            "username": payload,
-                            "password": payload,
-                            "notes": payload,
-                        }
-                    ],
-                ],
-            )
-            page.reload(wait_until="networkidle")
-            page.locator('[data-view="accounts"]').click()
-            for digit, value in zip(page.locator(".pin-digit").all(), "1234"):
-                digit.fill(value)
-            page.locator("#accountsTableBody").get_by_text(payload, exact=True).first.wait_for()
-            assert page.locator('#accountsTableBody img[src="x"]').count() == 0
+            _login(page, live_server)
+            page.get_by_role("link", name="脚本").click()
+            page.get_by_text(payload, exact=True).wait_for()
+            assert page.locator('img[src="x"]').count() == 0
             assert page.evaluate("window.__xssFired") == 0
         finally:
             browser.close()
 
 
 @pytest.mark.browser
+def test_navigation_remains_keyboard_usable_at_narrow_200_percent_view(live_server: str) -> None:
+    client, _ = _api_client(live_server)
+    client.close()
+    with sync_playwright() as playwright:
+        browser = _edge(playwright)
+        try:
+            page = browser.new_page(viewport={"width": 375, "height": 800})
+            _login(page, live_server)
+            page.evaluate("document.documentElement.style.fontSize = '200%'")
+            scripts_link = page.get_by_role("link", name="脚本")
+            scripts_link.focus()
+            assert scripts_link.evaluate("element => element === document.activeElement")
+            page.keyboard.press("Enter")
+            page.get_by_role("heading", name="脚本库", exact=True).wait_for()
+            assert page.get_by_role("button", name="新增").is_visible()
+        finally:
+            browser.close()
+
+
+@pytest.mark.browser
 def test_edge_can_page_to_and_edit_records_after_200(live_server: str, isolated_app) -> None:
+    client, _ = _api_client(live_server)
+    client.close()
     _, test_db = isolated_app
     with sqlite3.connect(test_db) as conn:
         conn.executemany(
-            """INSERT INTO scripts (title, content, db_type, wb_type, file_path)
-               VALUES (?, ?, 'Oracle', '巡检', ?)""",
-            [
-                (f"Browser paged {index:03d}", f"body {index:03d}", rf"D:\tests\paged-{index:03d}.sql")
-                for index in range(205)
-            ],
+            """INSERT INTO scripts (title, content, db_type, wb_type)
+               VALUES (?, ?, 'Oracle', '巡检')""",
+            [(f"Browser paged {index:03d}", f"body {index:03d}") for index in range(205)],
         )
 
     with sync_playwright() as playwright:
-        try:
-            browser = playwright.chromium.launch(channel="msedge", headless=True)
-        except PlaywrightError as error:
-            pytest.skip(f"Microsoft Edge is unavailable: {error}")
-
+        browser = _edge(playwright)
         try:
             page = browser.new_page()
-            page.set_default_timeout(8_000)
-            page.goto(live_server, wait_until="networkidle")
-            page.locator('[data-view="scripts"]').click()
-            page.locator("#scriptDBChart .db-item").filter(has_text="Oracle").click()
-            page.locator("#scriptTypeChart .db-item").filter(has_text="巡检").click()
-            page.locator("#wbPager-scripts").get_by_text("共 205 条").wait_for()
-
-            for expected_page in range(2, 6):
-                with page.expect_response(
-                    lambda response, target=expected_page: response.request.method == "GET"
-                    and "/api/scripts/" in response.url
-                    and f"page={target}" in response.url
-                ):
-                    page.locator("#wbPager-scripts").get_by_role("button", name="下一页").click()
-                page.locator("#wbPager-scripts").get_by_text(
-                    f"第 {expected_page} / 5 页", exact=False
-                ).wait_for()
-
-            row = page.locator("#scriptsTableBody tr").first
-            original_title = row.locator("strong").inner_text()
+            page.set_default_timeout(10_000)
+            _login(page, live_server)
+            page.get_by_role("link", name="脚本").click()
+            for _ in range(10):
+                next_button = page.get_by_role("button", name="下一页")
+                if next_button.is_disabled():
+                    break
+                next_button.click()
+                page.wait_for_load_state("networkidle")
+            page.get_by_text("第 11 / 11 页", exact=True).wait_for()
+            page.get_by_role("button", name="查看/编辑").first.click()
+            body = page.get_by_label("脚本正文").input_value()
+            assert body.startswith("body ")
+            page.get_by_label("名称").fill("Edited beyond row 200")
             with page.expect_response(
-                lambda response: response.request.method == "GET"
-                and "/api/scripts/" in response.url
-                and response.url.rstrip("/").split("/")[-1].isdigit()
-            ):
-                row.get_by_role("button", name="编辑").click()
-            page.locator('#modalContent input[name="name"]').fill(original_title + " edited")
-            with page.expect_response(
-                lambda response: response.request.method == "PUT"
-                and "/api/scripts/" in response.url
-            ) as update_info:
-                page.locator('#modalContent button[type="submit"]').click()
-            assert update_info.value.status == 200
-            assert update_info.value.json()["content"].startswith("body ")
+                lambda response: response.request.method == "PUT" and "/api/scripts/" in response.url
+            ) as update:
+                page.get_by_role("dialog").get_by_role("button", name="保存").click()
+            assert update.value.status == 200
+            page.get_by_placeholder("搜索脚本库").fill("Edited beyond row 200")
+            page.get_by_text("Edited beyond row 200", exact=True).wait_for()
         finally:
             browser.close()

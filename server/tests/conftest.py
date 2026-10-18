@@ -29,21 +29,32 @@ def isolated_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(database, "DB_PATH", str(test_db))
 
-    # Import after redirecting DB_PATH. Routers use database.get_db_ctx at call
-    # time; vault keeps a separate key path that must also be isolated.
+    # Import after redirecting DB_PATH. Routers resolve database and recovery
+    # key paths from the patched value at call time.
     import main
-    from backend.routers import vault
-
-    monkeypatch.setattr(vault, "KEY_FILE", tmp_path / ".workspace-test-secret")
     assert Path(database.DB_PATH).resolve() == test_db
     yield main.app, test_db
 
 
 @pytest.fixture()
-def client(isolated_app) -> Generator[TestClient, None, None]:
+def raw_client(isolated_app) -> Generator[TestClient, None, None]:
     app, _ = isolated_app
     with TestClient(app, base_url="http://localhost") as test_client:
         yield test_client
+
+
+@pytest.fixture()
+def client(raw_client: TestClient) -> Generator[TestClient, None, None]:
+    created = raw_client.post(
+        "/api/auth/setup",
+        json={
+            "username": "test-owner",
+            "password": "test-only-owner-passphrase",
+        },
+    )
+    assert created.status_code == 201, created.text
+    raw_client.headers["X-CSRF-Token"] = created.json()["csrf_token"]
+    yield raw_client
 
 
 def _free_local_port() -> int:

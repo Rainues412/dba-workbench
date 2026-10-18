@@ -12,7 +12,7 @@ def _escape_like(s: str) -> str:
 
 @router.get("/")
 def global_search(q: str = "", limit: int = 10):
-    """Search across scripts, articles, tasks, customers, resources, passwords."""
+    """Search non-secret modules; vault search is performed client-side after unlock."""
     if not q.strip():
         return {"scripts": [], "articles": [], "tasks": [], "customers": [], "resources": [], "passwords": []}
 
@@ -61,13 +61,5 @@ def global_search(q: str = "", limit: int = 10):
             (kw, kw, kw, kw, kw, limit),
         ).fetchall()]
 
-        # Passwords (names/urls only - never passwords)
-        passwords = [dict(r) for r in conn.execute(
-            "SELECT id, site_name, site_url, username, category FROM passwords "
-            "WHERE site_name LIKE ? ESCAPE '\\' OR site_url LIKE ? ESCAPE '\\' OR username LIKE ? ESCAPE '\\' "
-            "ORDER BY updated_at DESC LIMIT ?",
-            (kw, kw, kw, limit),
-        ).fetchall()]
-
     return {"scripts": scripts, "articles": articles, "tasks": tasks,
-            "customers": customers, "resources": resources, "passwords": passwords}
+            "customers": customers, "resources": resources, "passwords": []}

@@ -30,8 +30,6 @@ def export_all():
             "contacts": [dict(r) for r in conn.execute("SELECT * FROM contacts ORDER BY id").fetchall()],
             "communications": [dict(r) for r in conn.execute("SELECT * FROM communications ORDER BY id").fetchall()],
             "resources": [dict(r) for r in conn.execute("SELECT * FROM resources ORDER BY id").fetchall()],
-            # passwords export keeps ciphertext only; key file must be copied separately
-            "passwords": [dict(r) for r in conn.execute("SELECT * FROM passwords ORDER BY id").fetchall()],
         }
     return JSONResponse(content=data, headers={"Content-Disposition": "attachment; filename=dba_workspace_backup.json"})
 
@@ -46,12 +44,11 @@ _TABLE_COLS = {
     "communications":  {"cols": ["date", "content", "follow_up"], "fk": {"customer_id": "customers"}},
     "script_versions": {"cols": ["content", "version"], "fk": {"script_id": "scripts"}},
     "resources":       {"cols": ["name", "kind", "path", "url", "version", "size_mb", "category", "tags", "notes", "is_favorite"], "fk": {}},
-    "passwords":       {"cols": ["site_name", "site_url", "username", "password_enc", "category", "notes", "is_favorite"], "fk": {}},
 }
 
 # 导入顺序：父表在前，子表在后
 _TABLE_ORDER = ["customers", "scripts", "articles", "tasks", "contacts", "communications",
-                "script_versions", "resources", "passwords"]
+                "script_versions", "resources"]
 
 
 def _coerce(value, col_name):
@@ -134,14 +131,5 @@ def import_data(payload: ImportData):
 
             conn.commit()
             counts[table] = inserted
-
-        # Rebuild FTS
-        try:
-            conn.execute("INSERT INTO scripts_fts(scripts_fts) VALUES('rebuild')")
-            conn.execute("INSERT INTO articles_fts(articles_fts) VALUES('rebuild')")
-            conn.commit()
-        except Exception as e:
-            logger.warning("FTS rebuild failed: %s", e)
-            errors.append({"table": "_fts", "error": str(e)})
 
     return {"ok": True, "imported": counts, "errors": errors}

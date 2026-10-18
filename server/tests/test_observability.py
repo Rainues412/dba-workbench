@@ -60,6 +60,7 @@ def test_unhandled_error_is_generic_and_has_request_id(client: TestClient) -> No
         base_url="http://localhost",
         raise_server_exceptions=False,
     )
+    safe_client.cookies.update(client.cookies)
     response = safe_client.get(path)
     _assert_error(response, 500, "INTERNAL_ERROR")
     assert "never-log" not in response.text
@@ -108,7 +109,7 @@ def test_logs_are_redacted_and_audit_contains_metadata_only(
             ).fetchone()
         )
 
-    assert audit["actor"] == "local-user"
+    assert audit["actor"] == "test-owner"
     assert audit["action"] == "post"
     assert audit["object_type"] == "resources"
     assert audit["result"] == "success"

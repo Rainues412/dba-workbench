@@ -18,7 +18,7 @@ def get_stats():
                 (SELECT COUNT(*) FROM tasks WHERE status != '已完成' AND due_date IS NOT NULL AND due_date < date('now')) AS task_overdue,
                 (SELECT COUNT(*) FROM customers) AS customer_count,
                 (SELECT COUNT(*) FROM resources) AS resource_count,
-                (SELECT COUNT(*) FROM passwords) AS password_count
+                (SELECT COUNT(*) FROM vault_items) AS password_count
         """).fetchone()
         return dict(row)
 

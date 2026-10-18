@@ -52,7 +52,7 @@ class Settings:
             raise ValueError("DBA_MODE must be local, development, or lan")
         if mode == "lan":
             raise ValueError(
-                "DBA_MODE=lan is disabled until authentication and LAN hardening are implemented"
+                "DBA_MODE=lan is disabled until HTTPS and LAN hardening are implemented"
             )
 
         host = env.get("DBA_HOST", "127.0.0.1").strip()

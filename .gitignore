@@ -41,9 +41,14 @@ htmlcov/
 test-results/
 .runtime/
 
+# Frontend dependencies (lockfile and reproducible build output are tracked)
+frontend/node_modules/
+
 # ── 合并版 server（2026-09-24）──
 server/workspace.db
 server/workspace.db-wal
 server/workspace.db-shm
 server/.workspace_secret
+server/.vault_recovery_private.pem
+server/.vault_recovery_public.pem
 server/public.html
