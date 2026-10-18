@@ -39,6 +39,7 @@ __pycache__/
 .coverage
 htmlcov/
 test-results/
+.runtime/
 
 # ── 合并版 server（2026-09-24）──
 server/workspace.db

@@ -17,6 +17,19 @@ pip install -r requirements.txt
 python main.py
 ```
 
+### Windows 桌面启动
+
+安装依赖后，可以直接运行仓库内的 Windows 启动器：
+
+```powershell
+python tools/windows/launch_dba_workbench.py
+```
+
+启动器会使用当前 Python 解释器启动服务，并在默认浏览器中打开工作台。
+运行日志默认写入 `.runtime/logs/server.log`；可通过
+`DBA_WORKBENCH_LOG_DIR` 指定其他日志目录。Windows 快捷方式应在本机创建，
+目标指向此脚本，不要把包含绝对路径的 `.lnk` 文件提交到仓库。
+
 ### 运行隔离测试
 
 测试使用临时 SQLite 数据库和随机 localhost 端口，不会访问
@@ -70,6 +83,8 @@ D:\coding\workspace\
 ├── ops-workbench.html            单文件前端（CSS/JS 全内联）
 ├── README.md
 ├── .gitignore / .gitattributes
+├── assets/                       项目图标源文件与 Windows 图标
+├── tools/windows/                可移植的 Windows 启动器
 ├── server/                       FastAPI 后端
 │   ├── main.py                   入口 :8686（绑 127.0.0.1）
 │   ├── requirements.txt          Python 依赖
