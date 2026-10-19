@@ -164,9 +164,9 @@ def test_edge_can_page_to_and_edit_records_after_200(live_server: str, isolated_
             page.set_default_timeout(10_000)
             _login(page, live_server)
             page.get_by_role("navigation", name="主导航").get_by_role("link", name="脚本库").click()
-            page.get_by_role("spinbutton", name="跳转页码").fill("11")
-            page.get_by_role("spinbutton", name="跳转页码").press("Enter")
-            page.get_by_text("第 11 / 11 页", exact=True).wait_for()
+            page.get_by_role("combobox", name="每页条数").select_option("20")
+            page.get_by_role("button", name="第 11 页", exact=True).click()
+            page.get_by_text("第 11 / 11 页", exact=True).wait_for(state="attached")
             page.get_by_role("button", name="查看/编辑").first.click()
             body = page.get_by_label("脚本正文").input_value()
             assert body.startswith("body ")
@@ -214,6 +214,7 @@ def test_classification_filters_and_page_jump(
             page.set_default_timeout(10_000)
             _login(page, live_server)
             page.get_by_role("navigation", name="主导航").get_by_role("link", name=nav_label).click()
+            page.get_by_role("combobox", name="每页条数").select_option("20")
             databases = page.get_by_role("group", name="数据库分类")
             oracle = databases.get_by_role("button", name=re.compile(r"^Oracle"))
             oracle.wait_for()
@@ -223,13 +224,16 @@ def test_classification_filters_and_page_jump(
             if category_label:
                 categories = page.get_by_role("group", name=category_label, exact=True)
                 categories.get_by_role("button", name=re.compile("^" + category)).click()
-            page.get_by_text("第 1 / 3 页", exact=True).wait_for()
-            page.get_by_role("spinbutton", name="跳转页码").fill("99")
-            page.get_by_role("button", name="跳转", exact=True).click()
-            page.get_by_role("alert").filter(has_text="请输入 1 至 3 的整数页码").wait_for()
-            page.get_by_role("spinbutton", name="跳转页码").fill("3")
-            page.get_by_role("spinbutton", name="跳转页码").press("Enter")
-            page.get_by_text("第 3 / 3 页", exact=True).wait_for()
+            page.get_by_text("第 1 / 3 页", exact=True).wait_for(state="attached")
+            page.get_by_role("button", name="第 3 页", exact=True).click()
+            page.get_by_text("第 3 / 3 页", exact=True).wait_for(state="attached")
+            page.get_by_role("combobox", name="每页条数").select_option("10")
+            page.get_by_text("第 1 / 5 页", exact=True).wait_for(state="attached")
+            assert oracle.get_attribute("aria-pressed") == "true"
+            if category_label:
+                assert categories.get_by_role("button", name=re.compile("^" + category)).get_attribute("aria-pressed") == "true"
+            page.get_by_role("combobox", name="每页条数").select_option("20")
+            page.get_by_text("第 1 / 3 页", exact=True).wait_for(state="attached")
 
             page.get_by_role("button", name="新增", exact=True).click()
             dialog = page.get_by_role("dialog")
@@ -240,11 +244,11 @@ def test_classification_filters_and_page_jump(
             dialog.get_by_role("button", name="取消", exact=True).click()
 
             page.get_by_placeholder("搜索" + ("资源与快捷入口" if module == "resources" else nav_label)).fill("classification-target-040")
-            page.get_by_text("第 1 / 1 页", exact=True).wait_for()
+            page.get_by_text("第 1 / 1 页", exact=True).wait_for(state="attached")
             page.get_by_text("classification-target-040", exact=True).wait_for()
             assert oracle.get_attribute("aria-pressed") == "true"
             page.get_by_placeholder("搜索" + ("资源与快捷入口" if module == "resources" else nav_label)).fill("")
-            page.get_by_text("第 1 / 3 页", exact=True).wait_for()
+            page.get_by_text("第 1 / 3 页", exact=True).wait_for(state="attached")
             databases.get_by_role("button", name=re.compile(r"^MySQL")).click()
             page.get_by_text("mysql-record-0", exact=True).wait_for()
             assert page.get_by_role("button", name="下一页").is_disabled()
@@ -253,6 +257,7 @@ def test_classification_filters_and_page_jump(
 
             page.set_viewport_size({"width": 390, "height": 844})
             assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1")
-            assert page.get_by_role("spinbutton", name="跳转页码").is_visible()
+            assert page.get_by_role("combobox", name="每页条数").is_visible()
+            assert page.get_by_role("button", name="第 1 页", exact=True).get_attribute("aria-current") == "page"
         finally:
             browser.close()

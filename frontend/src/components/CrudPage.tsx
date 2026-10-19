@@ -36,6 +36,7 @@ function CrudContent({ config }: { config: CrudConfig }) {
   const PageIcon = config.icon;
   const client = useQueryClient();
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [keyword, setKeyword] = useState("");
   const [database, setDatabase] = useState("");
   const [category, setCategory] = useState("");
@@ -53,8 +54,8 @@ function CrudContent({ config }: { config: CrudConfig }) {
     enabled: !!config.classification,
   });
   const list = useQuery({
-    queryKey: [config.key, page, keyword, filters],
-    queryFn: () => entityApi.list<Entity>(config.path, page, keyword, filters),
+    queryKey: [config.key, page, pageSize, keyword, filters],
+    queryFn: () => entityApi.list<Entity>(config.path, page, keyword, filters, pageSize),
   });
   const detail = useQuery({
     queryKey: [config.key, "detail", selectedId],
@@ -136,7 +137,7 @@ function CrudContent({ config }: { config: CrudConfig }) {
       {list.isLoading ? <TableSkeleton /> : list.error ? <ErrorState message="数据加载失败" retry={() => void list.refetch()} /> : !list.data?.items.length ? <EmptyState title={`没有${config.title}数据`} description={database || category || keyword ? "当前分类或搜索条件下没有记录，可切换分类、清空搜索或新增记录。" : "可通过右上角按钮创建第一条记录。"} /> : <>
         <div className="table-wrap"><table><thead><tr>{config.columns.map((column) => <th key={column.name}>{column.label}</th>)}<th className="actions-heading"><span className="sr-only">操作</span></th></tr></thead><tbody>{list.data.items.map((row) => <tr key={row.id}>{config.columns.map((column, index) => <td key={column.name} data-label={column.label}><span className={index === 0 ? "primary-cell" : undefined}>{formatCell(row[column.name], column.name)}</span></td>)}<td className="row-actions" data-label="操作"><button className="button small" onClick={() => setSelectedId(row.id)}><Pencil size={14} />查看/编辑</button><button className="button small danger" onClick={() => void remove(row)}><Trash2 size={14} />删除</button></td></tr>)}</tbody></table></div>
       </>}
-      {list.data && !list.error && <Pagination key={`${database}-${category}-${keyword}-${list.data.pages}`} page={list.data.page} pages={list.data.pages} onChange={setPage} />}
+      {list.data && !list.error && <Pagination page={list.data.page} pages={list.data.pages} total={list.data.total} pageSize={pageSize} onChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />}
     </section>
     {(creating || selectedId !== null) && <Editor
       key={creating ? "new" : `${selectedId}-${detail.data?.revision ?? "loading"}`}
