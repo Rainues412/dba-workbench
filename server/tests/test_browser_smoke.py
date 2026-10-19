@@ -74,8 +74,8 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
             page.get_by_role("button", name="创建保险箱").click()
             page.get_by_role("heading", name="请备份管理员恢复密钥").wait_for(timeout=20_000)
             page.get_by_role("button", name="新增条目").click()
-            page.get_by_role("dialog").get_by_label("系统/网站").fill("test-service")
-            page.get_by_role("dialog").get_by_label("账号").fill("test-user")
+            page.get_by_role("dialog").get_by_label("名称或备注").fill("test-service")
+            page.get_by_role("dialog").get_by_label("账号名").fill("test-user")
             page.get_by_role("dialog").get_by_label("密码").fill("test-only-vault-secret")
             page.get_by_role("dialog").get_by_role("button", name="保存").click()
             page.get_by_role("heading", name="test-service").wait_for()
@@ -124,13 +124,19 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
             page.get_by_role("heading", name="CSV Example", exact=True).locator("xpath=ancestor::article").get_by_role("button", name="编辑", exact=True).click()
             dialog = page.get_by_role("dialog")
             long_site = "long-service-" + "x" * 180
-            dialog.get_by_label("系统/网站").fill(long_site)
-            dialog.get_by_label("账号", exact=True).fill("u" * 180 + "@example.test")
+            dialog.get_by_label("名称或备注").fill(long_site)
+            dialog.get_by_label("网址", exact=True).fill("https://example.test/" + "pathsegment/" * 30)
+            dialog.get_by_label("账号名", exact=True).fill("u" * 180 + "@example.test")
             dialog.get_by_label("分类", exact=True).fill("category" * 35)
             dialog.get_by_label("密码", exact=True).fill("test-only-long-secret-" * 20)
             dialog.get_by_role("button", name="保存", exact=True).click()
             long_card = page.locator(".vault-card").filter(has=page.get_by_role("heading", name=long_site, exact=True))
             long_card.wait_for()
+            assert long_card.locator("h3").inner_text() == long_site
+            assert long_card.locator("dt").all_inner_texts() == ["网址", "账号名"]
+            assert long_card.locator("dd").nth(0).inner_text().startswith("https://example.test/")
+            assert long_card.locator("dd").nth(1).inner_text().endswith("@example.test")
+            assert long_card.locator(".vault-card-badges").bounding_box()["x"] > long_card.locator(".vault-select").bounding_box()["x"]
             long_card.get_by_role("button", name="查看", exact=True).click()
             for width in (1440, 1024, 768, 390):
                 page.set_viewport_size({"width": width, "height": 1000})
@@ -139,7 +145,7 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
                     const box = card.getBoundingClientRect();
                     const grid = card.parentElement.getBoundingClientRect();
                     return box.right <= grid.right + 1 && card.scrollWidth <= card.clientWidth + 1 &&
-                        [...card.querySelectorAll('h3, p, .badge, code, button')].every(el => {
+                        [...card.querySelectorAll('h3, p, .badge, code, button, dd')].every(el => {
                             const r = el.getBoundingClientRect();
                             return r.left >= box.left - 1 && r.right <= box.right + 1 &&
                                 (el.tagName === 'CODE' || el.scrollWidth <= el.clientWidth + 1);

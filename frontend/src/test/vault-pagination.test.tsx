@@ -131,7 +131,7 @@ describe("vault complete loading, pagination and favorites", () => {
     fireEvent.click(screen.getByRole("button", { name: "编辑" }));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByRole("checkbox", { name: "收藏此条目" })).toBeChecked();
-    fireEvent.submit(within(dialog).getByLabelText("系统/网站").closest("form")!);
+    fireEvent.submit(within(dialog).getByLabelText("名称或备注").closest("form")!);
     await waitFor(() => expect(updates).toHaveLength(1));
     expect(JSON.parse(String(updates[0].ciphertext)).favorite).toBe(true);
   });
@@ -145,7 +145,7 @@ describe("vault complete loading, pagination and favorites", () => {
     fireEvent.click(screen.getByRole("button", { name: "编辑" }));
     const dialog = screen.getByRole("dialog");
     fireEvent.click(within(dialog).getByRole("checkbox", { name: "收藏此条目" }));
-    fireEvent.submit(within(dialog).getByLabelText("系统/网站").closest("form")!);
+    fireEvent.submit(within(dialog).getByLabelText("名称或备注").closest("form")!);
     await waitFor(() => expect(updates).toHaveLength(2));
     expect(updates[1].revision).toBe(2);
     expect(JSON.parse(String(updates[1].ciphertext)).favorite).toBe(false);

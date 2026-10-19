@@ -389,20 +389,28 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .callout-icon { flex: 0 0 auto; width: 43px; height: 43px; border-radius: 12px; color: var(--warning); background: color-mix(in srgb, var(--warning) 12%, var(--surface)); }
 .migration-banner { margin-bottom: 1rem; padding: .75rem .85rem; border: 1px solid color-mix(in srgb, var(--warning) 20%, var(--border)); border-radius: 10px; background: var(--warning-soft); }
 .vault-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 285px), 1fr)); gap: .85rem; padding: 0 1.15rem 1.15rem; }
-.vault-card { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 1rem; padding: 1rem; border: 1px solid var(--border); border-radius: 13px; background: var(--surface-soft); transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease; }
+.vault-card { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr); align-content: start; gap: .9rem; padding: 1rem; border: 1px solid var(--border); border-radius: 13px; background: var(--surface-soft); transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease; }
 .vault-card:hover { border-color: color-mix(in srgb, var(--primary) 32%, var(--border)); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
-.vault-card-heading { display: flex; align-items: flex-start; gap: .75rem; }
+.vault-card-top { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: .75rem; }
+.vault-card-badges { display: flex; min-width: 0; flex-wrap: wrap; justify-content: flex-end; gap: .35rem; }
+.vault-card-heading { display: flex; min-width: 0; align-items: center; gap: .75rem; padding-bottom: .15rem; }
 .vault-selection { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; padding: 0 1.15rem 1rem; }
 .vault-card.is-selected { border-color: var(--primary); background: var(--primary-soft); }
-.vault-select { justify-self: start; font-size: .72rem; color: var(--muted); }
+.vault-select { flex: 0 0 auto; font-size: .72rem; color: var(--muted); }
 .vault-card-heading > div { min-width: 0; flex: 1; overflow-wrap: anywhere; }
 .vault-card .badge { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .vault-item-icon { flex: 0 0 auto; width: 39px; height: 39px; border-radius: 11px; }
-.vault-card h3 { margin: .42rem 0 .18rem; }
+.vault-field-label { display: block; color: var(--muted); font-size: .65rem; font-weight: 650; letter-spacing: .03em; }
+.vault-card h3 { margin: .18rem 0 0; font-size: 1rem; line-height: 1.35; overflow-wrap: anywhere; }
 .vault-card p { margin-bottom: 0; font-size: .72rem; }
-.secret-row { display: flex; min-width: 0; align-items: center; gap: .4rem; padding: .5rem; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); }
+.vault-card-details { display: grid; min-width: 0; gap: .62rem; margin: 0; padding: .78rem 0; border-block: 1px solid var(--border); }
+.vault-card-details > div { display: grid; min-width: 0; grid-template-columns: 70px minmax(0, 1fr); align-items: start; gap: .6rem; }
+.vault-card-details dt { display: flex; align-items: center; gap: .35rem; color: var(--muted); font-size: .7rem; font-weight: 650; }
+.vault-card-details dd { min-width: 0; margin: 0; color: var(--text-strong); font-size: .76rem; line-height: 1.45; overflow-wrap: anywhere; }
+.secret-row { display: flex; min-width: 0; align-items: center; gap: .4rem; padding: .58rem; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); }
 .secret-row code { min-width: 0; flex: 1; overflow: hidden; padding-left: .25rem; color: var(--text-strong); font-size: .75rem; text-overflow: ellipsis; white-space: nowrap; }
 .secret-row .button { flex-shrink: 0; }
+.vault-card > .row-actions { justify-content: flex-end; max-width: none; padding-top: .1rem; }
 .file-button { display: inline-flex; align-items: center; justify-content: center; color: var(--text); cursor: pointer; }
 
 .list-filters { display: flex; flex-wrap: wrap; gap: 1rem; align-items: end; padding: 0 1.15rem 1rem; }
