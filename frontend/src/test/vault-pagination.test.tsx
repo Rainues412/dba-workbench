@@ -118,14 +118,15 @@ describe("vault complete loading, pagination and favorites", () => {
     expect(screen.getByRole("heading", { name: "Site 2" })).toBeInTheDocument();
   });
 
-  it("loads every cipher page and searches beyond the first 200 records", async () => {
+  it("loads every cipher page, places favorites first and searches globally", async () => {
     await unlock();
     await screen.findByRole("heading", { name: "Site 1" });
     expect(requests).toContain("/api/vault/items?page=2&page_size=200");
     expect(screen.getByText("共 201 条")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Site 201" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "第 11 页" }));
     expect(screen.getByRole("heading", { name: "Site 201" })).toBeInTheDocument();
+    expect(document.querySelector(".vault-card h3")?.textContent).toBe("Site 201");
+    fireEvent.click(screen.getByRole("button", { name: "第 11 页" }));
+    expect(screen.getByRole("heading", { name: "Site 200" })).toBeInTheDocument();
     fireEvent.change(screen.getByRole("textbox", { name: "搜索保险箱" }), { target: { value: "Site 201" } });
     expect(screen.getByText("共 1 条")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "第 1 页" })).toHaveAttribute("aria-current", "page");
@@ -134,7 +135,7 @@ describe("vault complete loading, pagination and favorites", () => {
   it("filters favorites globally and preserves the favorite when editing", async () => {
     await unlock();
     await screen.findByRole("heading", { name: "Site 1" });
-    fireEvent.click(screen.getByRole("checkbox", { name: "仅收藏" }));
+    fireEvent.click(screen.getByRole("button", { name: "仅看收藏" }));
     expect(screen.getByRole("heading", { name: "Site 201" })).toBeInTheDocument();
     expect(screen.getByText("共 1 条")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "编辑" }));
@@ -161,7 +162,7 @@ describe("vault complete loading, pagination and favorites", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     await unlock();
     await screen.findByRole("heading", { name: "Site 1" });
-    fireEvent.click(screen.getByRole("checkbox", { name: "仅收藏" }));
+    fireEvent.click(screen.getByRole("button", { name: "仅看收藏" }));
     fireEvent.click(screen.getByRole("button", { name: "编辑" }));
     const dialog = screen.getByRole("dialog");
     fireEvent.click(within(dialog).getByRole("checkbox", { name: "收藏此条目" }));

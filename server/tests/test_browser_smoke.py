@@ -74,10 +74,13 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
             page.get_by_role("button", name="创建保险箱").click()
             page.get_by_role("heading", name="请备份管理员恢复密钥").wait_for(timeout=20_000)
             page.get_by_role("button", name="新增条目").click()
-            page.get_by_role("dialog").get_by_label("名称或备注").fill("test-service")
-            page.get_by_role("dialog").get_by_label("账号名").fill("test-user")
-            page.get_by_role("dialog").get_by_label("密码").fill("test-only-vault-secret")
-            page.get_by_role("dialog").get_by_role("button", name="保存").click()
+            editor = page.get_by_role("dialog")
+            assert editor.get_by_role("checkbox", name="收藏此条目").count() == 1
+            assert editor.locator(".vault-switch-track").evaluate("element => getComputedStyle(element).borderRadius") == "999px"
+            editor.get_by_label("名称或备注").fill("test-service")
+            editor.get_by_label("账号名").fill("test-user")
+            editor.get_by_label("密码").fill("test-only-vault-secret")
+            editor.get_by_role("button", name="保存").click()
             page.get_by_role("heading", name="test-service").wait_for()
             assert "test-only-vault-secret" not in page.locator("body").inner_text()
 
@@ -144,6 +147,7 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
             assert selection_style == {"appearance": "auto", "minHeight": "0px", "boxShadow": "none"}
             long_card.get_by_role("button", name=f"收藏 {long_site}", exact=True).click()
             long_card.get_by_role("button", name=f"取消收藏 {long_site}", exact=True).wait_for()
+            assert page.locator(".vault-card h3").first.inner_text() == long_site
             long_card.get_by_role("button", name="查看", exact=True).click()
             for width in (1440, 1024, 768, 390):
                 page.set_viewport_size({"width": width, "height": 1000})
@@ -161,7 +165,10 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
 
             long_card.get_by_role("button", name="隐藏", exact=True).click()
             assert long_card.locator("code").inner_text() == "••••••••••••"
-            page.get_by_role("checkbox", name="全选当前页", exact=True).check()
+            select_all = page.get_by_role("checkbox", name="全选当前页", exact=True)
+            assert select_all.evaluate("element => getComputedStyle(element).appearance") == "none"
+            assert select_all.locator("xpath=ancestor::label").evaluate("element => getComputedStyle(element).borderRadius") == "9px"
+            select_all.check()
             page.get_by_text("已选 2 条", exact=True).wait_for()
             page.once("dialog", lambda dialog: dialog.dismiss())
             page.get_by_role("button", name="删除所选", exact=True).click()
