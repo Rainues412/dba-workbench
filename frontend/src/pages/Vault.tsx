@@ -289,7 +289,7 @@ export function Vault() {
                 <label className="checkbox-label vault-select"><input type="checkbox" aria-label={`选择 ${entry.secret.site}`} disabled={deleting} checked={isSelected} onChange={(event) => { const checked = event.target.checked; setSelected((current) => { const next = new Set(current); if (checked) next.add(entry.cipher.item_key); else next.delete(entry.cipher.item_key); return next; }); }} /><span>选择</span></label>
                 <div className="vault-card-badges"><span className="badge">{entry.secret.category || "未分类"}</span>{entry.secret.favorite && <span className="badge"><Star size={13} />已收藏</span>}</div>
               </div>
-              <div className="vault-card-heading"><span className="vault-item-icon"><KeyRound size={18} /></span><div><span className="vault-field-label">名称或备注</span><h3>{entry.secret.site}</h3></div></div>
+              <div className="vault-card-heading"><span className="vault-item-icon"><KeyRound size={18} /></span><div><h3>{entry.secret.site}</h3></div></div>
               <dl className="vault-card-details">
                 <div><dt><Globe2 size={14} />网址</dt><dd>{entry.secret.url || "未填写网址"}</dd></div>
                 <div><dt><UserRound size={14} />账号名</dt><dd>{entry.secret.username || "未填写账号"}</dd></div>
