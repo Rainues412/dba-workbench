@@ -95,15 +95,23 @@ describe("vault complete loading, pagination and favorites", () => {
 
   it("clears selection on page and filter changes and selects only the current page", async () => {
     await unlock(); await screen.findByRole("heading", { name: "Site 1" });
-    fireEvent.click(screen.getByRole("checkbox", { name: "全选当前页" }));
-    expect(screen.getByText("已选 20 条")).toBeInTheDocument();
+    const selectAll = screen.getByRole("checkbox", { name: "全选当前页" });
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择 Site 1" }));
+    expect(selectAll).not.toBeChecked();
+    expect((selectAll as HTMLInputElement).indeterminate).toBe(true);
+    expect(screen.getByText("已选 1 / 20 条").closest("label")).toHaveClass("has-selection");
+    expect(screen.getByText("已选 1 / 20 条").closest("label")).not.toHaveClass("is-all-selected");
+    fireEvent.click(selectAll);
+    expect(selectAll).toBeChecked();
+    expect((selectAll as HTMLInputElement).indeterminate).toBe(false);
+    expect(screen.getByText("本页已全选 20 条").closest("label")).toHaveClass("is-all-selected");
     fireEvent.click(screen.getByRole("button", { name: "第 2 页" }));
-    expect(screen.getByText("已选 0 条")).toBeInTheDocument();
+    expect(screen.getByText("全选当前页 20 条")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("checkbox", { name: "全选当前页" }));
     fireEvent.change(screen.getByRole("textbox", { name: "搜索保险箱" }), { target: { value: "Site 201" } });
-    expect(screen.getByText("已选 0 条")).toBeInTheDocument();
+    expect(screen.getByText("全选当前页 1 条")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("checkbox", { name: "全选当前页" }));
-    expect(screen.getByText("已选 1 条")).toBeInTheDocument();
+    expect(screen.getByText("本页已全选 1 条")).toBeInTheDocument();
   });
 
   it("stops bulk deletion on conflict and reports partial completion without force retry", async () => {

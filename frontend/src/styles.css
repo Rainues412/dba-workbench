@@ -394,22 +394,25 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .vault-card-top { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: .75rem; }
 .vault-card-badges { display: flex; min-width: 0; flex-wrap: wrap; justify-content: flex-end; gap: .35rem; }
 .vault-card-heading { display: flex; min-width: 0; align-items: center; gap: .75rem; padding-bottom: .15rem; }
-.vault-selection { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; padding: 0 1.15rem 1rem; }
+.vault-selection { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding: 0 1.15rem 1rem; }
 .vault-card.is-selected { border-color: var(--primary); background: var(--primary-soft); }
 .vault-select { display: inline-flex; flex: 0 0 auto; align-items: center; padding: 1px; cursor: pointer; }
 .vault-select input[type="checkbox"] { appearance: auto; width: 16px; height: 16px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 3px; outline: 0; box-shadow: none; background: transparent; accent-color: var(--primary); cursor: pointer; }
 .vault-select input[type="checkbox"]:hover, .vault-select input[type="checkbox"]:focus, .vault-select input[type="checkbox"]:focus-visible { border: 0; outline: 0; box-shadow: none; background: transparent; }
 .vault-select input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .vault-choice { cursor: pointer; user-select: none; }
-.vault-choice input[type="checkbox"] { appearance: none; display: grid; place-content: center; flex: 0 0 auto; width: 18px; height: 18px; margin: 0; border: 1.5px solid color-mix(in srgb, var(--muted) 52%, var(--border)); border-radius: 5px; background: var(--surface); cursor: pointer; transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
-.vault-choice input[type="checkbox"]::after { content: ""; width: 8px; height: 4px; border: solid white; border-width: 0 0 2px 2px; opacity: 0; transform: translateY(-1px) rotate(-45deg) scale(.7); transition: opacity .12s ease, transform .12s ease; }
-.vault-choice input[type="checkbox"]:checked, .vault-choice input[type="checkbox"]:indeterminate { border-color: var(--primary); background: var(--primary); }
+.vault-choice input[type="checkbox"] { appearance: none; display: grid; place-content: center; flex: 0 0 auto; width: 16px; height: 16px; margin: 0; border: 1.5px solid color-mix(in srgb, var(--muted) 52%, var(--border)); border-radius: 4px; background: var(--surface); cursor: pointer; transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+.vault-choice input[type="checkbox"]::after { content: ""; width: 7px; height: 3px; border: solid white; border-width: 0 0 2px 2px; opacity: 0; transform: translateY(-1px) rotate(-45deg) scale(.7); transition: opacity .12s ease, transform .12s ease; }
+.vault-choice input[type="checkbox"]:checked { border-color: var(--primary); background: var(--primary); }
 .vault-choice input[type="checkbox"]:checked::after { opacity: 1; transform: translateY(-1px) rotate(-45deg) scale(1); }
-.vault-choice input[type="checkbox"]:indeterminate::after { width: 8px; height: 0; border-width: 0 0 2px; opacity: 1; transform: none; }
+.vault-choice input[type="checkbox"]:indeterminate { border-color: color-mix(in srgb, var(--primary) 55%, var(--border)); background: var(--surface); }
+.vault-choice input[type="checkbox"]:indeterminate::after { width: 7px; height: 0; border-color: var(--primary); border-width: 0 0 2px; opacity: 1; transform: none; }
 .vault-choice input[type="checkbox"]:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--primary-soft); }
 .vault-choice input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
-.vault-select-all { min-height: 36px; padding: .4rem .65rem; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); }
-.vault-select-all:hover { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); background: var(--surface-tint); }
+.vault-select-all { min-height: 31px; gap: .4rem; padding: .3rem .5rem; color: var(--muted); border: 1px solid transparent; border-radius: 7px; background: transparent; font-size: .72rem; font-weight: 650; line-height: 1; transition: color .15s ease, border-color .15s ease, background .15s ease; }
+.vault-select-all:hover { color: var(--text); border-color: var(--border); background: var(--surface-tint); }
+.vault-select-all.has-selection { color: var(--text); background: var(--surface-soft); }
+.vault-select-all.is-all-selected { color: var(--primary); border-color: color-mix(in srgb, var(--primary) 22%, transparent); background: var(--primary-soft); }
 .vault-filter-toggle.is-active { color: #a96810; border-color: color-mix(in srgb, #d99b2b 42%, var(--border)); background: color-mix(in srgb, #f5b942 13%, var(--surface)); }
 .vault-favorite-action { width: 30px; height: 30px; color: var(--muted); border: 1px solid transparent; border-radius: 999px; }
 .vault-favorite-action:hover:not(:disabled) { color: #a96810; border-color: color-mix(in srgb, #d99b2b 35%, var(--border)); background: color-mix(in srgb, #f5b942 10%, var(--surface)); }

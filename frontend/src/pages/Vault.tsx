@@ -71,6 +71,9 @@ export function Vault() {
   const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, pages);
   const visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const visibleSelectedCount = visible.filter((entry) => selected.has(entry.cipher.item_key)).length;
+  const allVisibleSelected = visible.length > 0 && visibleSelectedCount === visible.length;
+  const someVisibleSelected = visibleSelectedCount > 0 && !allVisibleSelected;
 
   useLayoutEffect(() => {
     if (paginationTop.current === null) return;
@@ -299,8 +302,7 @@ export function Vault() {
         <section className="panel data-panel" ref={panelRef}><div className="toolbar"><label className="search-field"><Search size={17} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="在全部已解锁条目中搜索" aria-label="搜索保险箱" /></label><button className={`button vault-filter-toggle${favoritesOnly ? " is-active" : ""}`} aria-pressed={favoritesOnly} onClick={() => { setFavoritesOnly((current) => !current); setPage(1); }}><Star size={16} fill={favoritesOnly ? "currentColor" : "none"} />仅看收藏</button><div className="button-row"><button className="button" onClick={() => void downloadBackup()}><Download size={16} />加密备份</button><label className="button file-button"><Upload size={16} />恢复加密备份<input className="sr-only" type="file" accept="application/json,.json" onChange={(event) => void restoreBackup(event)} /></label><button className="button primary" onClick={() => reauthenticated ? setEditing("new") : setError("新增前请重新验证登录密码")}><Plus size={17} />新增条目</button></div></div>
           {(legacyLocal.length > 0 || (legacyStatus.data?.backend_entries ?? 0) > 0) && <div className="migration-banner"><span>检测到 {legacyLocal.length} 条浏览器旧数据和 {legacyStatus.data?.backend_entries ?? 0} 条后端旧数据。</span><button className="button" onClick={() => void migrateLegacy()}>迁移并校验</button></div>}
           {!items.isLoading && !items.error && visible.length > 0 && <div className="vault-selection">
-            <label className="checkbox-label vault-choice vault-select-all"><input type="checkbox" disabled={deleting} checked={visible.every((entry) => selected.has(entry.cipher.item_key))} ref={(input) => { if (input) input.indeterminate = visible.some((entry) => selected.has(entry.cipher.item_key)) && !visible.every((entry) => selected.has(entry.cipher.item_key)); }} onChange={(event) => setSelected(event.target.checked ? new Set(visible.map((entry) => entry.cipher.item_key)) : new Set())} /><span>全选当前页</span></label>
-            <span className="muted">已选 {visible.filter((entry) => selected.has(entry.cipher.item_key)).length} 条</span>
+            <label className={`checkbox-label vault-choice vault-select-all${allVisibleSelected ? " is-all-selected" : someVisibleSelected ? " has-selection" : ""}`}><input type="checkbox" aria-label="全选当前页" disabled={deleting} checked={allVisibleSelected} ref={(input) => { if (input) input.indeterminate = someVisibleSelected; }} onChange={(event) => setSelected(event.target.checked ? new Set(visible.map((entry) => entry.cipher.item_key)) : new Set())} /><span>{allVisibleSelected ? `本页已全选 ${visible.length} 条` : someVisibleSelected ? `已选 ${visibleSelectedCount} / ${visible.length} 条` : `全选当前页 ${visible.length} 条`}</span></label>
             <button className="button small" disabled={deleting || !selected.size} onClick={() => setSelected(new Set())}>取消选择</button>
             <button className="button small danger" disabled={deleting || !selected.size} onClick={() => void removeEntries(visible.filter((entry) => selected.has(entry.cipher.item_key)))}><Trash2 size={14} />{deleting ? "正在删除…" : "删除所选"}</button>
           </div>}

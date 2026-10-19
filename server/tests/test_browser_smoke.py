@@ -167,9 +167,17 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
             assert long_card.locator("code").inner_text() == "••••••••••••"
             select_all = page.get_by_role("checkbox", name="全选当前页", exact=True)
             assert select_all.evaluate("element => getComputedStyle(element).appearance") == "none"
-            assert select_all.locator("xpath=ancestor::label").evaluate("element => getComputedStyle(element).borderRadius") == "9px"
+            select_all_label = select_all.locator("xpath=ancestor::label")
+            assert select_all_label.evaluate("element => getComputedStyle(element).borderRadius") == "7px"
+            page.locator(".vault-card").first.locator('input[type="checkbox"]').check()
+            assert not select_all.is_checked()
+            assert select_all.evaluate("element => element.indeterminate") is True
+            assert "has-selection" in (select_all_label.get_attribute("class") or "")
+            assert "is-all-selected" not in (select_all_label.get_attribute("class") or "")
             select_all.check()
-            page.get_by_text("已选 2 条", exact=True).wait_for()
+            assert select_all.evaluate("element => element.indeterminate") is False
+            assert "is-all-selected" in (select_all_label.get_attribute("class") or "")
+            page.get_by_text("本页已全选 2 条", exact=True).wait_for()
             page.once("dialog", lambda dialog: dialog.dismiss())
             page.get_by_role("button", name="删除所选", exact=True).click()
             assert page.locator(".vault-card").count() == 2
