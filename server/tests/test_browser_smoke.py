@@ -168,6 +168,10 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
             select_all = page.get_by_role("checkbox", name="全选当前页", exact=True)
             assert select_all.evaluate("element => getComputedStyle(element).appearance") == "none"
             select_all_label = select_all.locator("xpath=ancestor::label")
+            assert select_all.evaluate("element => getComputedStyle(element).width") == "16px"
+            assert select_all.evaluate("element => getComputedStyle(element).height") == "16px"
+            assert select_all.evaluate("element => getComputedStyle(element).padding") == "0px"
+            assert select_all_label.evaluate("element => getComputedStyle(element).minHeight") == "31px"
             assert select_all_label.evaluate("element => getComputedStyle(element).borderRadius") == "7px"
             page.locator(".vault-card").first.locator('input[type="checkbox"]').check()
             assert not select_all.is_checked()

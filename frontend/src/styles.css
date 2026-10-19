@@ -401,7 +401,7 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .vault-select input[type="checkbox"]:hover, .vault-select input[type="checkbox"]:focus, .vault-select input[type="checkbox"]:focus-visible { border: 0; outline: 0; box-shadow: none; background: transparent; }
 .vault-select input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 .vault-choice { cursor: pointer; user-select: none; }
-.vault-choice input[type="checkbox"] { appearance: none; display: grid; place-content: center; flex: 0 0 auto; width: 16px; height: 16px; margin: 0; border: 1.5px solid color-mix(in srgb, var(--muted) 52%, var(--border)); border-radius: 4px; background: var(--surface); cursor: pointer; transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+.vault-choice input[type="checkbox"] { appearance: none; display: grid; place-content: center; flex: 0 0 auto; width: 16px; min-width: 0; height: 16px; min-height: 0; margin: 0; padding: 0; border: 1.5px solid color-mix(in srgb, var(--muted) 52%, var(--border)); border-radius: 4px; background: var(--surface); cursor: pointer; transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
 .vault-choice input[type="checkbox"]::after { content: ""; width: 7px; height: 3px; border: solid white; border-width: 0 0 2px 2px; opacity: 0; transform: translateY(-1px) rotate(-45deg) scale(.7); transition: opacity .12s ease, transform .12s ease; }
 .vault-choice input[type="checkbox"]:checked { border-color: var(--primary); background: var(--primary); }
 .vault-choice input[type="checkbox"]:checked::after { opacity: 1; transform: translateY(-1px) rotate(-45deg) scale(1); }
