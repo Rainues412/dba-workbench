@@ -250,20 +250,30 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .dashboard-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.15rem; }
 .task-panel, .database-panel { min-height: 330px; }
 .task-list { padding: 0; margin: 0; list-style: none; }
-.task-list li { display: flex; align-items: center; gap: .75rem; padding: .8rem .2rem; border-top: 1px solid var(--border); }
+.task-list li { position: relative; display: flex; align-items: center; gap: .75rem; margin-top: .35rem; padding: .68rem .65rem .68rem .8rem; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.task-list li::before { content: ""; position: absolute; inset: 8px auto 8px 0; width: 3px; border-radius: 0 999px 999px 0; background: var(--muted-soft); }
+.task-list li.task-priority-high::before { background: #dc2626; }
+.task-list li.task-priority-medium::before { background: #d97706; }
+.task-list li.task-priority-low::before { background: #4f72b8; }
 .task-status-icon { flex: 0 0 auto; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; color: var(--primary); background: var(--primary-soft); }
 .task-status-icon.overdue { color: var(--danger); background: var(--danger-soft); }
 .task-copy { min-width: 0; flex: 1; }
 .task-copy strong, .task-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-copy strong { color: var(--text-strong); font-size: .8rem; }
 .task-copy small { margin-top: .2rem; color: var(--muted); font-size: .68rem; }
+.task-badges { display: flex; flex: 0 0 auto; align-items: center; gap: .4rem; }
+.priority-badge { display: inline-flex; align-items: center; min-height: 23px; padding: .16rem .48rem; border: 1px solid transparent; border-radius: 999px; font-size: .64rem; font-weight: 800; line-height: 1; white-space: nowrap; }
+.priority-badge.high { color: #b91c1c; border-color: #fecaca; background: #fef2f2; }
+.priority-badge.medium { color: #b45309; border-color: #fde68a; background: #fffbeb; }
+.priority-badge.low { color: #365d9d; border-color: #c9d8f1; background: #f2f6fc; }
+.priority-badge.neutral { color: var(--muted); border-color: var(--border); background: var(--surface-soft); }
 .database-panel .panel-title h2 { display: flex; align-items: center; gap: .45rem; }
 .database-distribution-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; }
 .database-distribution-item { min-width: 0; padding: .72rem; border: 1px solid var(--border); border-radius: 12px; background: color-mix(in srgb, var(--surface) 96%, var(--surface-soft)); }
 .database-label { display: inline-flex; align-items: center; max-width: 100%; gap: .5rem; padding: .28rem .55rem .28rem .3rem; border-radius: 8px; font-size: .7rem; }
 .database-label strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.database-logo { display: grid; flex: 0 0 auto; place-items: center; width: 24px; height: 24px; padding: 2px; overflow: hidden; border-radius: 6px; background: #fff; }
-.database-logo img, .database-logo svg { display: block; width: 20px; height: 20px; object-fit: contain; }
+.database-logo { display: grid; flex: 0 0 auto; place-items: center; width: 24px; height: 24px; }
+.database-logo img, .database-logo svg { display: block; width: 22px; height: 22px; object-fit: contain; }
 .database-bar-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: .55rem; margin-top: .65rem; }
 .database-bar-row > strong { min-width: 1.8rem; color: var(--text-strong); font-size: .72rem; text-align: right; }
 .progress-track { height: 7px; overflow: hidden; border-radius: 999px; background: var(--surface-soft); }
@@ -430,7 +440,7 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
   .dashboard-hero h1 { font-size: 2rem; }
   .task-list li { align-items: flex-start; flex-wrap: wrap; }
   .task-copy { width: calc(100% - 48px); }
-  .task-list .badge { margin-left: 46px; }
+  .task-badges { width: 100%; margin-left: 46px; }
   .secret-row { flex-wrap: wrap; }
   .secret-row code { flex-basis: 100%; }
 }

@@ -6,12 +6,12 @@ import {
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
-import linuxIcon from "../../../linux-icon.png";
-import mysqlIcon from "../../../mysql-icon.png";
-import oracleIcon from "../../../oracle-icon.png";
-import otherIcon from "../../../other-icon.png";
-import postgresqlIcon from "../../../postgresql-icon.png";
-import sqlServerIcon from "../../../sqlserver-icon.png";
+import linuxIcon from "../assets/database/linux.svg";
+import mysqlIcon from "../assets/database/mysql.svg";
+import oracleIcon from "../assets/database/oracle.svg";
+import otherIcon from "../assets/database/other.svg";
+import postgresqlIcon from "../assets/database/postgresql.svg";
+import sqlServerIcon from "../assets/database/sqlserver.svg";
 
 type Stats = Record<"script_count" | "article_count" | "task_total" | "task_pending" | "task_overdue" | "customer_count" | "resource_count" | "password_count", number>;
 type Task = { id: number; title: string; priority: string; due_date?: string; is_overdue: number };
@@ -73,11 +73,17 @@ export function Dashboard() {
           <div><p className="eyebrow">PRIORITY QUEUE</p><h2>近期未完成任务</h2></div>
           <Link className="text-link" to="/tasks">查看全部 <ArrowRight size={15} /></Link>
         </div>
-        {!tasks.data?.length ? <EmptyState title="任务队列已清空" description="暂时没有待处理任务，可以专注处理当前工作。" icon={CheckCircle2} /> : <ul className="task-list">{tasks.data.map((task) => <li key={task.id}>
-          <span className={`task-status-icon${task.is_overdue ? " overdue" : ""}`}>{task.is_overdue ? <TriangleAlert size={17} /> : <Clock3 size={17} />}</span>
-          <span className="task-copy"><strong>{task.title}</strong><small>{task.priority}优先级{task.due_date ? ` · 截止 ${task.due_date}` : " · 未设置截止日期"}</small></span>
-          <span className={`badge${task.is_overdue ? " danger" : ""}`}>{task.is_overdue ? "已逾期" : "待处理"}</span>
-        </li>)}</ul>}
+        {!tasks.data?.length ? <EmptyState title="任务队列已清空" description="暂时没有待处理任务，可以专注处理当前工作。" icon={CheckCircle2} /> : <ul className="task-list">{tasks.data.map((task) => {
+          const priority = getPriorityMeta(task.priority);
+          return <li className={`task-priority-${priority.tone}`} key={task.id}>
+            <span className={`task-status-icon${task.is_overdue ? " overdue" : ""}`}>{task.is_overdue ? <TriangleAlert size={17} /> : <Clock3 size={17} />}</span>
+            <span className="task-copy"><strong>{task.title}</strong><small>{task.due_date ? `截止 ${task.due_date}` : "未设置截止日期"}</small></span>
+            <span className="task-badges">
+              <span className={`priority-badge ${priority.tone}`}>{priority.label}</span>
+              <span className={`badge${task.is_overdue ? " danger" : ""}`}>{task.is_overdue ? "已逾期" : "待处理"}</span>
+            </span>
+          </li>;
+        })}</ul>}
       </section>
 
       <section className="panel database-panel">
@@ -123,6 +129,13 @@ function RedisIcon() {
     <path d="M4 11l8 4 8-4" />
     <path d="M4 15l8 4 8-4" />
   </svg>;
+}
+
+function getPriorityMeta(priority: string) {
+  if (["P0", "高", "紧急"].includes(priority)) return { tone: "high", label: priority === "P0" ? "P0 紧急" : "高优先级" };
+  if (["P1", "中", "重要"].includes(priority)) return { tone: "medium", label: priority === "P1" ? "P1 重要" : "中优先级" };
+  if (["P2", "低", "一般"].includes(priority)) return { tone: "low", label: priority === "P2" ? "P2 一般" : "低优先级" };
+  return { tone: "neutral", label: priority || "未设置优先级" };
 }
 
 function Page({ children }: { children: React.ReactNode }) { return <div className="page dashboard-page">{children}</div>; }
