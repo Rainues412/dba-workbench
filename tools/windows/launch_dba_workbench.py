@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import socket
 import subprocess
@@ -16,6 +17,7 @@ from pathlib import Path
 
 REPO_DIR = Path(__file__).resolve().parents[2]
 SERVER_DIR = REPO_DIR / "server"
+LOCAL_CONFIG = REPO_DIR / ".runtime" / "local-capabilities.json"
 VENV_PYTHON = REPO_DIR / ".runtime" / ".venv" / "Scripts" / "python.exe"
 EDGE_PATH = Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
 HOST = "127.0.0.1"
@@ -44,6 +46,14 @@ def probe_service() -> str:
 def start_server() -> bool:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
+    if LOCAL_CONFIG.is_file():
+        config = json.loads(LOCAL_CONFIG.read_text(encoding="utf-8"))
+        roots = config.get("allowed_roots") if isinstance(config, dict) else None
+        if not isinstance(roots, list) or not roots or not all(isinstance(root, str) and root.strip() for root in roots):
+            raise ValueError(f"本机打开配置缺少有效 allowed_roots：{LOCAL_CONFIG}")
+        env.setdefault("DBA_LOCAL_CAPABILITIES", "true")
+        env.setdefault("DBA_ALLOWED_ROOTS", os.pathsep.join(roots))
+        env.setdefault("DBA_ALLOWED_LOCAL_ACTIONS", "edit,folder,open")
     env.update(
         {
             "DBA_MODE": "local",
@@ -104,7 +114,7 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
-    except (OSError, SystemExit) as error:
+    except (OSError, ValueError, SystemExit) as error:
         if os.name == "nt":
             import ctypes
 

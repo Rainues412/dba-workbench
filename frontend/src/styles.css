@@ -215,6 +215,18 @@ tbody tr { transition: background .13s ease; }
 tbody tr:hover { background: color-mix(in srgb, var(--primary-soft) 48%, transparent); }
 tbody tr:last-child td { border-bottom: 0; }
 .primary-cell { color: var(--text-strong); font-weight: 680; }
+.record-links { display: grid; gap: .4rem; min-width: 0; max-width: 380px; }
+.record-title-link { display: inline-flex; align-items: baseline; justify-self: start; gap: .35rem; max-width: 100%; padding: 0; border: 0; color: var(--primary); background: none; text-align: left; text-decoration: none; font: inherit; cursor: pointer; }
+.record-title-link:hover { text-decoration: underline; }
+.record-title-link span { overflow-wrap: anywhere; }
+.record-title-link svg { flex: 0 0 auto; }
+.record-title-link:disabled, .record-path-link:disabled { opacity: .5; cursor: wait; }
+.record-path-line { display: flex; align-items: center; gap: .45rem; min-width: 0; max-width: 100%; }
+.record-path-link { display: inline-flex; align-items: center; gap: .3rem; min-width: 0; max-width: 100%; padding: .2rem .35rem; border: 0; border-radius: 4px; color: var(--muted); background: var(--surface-soft); cursor: pointer; font-size: .68rem; font-weight: 400; text-align: left; }
+.record-path-link span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.record-path-link svg { flex: 0 0 auto; }
+.record-path-link:hover { color: var(--primary); }
+.record-copy-path { display: inline-flex; align-items: center; flex: 0 0 auto; gap: .2rem; padding: .2rem; border: 0; color: var(--primary); background: none; cursor: pointer; font-size: .65rem; font-weight: 500; }
 td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .actions-heading { width: 190px; }
 .pagination { justify-content: flex-end; flex-wrap: wrap; gap: .85rem; margin-top: 0; }

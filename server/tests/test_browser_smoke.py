@@ -310,3 +310,59 @@ def test_pagination_stays_visible_during_loading_and_cached_page_changes(live_se
             assert all(state["rows"] > 0 and state["visible"] for state in during_loading), during_loading
         finally:
             browser.close()
+
+
+@pytest.mark.browser
+@pytest.mark.parametrize(
+    "module,nav_label,path_field,open_label,open_mode",
+    [("scripts", "脚本库", "file_path", "打开脚本", "edit"),
+     ("articles", "知识库", "file_path", "打开文档", "open"),
+     ("resources", "资源中心", "path", "打开资源", "open")],
+)
+def test_local_file_shortcuts_in_each_library(
+    live_server, tmp_path, monkeypatch, module, nav_label, path_field, open_label, open_mode,
+):
+    from types import SimpleNamespace
+    from backend import local_capabilities
+    from backend.config import Settings
+    from backend.routers import launcher
+
+    target = tmp_path / "快捷打开 测试.sql"
+    target.write_text("select 1;", encoding="utf-8")
+    settings = Settings.from_env({"DBA_LOCAL_CAPABILITIES": "true", "DBA_ALLOWED_ROOTS": str(tmp_path), "DBA_ALLOWED_LOCAL_ACTIONS": "edit,folder,open"})
+    monkeypatch.setattr(local_capabilities, "settings", settings)
+    monkeypatch.setattr(launcher, "settings", settings)
+    monkeypatch.setattr(launcher, "EDITORS", [])
+    commands, opened = [], []
+    monkeypatch.setattr(launcher, "subprocess", SimpleNamespace(Popen=lambda args: commands.append(args)))
+    monkeypatch.setattr(launcher.os, "startfile", lambda path: opened.append(path))
+    client, csrf = _api_client(live_server)
+    title_field = "name" if module == "resources" else "title"
+    label = "快捷入口测试"
+    response = client.post(f"/api/{module}/", headers={"X-CSRF-Token": csrf}, json={title_field: label, path_field: str(target)})
+    response.raise_for_status()
+    client.close()
+
+    with sync_playwright() as playwright:
+        browser = _edge(playwright)
+        try:
+            page = browser.new_page()
+            page.add_init_script("Object.defineProperty(navigator, 'clipboard', {value: {writeText: async text => { window.__copiedPath = text; }}})")
+            _login(page, live_server)
+            page.get_by_role("navigation", name="主导航").get_by_role("link", name=nav_label).click()
+            page.get_by_role("button", name=f"{open_label}：{label}", exact=True).click()
+            page.get_by_role("status").filter(has_text=f"已{open_label}：{label}").wait_for()
+            if open_mode == "edit":
+                assert commands == [["notepad.exe", str(target.resolve())]]
+            else:
+                assert opened == [str(target.resolve())]
+            page.get_by_role("button", name=f"打开所在文件夹：{label}", exact=True).click()
+            page.get_by_role("status").filter(has_text="已打开所在文件夹").wait_for()
+            assert commands[-1] == ["explorer", "/select,", str(target.resolve())]
+            page.get_by_role("button", name=f"复制路径：{label}", exact=True).click()
+            page.get_by_role("status").filter(has_text="路径已复制").wait_for()
+            assert page.evaluate("window.__copiedPath") == str(target)
+            page.set_viewport_size({"width": 390, "height": 844})
+            assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1")
+        finally:
+            browser.close()

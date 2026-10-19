@@ -78,6 +78,28 @@ def test_allowed_root_rejects_outside_traversal_and_unc(
     ).status_code == 403
 
 
+def test_open_edit_and_folder_use_native_apps_without_shell_interpolation(client, tmp_path, monkeypatch):
+    from backend.routers import launcher
+
+    script = tmp_path / "巡检 脚本.sql"
+    script.write_text("select 1;", encoding="utf-8")
+    _enable_local_capabilities(monkeypatch, tmp_path, actions="edit,folder,open")
+    monkeypatch.setattr(launcher, "EDITORS", [])
+    commands = []
+    opened = []
+    monkeypatch.setattr(launcher.subprocess, "Popen", lambda command, **kwargs: commands.append((command, kwargs)))
+    monkeypatch.setattr(launcher.os, "startfile", lambda path: opened.append(path))
+
+    for mode in ["edit", "folder", "open"]:
+        response = client.post("/api/launcher/path", json={"path": str(script), "mode": mode})
+        assert response.status_code == 200, response.text
+    assert commands[0][0] == ["notepad.exe", str(script.resolve())]
+    assert commands[1][0] == ["explorer", "/select,", str(script.resolve())]
+    assert all(not options.get("shell") for _, options in commands)
+    assert opened == [str(script.resolve())]
+    assert client.post("/api/launcher/path", json={"path": str(script), "mode": "run"}).status_code == 403
+
+
 def test_symlink_cannot_escape_allowed_root(
     client, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

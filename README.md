@@ -73,6 +73,8 @@ assets/                     桌面图标及源 SVG
 
 翻页请求期间保留当前列表及分页栏，避免加载状态导致页面高度骤变。新页加载后保持分页栏在视口中的位置，访问缓存页或记录较少的末页时也无需重新滚动到底部。
 
+脚本库中点击名称会用本机编辑器打开脚本，不会执行脚本；知识库和本地资源点击名称会用系统默认程序打开。点击名称下方的路径可打开所在文件夹并选中文件，旁边可复制完整路径。网址资源仅允许打开 HTTP/HTTPS 链接。打开失败会显示原因，不会自动回退为执行。
+
 ## 本机目录与维护
 
 唯一源码目录为 `D:\coding\workspace`，对应 GitHub 仓库 [Rainues412/dba-workbench](https://github.com/Rainues412/dba-workbench)。原 `D:\Software\AI\Codex\DBA工作台` 中的有效启动逻辑和运行依赖已归并至本仓库；旧目录不再作为运行入口。
@@ -122,6 +124,14 @@ cd server
 
 打开文件、编辑文件、扫描目录和执行脚本默认关闭。确需使用时必须启用总开关并明确允许根目录：
 
+Windows 启动器支持本机专用的 `.runtime/local-capabilities.json`（不提交 Git）：
+
+```json
+{"allowed_roots": ["D:\\Database", "D:\\Note\\Typora"]}
+```
+
+存在此文件时，启动器仅为列出的目录默认启用 `edit,folder,open`，不会启用扫描或脚本执行；环境变量可覆盖这些默认值。修改配置后需重启服务。当前桌面安装已配置上述两个实际资源目录。直接运行 `server/main.py` 不会读取此文件，仍需显式设置环境变量：
+
 ```powershell
 $env:DBA_LOCAL_CAPABILITIES = "true"
 $env:DBA_ALLOWED_ROOTS = "D:\Database;D:\scripts"
@@ -130,6 +140,10 @@ $env:DBA_ALLOWED_LOCAL_ACTIONS = "check,edit,folder,open,pick-folder,scan"
 ```
 
 脚本执行还需把 `run` 加入动作白名单，并通过 `DBA_ALLOWED_RUN_EXTENSIONS` 指定允许的扩展名。UNC、相对路径、越界路径和符号链接逃逸会被拒绝。
+
+## 功能复核状态（2026-10-19）
+
+已恢复分类浏览、数字分页、翻页位置保持及本机文件快捷打开。复核仍发现待修复项：普通 JSON 恢复遗漏部分分类及客户联系人字段；详情请求失败后编辑窗口可能误走新建；保险箱列表只读取前 200 条；旧版全局搜索、目录扫描批量导入和任务状态/优先级筛选尚无对应界面入口。因此，测试通过不代表旧版功能已全部迁移完成。完整复核证据单独保存在本机功能复核报告中。
 
 ## 安全边界
 

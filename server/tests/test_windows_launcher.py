@@ -8,11 +8,12 @@ import pytest
 
 
 @pytest.fixture()
-def launcher():
+def launcher(tmp_path):
     source = Path(__file__).resolve().parents[2] / "tools/windows/launch_dba_workbench.py"
     spec = importlib.util.spec_from_file_location("workbench_launcher", source)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    module.LOCAL_CONFIG = tmp_path / "local-capabilities.json"
     return module
 
 
@@ -36,6 +37,33 @@ def test_server_uses_checkout_environment(launcher, tmp_path, monkeypatch, has_v
     assert options["env"]["DBA_HOST"] == "127.0.0.1"
     assert options["env"]["DBA_OPEN_BROWSER"] == "false"
     assert launcher.LOG_PATH.is_file()
+
+
+def test_local_opening_configuration_is_scoped_and_does_not_enable_execution(launcher, tmp_path, monkeypatch):
+    import json
+    import os
+
+    launcher.LOCAL_CONFIG.write_text(json.dumps({"allowed_roots": [str(tmp_path)]}), encoding="utf-8")
+    monkeypatch.setattr(launcher, "LOG_DIR", tmp_path)
+    monkeypatch.setattr(launcher, "LOG_PATH", tmp_path / "server.log")
+    monkeypatch.setattr(launcher.time, "sleep", lambda _: None)
+    monkeypatch.setattr(launcher, "probe_service", lambda: "dba")
+    for key in ["DBA_LOCAL_CAPABILITIES", "DBA_ALLOWED_ROOTS", "DBA_ALLOWED_LOCAL_ACTIONS"]:
+        monkeypatch.delenv(key, raising=False)
+    launched = []
+    monkeypatch.setattr(launcher.subprocess, "Popen", lambda command, **kwargs: launched.append(kwargs))
+
+    assert launcher.start_server()
+    environment = launched[0]["env"]
+    assert environment["DBA_LOCAL_CAPABILITIES"] == "true"
+    assert environment["DBA_ALLOWED_ROOTS"].split(os.pathsep) == [str(tmp_path)]
+    assert environment["DBA_ALLOWED_LOCAL_ACTIONS"] == "edit,folder,open"
+
+
+def test_empty_local_opening_configuration_is_rejected(launcher):
+    launcher.LOCAL_CONFIG.write_text('{"allowed_roots": []}', encoding="utf-8")
+    with pytest.raises(ValueError, match="allowed_roots"):
+        launcher.start_server()
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows Edge launcher")

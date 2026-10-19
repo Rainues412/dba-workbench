@@ -6,6 +6,8 @@ import { api, ApiError, Entity, entityApi } from "../api/client";
 import { CategoryNavigation } from "./CategoryNavigation";
 import type { Classification, Facets } from "./CategoryNavigation";
 import { Pagination } from "./Pagination";
+import { LocalFileLinks } from "./LocalFileLinks";
+import type { FileLinksConfig } from "./LocalFileLinks";
 import { EmptyState, ErrorState, LoadingState, TableSkeleton } from "./States";
 
 type Field = {
@@ -26,6 +28,7 @@ export type CrudConfig = {
   fields: Field[];
   columns: { name: string; label: string }[];
   classification?: Classification;
+  fileLinks?: FileLinksConfig;
 };
 
 export function CrudPage({ config }: { config: CrudConfig }) {
@@ -155,7 +158,7 @@ function CrudContent({ config }: { config: CrudConfig }) {
       {(database || category) && <div className="active-classification"><span>{[database, category].filter(Boolean).join(" / ")}</span><button className="text-link" onClick={() => changeClassification("", "")}><X size={14} />清除分类</button></div>}
       {notice && <div className="alert" role="status"><span><CheckCircle2 size={17} />{notice}</span><button className="icon-button" aria-label="关闭通知" onClick={() => setNotice("")}><X size={17} /></button></div>}
       {list.isLoading ? <TableSkeleton /> : list.error ? <ErrorState message="数据加载失败" retry={() => void list.refetch()} /> : !list.data?.items.length ? <EmptyState title={`没有${config.title}数据`} description={database || category || keyword ? "当前分类或搜索条件下没有记录，可切换分类、清空搜索或新增记录。" : "可通过右上角按钮创建第一条记录。"} /> : <>
-        <div className="table-wrap"><table><thead><tr>{config.columns.map((column) => <th key={column.name}>{column.label}</th>)}<th className="actions-heading"><span className="sr-only">操作</span></th></tr></thead><tbody>{list.data.items.map((row) => <tr key={row.id}>{config.columns.map((column, index) => <td key={column.name} data-label={column.label}><span className={index === 0 ? "primary-cell" : undefined}>{formatCell(row[column.name], column.name)}</span></td>)}<td className="row-actions" data-label="操作"><button className="button small" disabled={list.isPlaceholderData} onClick={() => setSelectedId(row.id)}><Pencil size={14} />查看/编辑</button><button className="button small danger" disabled={list.isPlaceholderData} onClick={() => void remove(row)}><Trash2 size={14} />删除</button></td></tr>)}</tbody></table></div>
+        <div className="table-wrap"><table><thead><tr>{config.columns.map((column) => <th key={column.name}>{column.label}</th>)}<th className="actions-heading"><span className="sr-only">操作</span></th></tr></thead><tbody>{list.data.items.map((row) => <tr key={row.id}>{config.columns.map((column, index) => <td key={column.name} data-label={column.label}><span className={index === 0 ? "primary-cell" : undefined}>{index === 0 && config.fileLinks ? <LocalFileLinks row={row} label={String(row[column.name] ?? "")} config={config.fileLinks} disabled={list.isPlaceholderData} onNotice={setNotice} /> : formatCell(row[column.name], column.name)}</span></td>)}<td className="row-actions" data-label="操作"><button className="button small" disabled={list.isPlaceholderData} onClick={() => setSelectedId(row.id)}><Pencil size={14} />查看/编辑</button><button className="button small danger" disabled={list.isPlaceholderData} onClick={() => void remove(row)}><Trash2 size={14} />删除</button></td></tr>)}</tbody></table></div>
       </>}
       {list.data && !list.error && <Pagination page={list.data.page} pages={list.data.pages} total={list.data.total} pageSize={pageSize} onChange={changePage} onPageSizeChange={(size) => { paginationTop.current = null; setPageSize(size); setPage(1); }} />}
     </section>
