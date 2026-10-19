@@ -396,7 +396,22 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .vault-card-heading { display: flex; min-width: 0; align-items: center; gap: .75rem; padding-bottom: .15rem; }
 .vault-selection { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; padding: 0 1.15rem 1rem; }
 .vault-card.is-selected { border-color: var(--primary); background: var(--primary-soft); }
-.vault-select { flex: 0 0 auto; font-size: .72rem; color: var(--muted); }
+.vault-select { display: inline-flex; flex: 0 0 auto; align-items: center; padding: 1px; cursor: pointer; }
+.vault-select input[type="checkbox"] { appearance: auto; width: 16px; height: 16px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 3px; outline: 0; box-shadow: none; background: transparent; accent-color: var(--primary); cursor: pointer; }
+.vault-select input[type="checkbox"]:hover, .vault-select input[type="checkbox"]:focus, .vault-select input[type="checkbox"]:focus-visible { border: 0; outline: 0; box-shadow: none; background: transparent; }
+.vault-select input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
+.vault-choice { cursor: pointer; user-select: none; }
+.vault-choice input[type="checkbox"] { appearance: none; display: grid; place-content: center; flex: 0 0 auto; width: 18px; height: 18px; margin: 0; border: 1.5px solid color-mix(in srgb, var(--muted) 52%, var(--border)); border-radius: 5px; background: var(--surface); cursor: pointer; transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+.vault-choice input[type="checkbox"]::after { content: ""; width: 8px; height: 4px; border: solid white; border-width: 0 0 2px 2px; opacity: 0; transform: translateY(-1px) rotate(-45deg) scale(.7); transition: opacity .12s ease, transform .12s ease; }
+.vault-choice input[type="checkbox"]:checked, .vault-choice input[type="checkbox"]:indeterminate { border-color: var(--primary); background: var(--primary); }
+.vault-choice input[type="checkbox"]:checked::after { opacity: 1; transform: translateY(-1px) rotate(-45deg) scale(1); }
+.vault-choice input[type="checkbox"]:indeterminate::after { width: 8px; height: 0; border-width: 0 0 2px; opacity: 1; transform: none; }
+.vault-choice input[type="checkbox"]:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--primary-soft); }
+.vault-choice input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
+.vault-favorite-choice { justify-self: start; width: fit-content; padding: .55rem .75rem; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-soft); transition: color .15s ease, border-color .15s ease, background .15s ease; }
+.vault-favorite-choice:has(input:checked) { color: #b7791f; border-color: color-mix(in srgb, #d99b2b 42%, var(--border)); background: color-mix(in srgb, #f5b942 12%, var(--surface)); }
+.vault-favorite-action { color: var(--muted); }
+.vault-favorite-action.is-active { color: #b7791f; border-color: color-mix(in srgb, #d99b2b 42%, var(--border)); background: color-mix(in srgb, #f5b942 12%, var(--surface)); }
 .vault-card-heading > div { min-width: 0; flex: 1; overflow-wrap: anywhere; }
 .vault-card .badge { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .vault-item-icon { flex: 0 0 auto; width: 39px; height: 39px; border-radius: 11px; }

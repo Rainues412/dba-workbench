@@ -56,6 +56,15 @@ async function unlock() {
 }
 
 describe("vault complete loading, pagination and favorites", () => {
+  it("sorts cards by name with natural case-insensitive ordering", async () => {
+    for (let id = 4; id <= 201; id += 1) deleted.add(id);
+    const names = new Map([[1, "zulu"], [2, "Alpha"], [3, "beta"]]);
+    mocks.decrypt.mockImplementation(async (_key, item) => ({ site: names.get(item.id) ?? `Site ${item.id}`, url: "", username: "user", password: "secret", category: "测试", notes: "", favorite: false }));
+    await unlock();
+    await screen.findByRole("heading", { name: "Alpha" });
+    expect(Array.from(document.querySelectorAll(".vault-card h3"), (heading) => heading.textContent)).toEqual(["Alpha", "beta", "zulu"]);
+  });
+
   it("toggles a revealed password back to masked without affecting other cards", async () => {
     await unlock();
     const card = (await screen.findByRole("heading", { name: "Site 1" })).closest("article")!;
@@ -134,6 +143,17 @@ describe("vault complete loading, pagination and favorites", () => {
     fireEvent.submit(within(dialog).getByLabelText("名称或备注").closest("form")!);
     await waitFor(() => expect(updates).toHaveLength(1));
     expect(JSON.parse(String(updates[0].ciphertext)).favorite).toBe(true);
+  });
+
+  it("toggles favorite directly from the card", async () => {
+    await unlock();
+    await screen.findByRole("heading", { name: "Site 1" });
+    fireEvent.change(screen.getByRole("textbox", { name: "搜索保险箱" }), { target: { value: "Site 201" } });
+    const button = screen.getByRole("button", { name: "取消收藏 Site 201" });
+    expect(button).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(button);
+    await waitFor(() => expect(updates).toHaveLength(1));
+    expect(JSON.parse(String(updates[0].ciphertext)).favorite).toBe(false);
   });
 
   it("can remove a favorite and reloads all pages before retrying an edit conflict", async () => {

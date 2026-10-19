@@ -14,6 +14,7 @@ import { startVaultAutoLock } from "../vault/autoLock";
 
 const EMPTY_SECRET: VaultSecret = { site: "", url: "", username: "", password: "", category: "", notes: "", favorite: false };
 const LEGACY_KEY = "wb_dba_workbench_accounts";
+const NAME_COLLATOR = new Intl.Collator(["zh-CN", "en"], { numeric: true, sensitivity: "base" });
 
 type ProfileResponse = { initialized: boolean; profile: VaultProfile | null };
 type Decrypted = { cipher: VaultCipherItem; secret: VaultSecret };
@@ -44,7 +45,9 @@ export function Vault() {
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
+  const [favoriting, setFavoriting] = useState<Set<string>>(new Set());
   const deletingRef = useRef(false);
+  const favoritingRef = useRef(new Set<string>());
   const dekRef = useRef(dek);
   dekRef.current = dek;
   const profile = useQuery({ queryKey: ["vault", "profile"], queryFn: () => api<ProfileResponse>("/api/vault/profile") });
@@ -61,7 +64,9 @@ export function Vault() {
   const legacyLocal = readLegacyLocal();
   const filtered = useMemo(() => {
     const value = search.trim().toLocaleLowerCase();
-    return secrets.filter(({ secret }) => (!favoritesOnly || secret.favorite) && (!value || [secret.site, secret.url, secret.username, secret.category, secret.notes].some((field) => field.toLocaleLowerCase().includes(value))));
+    return secrets
+      .filter(({ secret }) => (!favoritesOnly || secret.favorite) && (!value || [secret.site, secret.url, secret.username, secret.category, secret.notes].some((field) => field.toLocaleLowerCase().includes(value))))
+      .sort((left, right) => NAME_COLLATOR.compare(left.secret.site.trim(), right.secret.site.trim()) || NAME_COLLATOR.compare(left.secret.url, right.secret.url) || NAME_COLLATOR.compare(left.secret.username, right.secret.username) || left.cipher.id - right.cipher.id);
   }, [search, secrets, favoritesOnly]);
   const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, pages);
@@ -193,6 +198,24 @@ export function Vault() {
     setRevealed((current) => { const next = new Set(current); if (next.has(itemKey)) next.delete(itemKey); else next.add(itemKey); return next; });
   }
 
+  async function toggleFavorite(entry: Decrypted) {
+    const itemKey = entry.cipher.item_key;
+    if (favoritingRef.current.has(itemKey)) return;
+    if (!reauthenticated) { setError("收藏前请重新验证登录密码"); return; }
+    favoritingRef.current.add(itemKey);
+    setFavoriting((current) => new Set(current).add(itemKey));
+    setError("");
+    try {
+      await saveSecret({ ...entry.secret, favorite: !entry.secret.favorite }, entry);
+      setNotice(entry.secret.favorite ? "已取消收藏" : "已收藏");
+    } catch {
+      setError("收藏状态更新失败；若条目已在其他窗口修改，请刷新后重试");
+    } finally {
+      favoritingRef.current.delete(itemKey);
+      setFavoriting((current) => { const next = new Set(current); next.delete(itemKey); return next; });
+    }
+  }
+
   async function copyPassword(entry: Decrypted) {
     if (!reauthenticated) { setError("复制前请重新验证登录密码"); return; }
     await navigator.clipboard.writeText(entry.secret.password);
@@ -273,10 +296,10 @@ export function Vault() {
       : <>
         <div className="button-row"><EdgePasswordImport dek={dek} userId={session!.user!.id} canImport={() => dekRef.current === dek && Boolean(session?.reauthenticated_until && new Date(session.reauthenticated_until).getTime() > Date.now())} loadExisting={async () => { const key = dekRef.current; if (!key) throw new Error("保险箱已锁定"); return Promise.all((await loadAllItems()).map((item) => decryptSecret(key, item))); }} onImported={async () => { await items.refetch(); }} /></div>
         {!profile.data!.profile?.recovery_confirmed_at && <section className="panel recovery-callout"><span className="callout-icon"><Download size={22} /></span><div><h2>请备份管理员恢复密钥</h2><p className="muted">运行 <code>python -m backend.admin backup-recovery-key --output D:\Software\AI\Codex\dba-vault-recovery</code>，并将副本与数据库分开保存。</p></div><button className="button" onClick={async () => { await api("/api/vault/recovery/confirm", { method: "POST" }); await profile.refetch(); }}>我已完成备份</button></section>}
-        <section className="panel data-panel" ref={panelRef}><div className="toolbar"><label className="search-field"><Search size={17} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="在全部已解锁条目中搜索" aria-label="搜索保险箱" /></label><label className="button"><input type="checkbox" checked={favoritesOnly} onChange={(event) => { setFavoritesOnly(event.target.checked); setPage(1); }} /><Star size={16} />仅收藏</label><div className="button-row"><button className="button" onClick={() => void downloadBackup()}><Download size={16} />加密备份</button><label className="button file-button"><Upload size={16} />恢复加密备份<input className="sr-only" type="file" accept="application/json,.json" onChange={(event) => void restoreBackup(event)} /></label><button className="button primary" onClick={() => reauthenticated ? setEditing("new") : setError("新增前请重新验证登录密码")}><Plus size={17} />新增条目</button></div></div>
+        <section className="panel data-panel" ref={panelRef}><div className="toolbar"><label className="search-field"><Search size={17} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="在全部已解锁条目中搜索" aria-label="搜索保险箱" /></label><label className="button vault-choice"><input type="checkbox" checked={favoritesOnly} onChange={(event) => { setFavoritesOnly(event.target.checked); setPage(1); }} /><Star size={16} />仅收藏</label><div className="button-row"><button className="button" onClick={() => void downloadBackup()}><Download size={16} />加密备份</button><label className="button file-button"><Upload size={16} />恢复加密备份<input className="sr-only" type="file" accept="application/json,.json" onChange={(event) => void restoreBackup(event)} /></label><button className="button primary" onClick={() => reauthenticated ? setEditing("new") : setError("新增前请重新验证登录密码")}><Plus size={17} />新增条目</button></div></div>
           {(legacyLocal.length > 0 || (legacyStatus.data?.backend_entries ?? 0) > 0) && <div className="migration-banner"><span>检测到 {legacyLocal.length} 条浏览器旧数据和 {legacyStatus.data?.backend_entries ?? 0} 条后端旧数据。</span><button className="button" onClick={() => void migrateLegacy()}>迁移并校验</button></div>}
           {!items.isLoading && !items.error && visible.length > 0 && <div className="vault-selection">
-            <label className="checkbox-label"><input type="checkbox" disabled={deleting} checked={visible.every((entry) => selected.has(entry.cipher.item_key))} ref={(input) => { if (input) input.indeterminate = visible.some((entry) => selected.has(entry.cipher.item_key)) && !visible.every((entry) => selected.has(entry.cipher.item_key)); }} onChange={(event) => setSelected(event.target.checked ? new Set(visible.map((entry) => entry.cipher.item_key)) : new Set())} />全选当前页</label>
+            <label className="checkbox-label vault-choice"><input type="checkbox" disabled={deleting} checked={visible.every((entry) => selected.has(entry.cipher.item_key))} ref={(input) => { if (input) input.indeterminate = visible.some((entry) => selected.has(entry.cipher.item_key)) && !visible.every((entry) => selected.has(entry.cipher.item_key)); }} onChange={(event) => setSelected(event.target.checked ? new Set(visible.map((entry) => entry.cipher.item_key)) : new Set())} />全选当前页</label>
             <span className="muted">已选 {visible.filter((entry) => selected.has(entry.cipher.item_key)).length} 条</span>
             <button className="button small" disabled={deleting || !selected.size} onClick={() => setSelected(new Set())}>取消选择</button>
             <button className="button small danger" disabled={deleting || !selected.size} onClick={() => void removeEntries(visible.filter((entry) => selected.has(entry.cipher.item_key)))}><Trash2 size={14} />{deleting ? "正在删除…" : "删除所选"}</button>
@@ -286,8 +309,8 @@ export function Vault() {
             const isSelected = selected.has(entry.cipher.item_key);
             return <article className={`vault-card${isSelected ? " is-selected" : ""}`} key={entry.cipher.item_key}>
               <div className="vault-card-top">
-                <label className="checkbox-label vault-select"><input type="checkbox" aria-label={`选择 ${entry.secret.site}`} disabled={deleting} checked={isSelected} onChange={(event) => { const checked = event.target.checked; setSelected((current) => { const next = new Set(current); if (checked) next.add(entry.cipher.item_key); else next.delete(entry.cipher.item_key); return next; }); }} /><span>选择</span></label>
-                <div className="vault-card-badges"><span className="badge">{entry.secret.category || "未分类"}</span>{entry.secret.favorite && <span className="badge"><Star size={13} />已收藏</span>}</div>
+                <label className="vault-select"><input type="checkbox" aria-label={`选择 ${entry.secret.site}`} disabled={deleting} checked={isSelected} onChange={(event) => { const checked = event.target.checked; setSelected((current) => { const next = new Set(current); if (checked) next.add(entry.cipher.item_key); else next.delete(entry.cipher.item_key); return next; }); }} /></label>
+                <div className="vault-card-badges"><button className={`button small vault-favorite-action${entry.secret.favorite ? " is-active" : ""}`} disabled={favoriting.has(entry.cipher.item_key)} aria-pressed={entry.secret.favorite} aria-label={`${entry.secret.favorite ? "取消收藏" : "收藏"} ${entry.secret.site}`} onClick={() => void toggleFavorite(entry)}><Star size={13} fill={entry.secret.favorite ? "currentColor" : "none"} />{entry.secret.favorite ? "已收藏" : "收藏"}</button><span className="badge">{entry.secret.category || "未分类"}</span></div>
               </div>
               <div className="vault-card-heading"><span className="vault-item-icon"><KeyRound size={18} /></span><div><h3>{entry.secret.site}</h3></div></div>
               <dl className="vault-card-details">
@@ -308,7 +331,7 @@ export function Vault() {
 function SecretEditor({ current, onClose, onSave }: { current?: Decrypted; onClose: () => void; onSave: (secret: VaultSecret, current?: Decrypted) => Promise<void> }) {
   const [error, setError] = useState(""); const [busy, setBusy] = useState(false); const value = current?.secret ?? EMPTY_SECRET;
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setBusy(true); setError(""); const data = new FormData(event.currentTarget); try { await onSave({ site: String(data.get("site") ?? ""), url: String(data.get("url") ?? ""), username: String(data.get("username") ?? ""), password: String(data.get("password") ?? ""), category: String(data.get("category") ?? ""), notes: String(data.get("notes") ?? ""), favorite: data.get("favorite") === "on" }, current); } catch (reason) { setError(reason instanceof Error ? reason.message : "保存失败"); } finally { setBusy(false); } }
-  return <div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="secret-title"><div className="modal-header"><div><p className="eyebrow">SECURE RECORD</p><h2 id="secret-title">{current ? "编辑保险箱条目" : "新增保险箱条目"}</h2></div><button className="icon-button modal-close" onClick={onClose} aria-label="关闭"><X size={19} /></button></div><form className="form-grid" onSubmit={submit}><label>名称或备注<input name="site" defaultValue={value.site} required autoFocus /></label><label>分类<input name="category" defaultValue={value.category} /></label><label className="full">网址<input name="url" type="url" defaultValue={value.url} /></label><label>账号名<input name="username" defaultValue={value.username} /></label><label>密码<input name="password" type="password" defaultValue={value.password} required /></label><label className="full">详细备注<textarea name="notes" defaultValue={value.notes} rows={4} /></label><label className="full"><input type="checkbox" name="favorite" defaultChecked={value.favorite} />收藏此条目</label>{error && <div className="alert error full">{error}</div>}<div className="modal-actions full"><button type="button" className="button" onClick={onClose}>取消</button><button className="button primary" disabled={busy}><CheckCircle2 size={17} />保存</button></div></form></section></div>;
+  return <div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="secret-title"><div className="modal-header"><div><p className="eyebrow">SECURE RECORD</p><h2 id="secret-title">{current ? "编辑保险箱条目" : "新增保险箱条目"}</h2></div><button className="icon-button modal-close" onClick={onClose} aria-label="关闭"><X size={19} /></button></div><form className="form-grid" onSubmit={submit}><label>名称或备注<input name="site" defaultValue={value.site} required autoFocus /></label><label>分类<input name="category" defaultValue={value.category} /></label><label className="full">网址<input name="url" type="url" defaultValue={value.url} /></label><label>账号名<input name="username" defaultValue={value.username} /></label><label>密码<input name="password" type="password" defaultValue={value.password} required /></label><label className="full">详细备注<textarea name="notes" defaultValue={value.notes} rows={4} /></label><label className="full checkbox-label vault-choice vault-favorite-choice"><input type="checkbox" name="favorite" defaultChecked={value.favorite} /><Star size={16} />收藏此条目</label>{error && <div className="alert error full">{error}</div>}<div className="modal-actions full"><button type="button" className="button" onClick={onClose}>取消</button><button className="button primary" disabled={busy}><CheckCircle2 size={17} />保存</button></div></form></section></div>;
 }
 
 function VaultPage({ children }: { children: React.ReactNode }) { return <div className="page vault-page">{children}</div>; }

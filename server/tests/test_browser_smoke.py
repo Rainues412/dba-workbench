@@ -137,6 +137,13 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
             assert long_card.locator("dd").nth(0).inner_text().startswith("https://example.test/")
             assert long_card.locator("dd").nth(1).inner_text().endswith("@example.test")
             assert long_card.locator(".vault-card-badges").bounding_box()["x"] > long_card.locator(".vault-select").bounding_box()["x"]
+            selection_style = long_card.get_by_role("checkbox", name=f"选择 {long_site}").evaluate("""element => {
+                const style = getComputedStyle(element);
+                return {appearance: style.appearance, minHeight: style.minHeight, boxShadow: style.boxShadow};
+            }""")
+            assert selection_style == {"appearance": "auto", "minHeight": "0px", "boxShadow": "none"}
+            long_card.get_by_role("button", name=f"收藏 {long_site}", exact=True).click()
+            long_card.get_by_role("button", name=f"取消收藏 {long_site}", exact=True).wait_for()
             long_card.get_by_role("button", name="查看", exact=True).click()
             for width in (1440, 1024, 768, 390):
                 page.set_viewport_size({"width": width, "height": 1000})
