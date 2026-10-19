@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { ApiError, Entity, entityApi } from "../api/client";
 import { EmptyState, ErrorState, LoadingState, TableSkeleton } from "./States";
 
-export type Field = {
+type Field = {
   name: string;
   label: string;
   type?: "text" | "textarea" | "date" | "url" | "number" | "select";

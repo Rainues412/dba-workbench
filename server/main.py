@@ -27,7 +27,6 @@ from backend.routers import (articles, auth, customers, dashboard, export_import
                              tasks, vault)
 
 BASE_DIR = Path(__file__).parent
-HTML_FILE = BASE_DIR.parent / "ops-workbench.html"
 FRONTEND_DIR = BASE_DIR / "frontend_dist"
 
 @asynccontextmanager
@@ -61,7 +60,6 @@ app.add_exception_handler(Exception, unhandled_exception_handler)
 @app.middleware("http")
 async def add_security_headers(request, call_next):
     response = await call_next(request)
-    legacy = request.url.path == "/legacy"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "base-uri 'none'; "
@@ -70,8 +68,7 @@ async def add_security_headers(request, call_next):
         "form-action 'self'; "
         "img-src 'self' data:; "
         "object-src 'none'; "
-        + ("script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'" if legacy
-           else "script-src 'self' 'wasm-unsafe-eval'; style-src 'self'")
+        "script-src 'self' 'wasm-unsafe-eval'; style-src 'self'"
     )
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -196,16 +193,6 @@ async def index():
     )
 
 
-@app.get("/legacy")
-async def legacy_index():
-    """Short-term rollback page; protected APIs still require authentication."""
-    html = HTML_FILE.read_bytes()
-    bridge = b'<script src="/static/workbench.js"></script>\n</body>'
-    html = html.replace(b'</body>', bridge, 1)
-    return Response(content=html, media_type="text/html; charset=utf-8")
-
-
-app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 app.mount(
     "/app-assets",
     StaticFiles(directory=str(FRONTEND_DIR), check_dir=False),
@@ -220,7 +207,6 @@ async def frontend_fallback(frontend_path: str):
 
 
 def open_browser():
-    import time
     time.sleep(1.5)
     webbrowser.open(f"http://localhost:{settings.port}")
 

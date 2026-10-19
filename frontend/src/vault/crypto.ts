@@ -43,7 +43,7 @@ export type RecoveryPublicKey = {
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-export function encodeBase64(value: Uint8Array): string {
+function encodeBase64(value: Uint8Array): string {
   let binary = "";
   for (let index = 0; index < value.length; index += 0x8000) {
     binary += String.fromCharCode(...value.subarray(index, index + 0x8000));
@@ -51,7 +51,7 @@ export function encodeBase64(value: Uint8Array): string {
   return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
 }
 
-export function decodeBase64(value: string): Uint8Array<ArrayBuffer> {
+function decodeBase64(value: string): Uint8Array<ArrayBuffer> {
   const normalized = value.replaceAll("-", "+").replaceAll("_", "/") + "=".repeat((4 - value.length % 4) % 4);
   const binary = atob(normalized);
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));

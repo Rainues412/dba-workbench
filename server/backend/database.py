@@ -16,7 +16,6 @@ DB_PATH = os.path.join(
 
 PAGE_SIZE_MIN = 1
 PAGE_SIZE_MAX = 200
-PAGE_SIZE_DEFAULT = 20
 
 
 def get_db() -> sqlite3.Connection:

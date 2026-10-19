@@ -5,8 +5,11 @@
 ## 快速开始
 
 ```powershell
-# 后端依赖
-python -m pip install -r server/requirements.txt
+Set-Location D:\coding\workspace
+
+# 后端依赖统一安装到项目运行目录
+python -m venv .runtime/.venv
+.runtime/.venv/Scripts/python.exe -m pip install -r server/requirements.txt
 
 # 仅在修改前端后需要重新构建
 cd frontend
@@ -15,7 +18,7 @@ npm run build
 
 # 启动（仓库根目录）
 cd ..
-python server/main.py
+.runtime/.venv/Scripts/python.exe server/main.py
 ```
 
 浏览器访问 `http://localhost:8686`。首次启动没有默认账号或默认密码，必须在页面创建第一个所有者账号。
@@ -23,16 +26,18 @@ python server/main.py
 也可以使用 Windows 启动器：
 
 ```powershell
-python tools/windows/launch_dba_workbench.py
+.runtime/.venv/Scripts/pythonw.exe tools/windows/launch_dba_workbench.py
 ```
 
-服务默认仅监听 `127.0.0.1`，不支持局域网或公网部署。生产前端构建产物位于 `server/frontend_dist`；旧单文件页面仅作为短期回退入口保留在 `/legacy`，其 API 同样受登录保护。
+启动器从自身位置定位仓库，优先使用 `.runtime/.venv` 的 Python，默认在 Microsoft Edge 中打开；没有 Edge 时使用系统默认浏览器。启动日志位于 `.runtime/logs/server.log`。桌面快捷方式也直接指向此启动器，项目不再依赖仓库外的另一份启动代码。
+
+服务默认仅监听 `127.0.0.1`，不支持局域网或公网部署。生产前端构建产物位于 `server/frontend_dist`，与源码一起提交，因此仅运行项目时不需要安装 Node.js。旧单文件页面和桥接脚本已移除，所有界面统一由 React 提供。
 
 ## 验证
 
 ```powershell
-python -m pip install -r server/requirements-dev.txt
-python -m pytest
+.runtime/.venv/Scripts/python.exe -m pip install -r server/requirements-dev.txt
+.runtime/.venv/Scripts/python.exe -m pytest
 
 cd frontend
 npm test -- --run
@@ -52,10 +57,23 @@ server/backend/migrations/   有序、前向、逐版本事务迁移
 server/backend/routers/      类型化 REST API
 server/backend/admin.py      仅离线可用的管理员恢复命令
 server/workspace.db          SQLite 数据库（Git 忽略）
-ops-workbench.html           旧界面回退页
+tools/windows/              唯一 Windows 启动器
+assets/                     桌面图标及源 SVG
+.runtime/.venv/             项目 Python 环境（Git 忽略）
+.runtime/logs/              本机启动日志（Git 忽略）
 ```
 
 所有业务模块都通过统一 API 客户端访问后端。列表接口统一分页；更新使用 `revision` 做并发冲突检测。数据库启动时自动检查版本并执行尚未应用的 SQL 迁移，高版本数据库会被拒绝打开。
+
+数据库类型分布合并统计脚本与知识文章，保留 Oracle、MySQL、PostgreSQL、SQL Server、Linux、Redis 和其他类型。图标使用项目内 SVG，颜色与对应标签和进度条一致。首页未完成任务按高、中、低优先级呈现不同颜色。
+
+## 本机目录与维护
+
+唯一源码目录为 `D:\coding\workspace`，对应 GitHub 仓库 [Rainues412/dba-workbench](https://github.com/Rainues412/dba-workbench)。原 `D:\Software\AI\Codex\DBA工作台` 中的有效启动逻辑和运行依赖已归并至本仓库；旧目录不再作为运行入口。
+
+2026-10-19 合并前的 Git 历史、源码快照、数据库快照、旧启动器及历史备份保存在 `D:\Software\AI\Codex\DBA工作台合并备份\20261019`，不提交到 GitHub。旧位图和旧单文件页面可从源码快照或 Git 历史恢复；当前界面仅使用 `frontend/src/assets/database` 中的 SVG。
+
+更新前端后在 `frontend` 执行 `npm run build`，再一并提交源码、锁文件及 `server/frontend_dist`。不要手工编辑打包后的 JS/CSS。`.runtime`、`frontend/node_modules` 和 Python 缓存不属于源码；删除这些目录后可按快速开始重新安装依赖。数据库、恢复私钥和备份应单独保留，不能作为缓存清理。
 
 ## 保险箱安全模型
 
@@ -70,14 +88,14 @@ ops-workbench.html           旧界面回退页
 
 ```powershell
 cd server
-python -m backend.admin backup-recovery-key --output D:\Software\AI\Codex\dba-vault-recovery
-python -m backend.admin verify-recovery-key
+../.runtime/.venv/Scripts/python.exe -m backend.admin backup-recovery-key --output D:\Software\AI\Codex\dba-vault-recovery
+../.runtime/.venv/Scripts/python.exe -m backend.admin verify-recovery-key
 ```
 
 遗忘保险箱主密码时，停止服务后在 `server` 目录执行：
 
 ```powershell
-python -m backend.admin recover-vault <用户名>
+../.runtime/.venv/Scripts/python.exe -m backend.admin recover-vault <用户名>
 ```
 
 该命令使用本机恢复私钥重新包裹同一数据密钥，不会逐条重加密业务数据，并会撤销该用户全部登录会话。若恢复私钥和数据库同时遗失，保险箱密文无法恢复。
@@ -85,7 +103,7 @@ python -m backend.admin recover-vault <用户名>
 遗忘登录密码时：
 
 ```powershell
-python -m backend.admin reset-login-password <用户名>
+../.runtime/.venv/Scripts/python.exe -m backend.admin reset-login-password <用户名>
 ```
 
 ## 数据与升级
@@ -102,7 +120,7 @@ python -m backend.admin reset-login-password <用户名>
 $env:DBA_LOCAL_CAPABILITIES = "true"
 $env:DBA_ALLOWED_ROOTS = "D:\Database;D:\scripts"
 $env:DBA_ALLOWED_LOCAL_ACTIONS = "check,edit,folder,open,pick-folder,scan"
-python server/main.py
+.runtime/.venv/Scripts/python.exe server/main.py
 ```
 
 脚本执行还需把 `run` 加入动作白名单，并通过 `DBA_ALLOWED_RUN_EXTENSIONS` 指定允许的扩展名。UNC、相对路径、越界路径和符号链接逃逸会被拒绝。

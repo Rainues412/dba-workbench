@@ -1,4 +1,4 @@
-"""Start DBA Workbench locally and open it in the default browser."""
+"""Start DBA Workbench from this checkout and open it in Microsoft Edge."""
 
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ from pathlib import Path
 
 REPO_DIR = Path(__file__).resolve().parents[2]
 SERVER_DIR = REPO_DIR / "server"
+VENV_PYTHON = REPO_DIR / ".runtime" / ".venv" / "Scripts" / "python.exe"
+EDGE_PATH = Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
 HOST = "127.0.0.1"
 PORT = 8686
 URL = f"http://{HOST}:{PORT}/"
@@ -56,7 +58,7 @@ def start_server() -> bool:
             f"\n[{datetime.now().isoformat(timespec='seconds')}] starting DBA Workbench\n".encode()
         )
         subprocess.Popen(
-            [sys.executable, "main.py"],
+            [str(VENV_PYTHON) if VENV_PYTHON.is_file() else sys.executable, "main.py"],
             cwd=SERVER_DIR,
             env=env,
             stdin=subprocess.DEVNULL,
@@ -74,8 +76,6 @@ def start_server() -> bool:
         state = probe_service()
         if state == "dba":
             return True
-        if state == "other":
-            return False
     return False
 
 
@@ -89,9 +89,25 @@ def main() -> None:
     if state == "down" and not start_server():
         raise SystemExit(f"DBA 工作台启动失败，请查看日志：{LOG_PATH}")
 
-    if not webbrowser.open(URL, new=1):
+    if os.name == "nt" and EDGE_PATH.is_file():
+        subprocess.Popen(
+            [str(EDGE_PATH), "--new-window", URL],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    elif not webbrowser.open(URL, new=1):
         raise SystemExit(f"无法打开默认浏览器，请手动访问：{URL}")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (OSError, SystemExit) as error:
+        if os.name == "nt":
+            import ctypes
+
+            ctypes.windll.user32.MessageBoxW(0, str(error), "DBA 工作台", 0x10)
+        else:
+            raise
