@@ -261,3 +261,52 @@ def test_classification_filters_and_page_jump(
             assert page.get_by_role("button", name="第 1 页", exact=True).get_attribute("aria-current") == "page"
         finally:
             browser.close()
+
+
+@pytest.mark.browser
+@pytest.mark.parametrize("viewport", [{"width": 1280, "height": 800}, {"width": 390, "height": 844}])
+def test_pagination_stays_visible_during_loading_and_cached_page_changes(live_server, isolated_app, viewport):
+    client, _ = _api_client(live_server)
+    client.close()
+    _, test_db = isolated_app
+    with sqlite3.connect(test_db) as conn:
+        conn.executemany(
+            "INSERT INTO scripts(title, db_type, wb_type) VALUES (?, 'Oracle', '巡检')",
+            [(f"Scroll regression script {index:03d}",) for index in range(61)],
+        )
+    with sync_playwright() as playwright:
+        browser = _edge(playwright)
+        try:
+            page = browser.new_page(viewport=viewport)
+            page.set_default_timeout(10_000)
+            _login(page, live_server)
+            page.get_by_role("navigation", name="主导航").get_by_role("link", name="脚本库").click()
+            page.get_by_role("combobox", name="每页条数").select_option("20")
+            page.get_by_text("第 1 / 4 页", exact=True).wait_for(state="attached")
+            pager = page.get_by_role("navigation", name="列表分页")
+            pager.scroll_into_view_if_needed()
+            during_loading = []
+
+            def delay_page_response(route):
+                response = route.fetch()
+                page.wait_for_timeout(350)
+                during_loading.append(page.evaluate("""() => {
+                    const pager = document.querySelector('.pagination');
+                    const rect = pager?.getBoundingClientRect();
+                    return { rows: document.querySelectorAll('tbody tr').length,
+                        visible: !!rect && rect.top >= 0 && rect.bottom <= innerHeight + 2 };
+                }"""))
+                route.fulfill(response=response)
+
+            page.route("**/api/scripts/?*", delay_page_response)
+            for number in [2, 1, 4, 2, 4, 1]:
+                pager.get_by_role("button", name=f"第 {number} 页", exact=True).click()
+                page.get_by_text(f"第 {number} / 4 页", exact=True).wait_for(state="attached")
+                assert page.evaluate("""() => {
+                    const rect = document.querySelector('.pagination').getBoundingClientRect();
+                    return rect.top >= 0 && rect.bottom <= innerHeight + 2;
+                }"""), f"pagination left the viewport after selecting page {number}"
+            assert during_loading
+            assert all(state["rows"] > 0 and state["visible"] for state in during_loading), during_loading
+        finally:
+            browser.close()
