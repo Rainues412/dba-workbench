@@ -124,10 +124,10 @@ function QuickLink({ to, icon: Icon, title, detail }: { to: string; icon: typeof
 }
 
 function RedisIcon() {
-  return <svg viewBox="2 1 20 20" fill="none" stroke="#dc2626" strokeWidth="1.25" strokeLinejoin="round" aria-hidden="true">
-    <path d="M12 3l8 4-8 4-8-4 8-4z" />
-    <path d="M4 11l8 4 8-4" />
-    <path d="M4 15l8 4 8-4" />
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="m12 4 8 4-8 4-8-4 8-4Z" />
+    <path d="m4 12 8 4 8-4" />
+    <path d="m4 16 8 4 8-4" />
   </svg>;
 }
 
