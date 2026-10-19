@@ -45,6 +45,7 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
             assert page.title() == "DBA 工作台"
             page.get_by_label("用户名").fill(OWNER["username"])
             page.get_by_label("登录密码").fill(OWNER["password"])
+            assert page.get_by_label("登录密码").get_attribute("minlength") == "9"
             page.get_by_label("确认密码").fill(OWNER["password"])
             page.get_by_role("button", name="创建并登录").click()
             page.get_by_role("heading", name="今天的工作台").wait_for()
@@ -66,8 +67,9 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
             page.get_by_role("heading", name="创建新保险箱").wait_for()
             assert page.get_by_text("默认 PIN", exact=False).count() == 0
             assert page.locator('input[name="master_password"]').get_attribute("type") == "password"
+            assert page.locator('input[name="master_password"]').get_attribute("minlength") == "9"
             page.get_by_placeholder("登录密码").fill(OWNER["password"])
-            page.get_by_role("button", name="验证 5 分钟").click()
+            page.get_by_role("button", name="验证 30 分钟").click()
             page.get_by_text("已验证", exact=True).wait_for()
             page.get_by_label("保险箱主密码", exact=True).fill("test-only-vault-master")
             page.get_by_label("确认主密码").fill("test-only-vault-master")
@@ -127,10 +129,11 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
             page.get_by_role("heading", name="CSV Example", exact=True).locator("xpath=ancestor::article").get_by_role("button", name="编辑", exact=True).click()
             dialog = page.get_by_role("dialog")
             long_site = "long-service-" + "x" * 180
+            long_category = "category" * 35
             dialog.get_by_label("名称或备注").fill(long_site)
             dialog.get_by_label("网址", exact=True).fill("https://example.test/" + "pathsegment/" * 30)
             dialog.get_by_label("账号名", exact=True).fill("u" * 180 + "@example.test")
-            dialog.get_by_label("分类", exact=True).fill("category" * 35)
+            dialog.get_by_label("分类", exact=True).fill(long_category)
             dialog.get_by_label("密码", exact=True).fill("test-only-long-secret-" * 20)
             dialog.get_by_role("button", name="保存", exact=True).click()
             long_card = page.locator(".vault-card").filter(has=page.get_by_role("heading", name=long_site, exact=True))
@@ -140,6 +143,14 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
             assert long_card.locator("dd").nth(0).inner_text().startswith("https://example.test/")
             assert long_card.locator("dd").nth(1).inner_text().endswith("@example.test")
             assert long_card.locator(".vault-card-badges").bounding_box()["x"] > long_card.locator(".vault-select").bounding_box()["x"]
+            category_groups = page.get_by_role("group", name="保险箱分类分组", exact=True)
+            assert category_groups.get_by_role("button", name="全部分类，2 条", exact=True).get_attribute("aria-pressed") == "true"
+            long_category_button = category_groups.get_by_role("button", name=f"{long_category}，1 条", exact=True)
+            assert long_category_button.get_attribute("title") == long_category
+            long_category_button.click()
+            assert page.locator(".vault-card").count() == 1
+            category_groups.get_by_role("button", name="全部分类，2 条", exact=True).click()
+            assert page.locator(".vault-card").count() == 2
             selection_style = long_card.get_by_role("checkbox", name=f"选择 {long_site}").evaluate("""element => {
                 const style = getComputedStyle(element);
                 return {appearance: style.appearance, minHeight: style.minHeight, boxShadow: style.boxShadow};
@@ -152,6 +163,11 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
             for width in (1440, 1024, 768, 390):
                 page.set_viewport_size({"width": width, "height": 1000})
                 page.wait_for_timeout(180)  # Allow the card hover transition to settle.
+                assert category_groups.evaluate("""group => [...group.querySelectorAll('button')].every(button => {
+                    const outer = group.getBoundingClientRect();
+                    const inner = button.getBoundingClientRect();
+                    return inner.left >= outer.left - 1 && inner.right <= outer.right + 1;
+                })"""), f"Category groups overflow at {width}px"
                 assert page.locator(".vault-card").evaluate_all("""cards => cards.every(card => {
                     const box = card.getBoundingClientRect();
                     const grid = card.parentElement.getBoundingClientRect();
@@ -173,6 +189,9 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
             assert select_all.evaluate("element => getComputedStyle(element).padding") == "0px"
             assert select_all_label.evaluate("element => getComputedStyle(element).minHeight") == "31px"
             assert select_all_label.evaluate("element => getComputedStyle(element).borderRadius") == "7px"
+            category_box = category_groups.bounding_box()
+            selection_box = select_all_label.bounding_box()
+            assert selection_box["y"] - (category_box["y"] + category_box["height"]) >= 8
             page.locator(".vault-card").first.locator('input[type="checkbox"]').check()
             assert not select_all.is_checked()
             assert select_all.evaluate("element => element.indeterminate") is True

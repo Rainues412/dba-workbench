@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Clipboard, Download, Eye, EyeOff, Globe2, KeyRound, LockKeyhole, Pencil, Plus, Search, ShieldCheck, Star, Trash2, Upload, UserRound, X } from "lucide-react";
+import { CheckCircle2, Clipboard, Download, Eye, EyeOff, Globe2, KeyRound, LockKeyhole, Pencil, Plus, Search, ShieldCheck, Star, Tags, Trash2, Upload, UserRound, X } from "lucide-react";
 import { ApiError, api, jsonBody, Page } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
@@ -35,6 +35,7 @@ export function Vault() {
   const [secrets, setSecrets] = useState<Decrypted[]>([]);
   const [search, setSearch] = useState("");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const panelRef = useRef<HTMLElement>(null);
@@ -61,13 +62,22 @@ export function Vault() {
     enabled: Boolean(dek),
   });
   const reauthenticated = Boolean(session?.reauthenticated_until && new Date(session.reauthenticated_until).getTime() > Date.now());
+  const reauthMinutes = session?.reauth_minutes ?? 30;
   const legacyLocal = readLegacyLocal();
+  const categoryGroups = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const { secret } of secrets) {
+      const category = secret.category.trim();
+      counts.set(category, (counts.get(category) ?? 0) + 1);
+    }
+    return [...counts].sort(([left], [right]) => left ? right ? NAME_COLLATOR.compare(left, right) : -1 : right ? 1 : 0);
+  }, [secrets]);
   const filtered = useMemo(() => {
     const value = search.trim().toLocaleLowerCase();
     return secrets
-      .filter(({ secret }) => (!favoritesOnly || secret.favorite) && (!value || [secret.site, secret.url, secret.username, secret.category, secret.notes].some((field) => field.toLocaleLowerCase().includes(value))))
+      .filter(({ secret }) => (categoryFilter === null || secret.category.trim() === categoryFilter) && (!favoritesOnly || secret.favorite) && (!value || [secret.site, secret.url, secret.username, secret.category, secret.notes].some((field) => field.toLocaleLowerCase().includes(value))))
       .sort((left, right) => Number(right.secret.favorite) - Number(left.secret.favorite) || NAME_COLLATOR.compare(left.secret.site.trim(), right.secret.site.trim()) || NAME_COLLATOR.compare(left.secret.url, right.secret.url) || NAME_COLLATOR.compare(left.secret.username, right.secret.username) || left.cipher.id - right.cipher.id);
-  }, [search, secrets, favoritesOnly]);
+  }, [categoryFilter, search, secrets, favoritesOnly]);
   const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, pages);
   const visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -86,12 +96,12 @@ export function Vault() {
   function lock(message?: string) {
     dekRef.current?.fill(0);
     dekRef.current = null;
-    setDek(null); setSecrets([]); setRevealed(new Set()); setSelected(new Set()); setEditing(null); setPage(1);
+    setDek(null); setSecrets([]); setRevealed(new Set()); setSelected(new Set()); setEditing(null); setCategoryFilter(null); setPage(1);
     if (message) setNotice(message);
   }
 
   useEffect(() => () => { dekRef.current?.fill(0); dekRef.current = null; }, []);
-  useEffect(() => { setSelected(new Set()); setRevealed(new Set()); }, [page, pageSize, search, favoritesOnly]);
+  useEffect(() => { setSelected(new Set()); setRevealed(new Set()); }, [page, pageSize, search, favoritesOnly, categoryFilter]);
   useEffect(() => {
     if (!dek) return;
     return startVaultAutoLock(() => lock("保险箱已因闲置自动锁定"));
@@ -113,7 +123,7 @@ export function Vault() {
     event.preventDefault(); setError("");
     const formElement = event.currentTarget;
     const password = String(new FormData(formElement).get("login_password") ?? "");
-    try { await reauthenticate(password); formElement.reset(); setNotice("敏感操作已授权 5 分钟"); }
+    try { await reauthenticate(password); formElement.reset(); setNotice(`敏感操作已授权 ${reauthMinutes} 分钟`); }
     catch (reason) { setError(reason instanceof ApiError ? reason.message : "登录密码验证失败"); }
   }
 
@@ -123,7 +133,7 @@ export function Vault() {
     if (!reauthenticated) { setError("请先重新验证登录密码"); return; }
     const form = new FormData(formElement);
     const first = String(form.get("master_password") ?? "");
-    if (first.length < 12 || first !== String(form.get("confirm_master") ?? "")) { setError("主密码至少 12 位，且两次输入必须一致"); return; }
+    if (first.length < 9 || first !== String(form.get("confirm_master") ?? "")) { setError("主密码至少 9 位，且两次输入必须一致"); return; }
     try {
       const recovery = await api<RecoveryPublicKey>("/api/vault/recovery-public-key");
       const created = await createVaultProfile(first, session!.user!.id, recovery);
@@ -293,20 +303,27 @@ export function Vault() {
   return <VaultPage>
     <header className="page-header"><div className="page-title-group"><span className="page-title-icon vault"><KeyRound size={24} /></span><div><p className="eyebrow">CLIENT-SIDE ENCRYPTED</p><h1>密码保险箱</h1><p className="muted">条目在浏览器内使用 Argon2id 与 AES-256-GCM 加解密。</p></div></div>{dek && <button className="button" onClick={() => lock("保险箱已锁定")}><LockKeyhole size={17} />立即锁定</button>}</header>
     {(notice || error) && <div className={`alert ${error ? "error" : ""}`} role={error ? "alert" : "status"}><span>{!error && <CheckCircle2 size={17} />}{error || notice}</span><button className="icon-button" onClick={() => { setError(""); setNotice(""); }} aria-label="关闭"><X size={17} /></button></div>}
-    <section className="panel reauth-panel"><span className="reauth-icon"><ShieldCheck size={23} /></span><div><h2>敏感操作验证</h2><p className="muted">查看、复制、修改、删除、迁移和备份前，需要重新验证登录密码。</p></div><form onSubmit={verifyLogin}><input name="login_password" type="password" autoComplete="current-password" placeholder="登录密码" required /><button className="button">验证 5 分钟</button></form><span className={`badge ${reauthenticated ? "success" : "danger"}`}>{reauthenticated ? "已验证" : "未验证"}</span></section>
-    {!profile.data!.initialized ? <section className="panel vault-gate"><span className="vault-gate-icon"><ShieldCheck size={30} /></span><h2>创建新保险箱</h2><p className="muted">保险箱主密码与登录密码分离。忘记后只能由本机管理员恢复。</p><form className="stack compact" onSubmit={initialize}><label>保险箱主密码<input name="master_password" type="password" minLength={12} autoComplete="new-password" required /></label><label>确认主密码<input name="confirm_master" type="password" minLength={12} autoComplete="new-password" required /></label><button className="button primary" disabled={!reauthenticated}><ShieldCheck size={17} />创建保险箱</button></form></section>
-      : !dek ? <section className="panel vault-gate"><span className="vault-gate-icon"><LockKeyhole size={30} /></span><h2>保险箱已锁定</h2><p className="muted">刷新页面或离开页面后会保持锁定；闲置 5 分钟自动锁定。</p><form className="stack compact" onSubmit={unlock}><label>保险箱主密码<input name="master_password" type="password" autoComplete="current-password" required autoFocus /></label><button className="button primary" disabled={!reauthenticated}><LockKeyhole size={17} />解锁</button></form></section>
+    <section className="panel reauth-panel"><span className="reauth-icon"><ShieldCheck size={23} /></span><div><h2>敏感操作验证</h2><p className="muted">查看、复制、修改、删除、迁移和备份前，需要重新验证登录密码。</p></div><form onSubmit={verifyLogin}><input name="login_password" type="password" minLength={9} autoComplete="current-password" placeholder="登录密码" required /><button className="button">验证 {reauthMinutes} 分钟</button></form><span className={`badge ${reauthenticated ? "success" : "danger"}`}>{reauthenticated ? "已验证" : "未验证"}</span></section>
+    {!profile.data!.initialized ? <section className="panel vault-gate"><span className="vault-gate-icon"><ShieldCheck size={30} /></span><h2>创建新保险箱</h2><p className="muted">保险箱主密码与登录密码分离。忘记后只能由本机管理员恢复。</p><form className="stack compact" onSubmit={initialize}><label>保险箱主密码<input name="master_password" type="password" minLength={9} autoComplete="new-password" required /></label><label>确认主密码<input name="confirm_master" type="password" minLength={9} autoComplete="new-password" required /></label><button className="button primary" disabled={!reauthenticated}><ShieldCheck size={17} />创建保险箱</button></form></section>
+      : !dek ? <section className="panel vault-gate"><span className="vault-gate-icon"><LockKeyhole size={30} /></span><h2>保险箱已锁定</h2><p className="muted">刷新页面或离开页面后会保持锁定；闲置 5 分钟自动锁定。</p><form className="stack compact" onSubmit={unlock}><label>保险箱主密码<input name="master_password" type="password" minLength={9} autoComplete="current-password" required autoFocus /></label><button className="button primary" disabled={!reauthenticated}><LockKeyhole size={17} />解锁</button></form></section>
       : <>
         <div className="button-row"><EdgePasswordImport dek={dek} userId={session!.user!.id} canImport={() => dekRef.current === dek && Boolean(session?.reauthenticated_until && new Date(session.reauthenticated_until).getTime() > Date.now())} loadExisting={async () => { const key = dekRef.current; if (!key) throw new Error("保险箱已锁定"); return Promise.all((await loadAllItems()).map((item) => decryptSecret(key, item))); }} onImported={async () => { await items.refetch(); }} /></div>
         {!profile.data!.profile?.recovery_confirmed_at && <section className="panel recovery-callout"><span className="callout-icon"><Download size={22} /></span><div><h2>请备份管理员恢复密钥</h2><p className="muted">运行 <code>python -m backend.admin backup-recovery-key --output D:\Software\AI\Codex\dba-vault-recovery</code>，并将副本与数据库分开保存。</p></div><button className="button" onClick={async () => { await api("/api/vault/recovery/confirm", { method: "POST" }); await profile.refetch(); }}>我已完成备份</button></section>}
         <section className="panel data-panel" ref={panelRef}><div className="toolbar"><label className="search-field"><Search size={17} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="在全部已解锁条目中搜索" aria-label="搜索保险箱" /></label><button className={`button vault-filter-toggle${favoritesOnly ? " is-active" : ""}`} aria-pressed={favoritesOnly} onClick={() => { setFavoritesOnly((current) => !current); setPage(1); }}><Star size={16} fill={favoritesOnly ? "currentColor" : "none"} />仅看收藏</button><div className="button-row"><button className="button" onClick={() => void downloadBackup()}><Download size={16} />加密备份</button><label className="button file-button"><Upload size={16} />恢复加密备份<input className="sr-only" type="file" accept="application/json,.json" onChange={(event) => void restoreBackup(event)} /></label><button className="button primary" onClick={() => reauthenticated ? setEditing("new") : setError("新增前请重新验证登录密码")}><Plus size={17} />新增条目</button></div></div>
           {(legacyLocal.length > 0 || (legacyStatus.data?.backend_entries ?? 0) > 0) && <div className="migration-banner"><span>检测到 {legacyLocal.length} 条浏览器旧数据和 {legacyStatus.data?.backend_entries ?? 0} 条后端旧数据。</span><button className="button" onClick={() => void migrateLegacy()}>迁移并校验</button></div>}
+          {!items.isLoading && !items.error && secrets.length > 0 && <div className="vault-category-groups" role="group" aria-label="保险箱分类分组">
+            <span className="vault-category-title"><Tags size={15} />分类分组</span>
+            <div className="vault-category-options">
+              <button className="vault-category-button" aria-label={`全部分类，${secrets.length} 条`} aria-pressed={categoryFilter === null} onClick={() => { setCategoryFilter(null); setPage(1); }}><span className="vault-category-name">全部</span><span className="vault-category-count">{secrets.length}</span></button>
+              {categoryGroups.map(([category, count]) => <button className="vault-category-button" aria-label={`${category || "未分类"}，${count} 条`} aria-pressed={categoryFilter === category} title={category || "未分类"} key={category || "__uncategorized__"} onClick={() => { setCategoryFilter(category); setPage(1); }}><span className="vault-category-name">{category || "未分类"}</span><span className="vault-category-count">{count}</span></button>)}
+            </div>
+          </div>}
           {!items.isLoading && !items.error && visible.length > 0 && <div className="vault-selection">
             <label className={`checkbox-label vault-choice vault-select-all${allVisibleSelected ? " is-all-selected" : someVisibleSelected ? " has-selection" : ""}`}><input type="checkbox" aria-label="全选当前页" disabled={deleting} checked={allVisibleSelected} ref={(input) => { if (input) input.indeterminate = someVisibleSelected; }} onChange={(event) => setSelected(event.target.checked ? new Set(visible.map((entry) => entry.cipher.item_key)) : new Set())} /><span>{allVisibleSelected ? `本页已全选 ${visible.length} 条` : someVisibleSelected ? `已选 ${visibleSelectedCount} / ${visible.length} 条` : `全选当前页 ${visible.length} 条`}</span></label>
             <button className="button small" disabled={deleting || !selected.size} onClick={() => setSelected(new Set())}>取消选择</button>
             <button className="button small danger" disabled={deleting || !selected.size} onClick={() => void removeEntries(visible.filter((entry) => selected.has(entry.cipher.item_key)))}><Trash2 size={14} />{deleting ? "正在删除…" : "删除所选"}</button>
           </div>}
-          {items.isLoading ? <LoadingState /> : items.error ? <ErrorState message="密文列表加载失败" retry={() => void items.refetch()} /> : !filtered.length ? <EmptyState title={search || favoritesOnly ? "没有匹配的条目" : "保险箱为空"} description={search || favoritesOnly ? "尝试调整搜索条件或取消收藏筛选。" : "新增条目，或迁移旧版保险箱数据。"} icon={ShieldCheck} /> : <div className="vault-grid">{visible.map((entry) => {
+          {items.isLoading ? <LoadingState /> : items.error ? <ErrorState message="密文列表加载失败" retry={() => void items.refetch()} /> : !filtered.length ? <EmptyState title={search || favoritesOnly || categoryFilter !== null ? "没有匹配的条目" : "保险箱为空"} description={search || favoritesOnly || categoryFilter !== null ? "尝试调整搜索、收藏或分类筛选。" : "新增条目，或迁移旧版保险箱数据。"} icon={ShieldCheck} /> : <div className="vault-grid">{visible.map((entry) => {
             const isRevealed = revealed.has(entry.cipher.item_key);
             const isSelected = selected.has(entry.cipher.item_key);
             return <article className={`vault-card${isSelected ? " is-selected" : ""}`} key={entry.cipher.item_key}>

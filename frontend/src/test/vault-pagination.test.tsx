@@ -65,6 +65,28 @@ describe("vault complete loading, pagination and favorites", () => {
     expect(Array.from(document.querySelectorAll(".vault-card h3"), (heading) => heading.textContent)).toEqual(["Alpha", "beta", "zulu"]);
   });
 
+  it("groups the complete vault by category and filters before pagination", async () => {
+    for (let id = 5; id <= 201; id += 1) deleted.add(id);
+    const categories = new Map([[1, "工作"], [2, "个人"], [3, " 工作 "], [4, ""]]);
+    mocks.decrypt.mockImplementation(async (_key, item) => ({ site: `Site ${item.id}`, url: "", username: "user", password: "secret", category: categories.get(item.id) ?? "", notes: "", favorite: false }));
+    await unlock();
+    const groups = await screen.findByRole("group", { name: "保险箱分类分组" });
+    expect(within(groups).getByRole("button", { name: "全部分类，4 条" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(groups).getByRole("button", { name: "工作，2 条" })).toBeInTheDocument();
+    expect(within(groups).getByRole("button", { name: "个人，1 条" })).toBeInTheDocument();
+    expect(within(groups).getByRole("button", { name: "未分类，1 条" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择 Site 1" }));
+    fireEvent.click(within(groups).getByRole("button", { name: "工作，2 条" }));
+    expect(screen.getByRole("heading", { name: "Site 1" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Site 3" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Site 2" })).not.toBeInTheDocument();
+    expect(screen.getByText("共 2 条")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "删除所选" })).toBeDisabled();
+    fireEvent.click(within(groups).getByRole("button", { name: "未分类，1 条" }));
+    expect(screen.getByRole("heading", { name: "Site 4" })).toBeInTheDocument();
+    expect(screen.getByText("共 1 条")).toBeInTheDocument();
+  });
+
   it("toggles a revealed password back to masked without affecting other cards", async () => {
     await unlock();
     const card = (await screen.findByRole("heading", { name: "Site 1" })).closest("article")!;

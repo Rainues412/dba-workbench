@@ -45,8 +45,8 @@ export function AuthPage() {
           </p>
           <form onSubmit={submit} className="stack auth-form">
             <label>用户名<input name="username" autoComplete="username" minLength={3} placeholder="输入用户名" required autoFocus /></label>
-            <label>登录密码<input name="password" type="password" autoComplete={setup ? "new-password" : "current-password"} minLength={12} placeholder="至少 12 位" required /></label>
-            {setup && <label>确认密码<input name="confirm" type="password" autoComplete="new-password" minLength={12} placeholder="再次输入密码" required /></label>}
+            <label>登录密码<input name="password" type="password" autoComplete={setup ? "new-password" : "current-password"} minLength={9} placeholder="至少 9 位" required /></label>
+            {setup && <label>确认密码<input name="confirm" type="password" autoComplete="new-password" minLength={9} placeholder="再次输入密码" required /></label>}
             {error && <div className="alert error" role="alert">{error}</div>}
             <button className="button primary auth-submit" disabled={busy}>{busy ? "处理中…" : setup ? "创建并登录" : "登录"}{!busy && <ArrowRight size={18} />}</button>
           </form>

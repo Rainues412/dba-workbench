@@ -394,7 +394,16 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .vault-card-top { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: .75rem; }
 .vault-card-badges { display: flex; min-width: 0; flex-wrap: wrap; justify-content: flex-end; gap: .35rem; }
 .vault-card-heading { display: flex; min-width: 0; align-items: center; gap: .75rem; padding-bottom: .15rem; }
-.vault-selection { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding: 0 1.15rem 1rem; }
+.vault-category-groups { display: grid; min-width: 0; gap: .65rem; padding: .8rem 1.15rem; overflow: hidden; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface-soft) 58%, var(--surface)); }
+.vault-category-title { display: inline-flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .73rem; font-weight: 700; }
+.vault-category-options { display: flex; min-width: 0; max-width: 100%; flex-wrap: wrap; gap: .45rem; }
+.vault-category-button { display: inline-flex; min-width: 0; max-width: min(100%, 280px); min-height: 30px; align-items: center; gap: .45rem; padding: .32rem .48rem .32rem .6rem; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--surface); cursor: pointer; font-size: .73rem; transition: color .15s ease, border-color .15s ease, background .15s ease; }
+.vault-category-button:hover { color: var(--primary); border-color: color-mix(in srgb, var(--primary) 48%, var(--border)); background: var(--surface-tint); }
+.vault-category-button[aria-pressed="true"] { color: var(--primary); border-color: color-mix(in srgb, var(--primary) 52%, var(--border)); background: var(--primary-soft); }
+.vault-category-name { flex: 1 1 auto; min-width: 0; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vault-category-count { flex: 0 0 auto; min-width: 20px; padding: .08rem .28rem; border-radius: 5px; color: var(--muted); background: var(--surface-soft); font-size: .66rem; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
+.vault-category-button[aria-pressed="true"] .vault-category-count { color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, var(--surface)); }
+.vault-selection { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding: .75rem 1.15rem 1rem; }
 .vault-card.is-selected { border-color: var(--primary); background: var(--primary-soft); }
 .vault-select { display: inline-flex; flex: 0 0 auto; align-items: center; padding: 1px; cursor: pointer; }
 .vault-select input[type="checkbox"] { appearance: auto; width: 16px; height: 16px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 3px; outline: 0; box-shadow: none; background: transparent; accent-color: var(--primary); cursor: pointer; }

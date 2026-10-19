@@ -11,6 +11,7 @@ describe("application shell", () => {
     render(<App />);
     expect(await screen.findByRole("heading", { name: "创建首位 Owner" })).toBeInTheDocument();
     expect(screen.getByLabelText("登录密码")).toHaveAttribute("type", "password");
+    expect(screen.getByLabelText("登录密码")).toHaveAttribute("minlength", "9");
     expect(screen.queryByText("系统故障")).not.toBeInTheDocument();
   });
 });

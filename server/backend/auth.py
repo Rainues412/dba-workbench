@@ -15,7 +15,8 @@ from backend.database import get_db_ctx
 
 SESSION_COOKIE = "dba_session"
 SESSION_HOURS = 12
-REAUTH_MINUTES = 5
+REAUTH_MINUTES = 30
+MIN_PASSWORD_LENGTH = 9
 PUBLIC_API_PATHS = {
     "/api/auth/status",
     "/api/auth/setup",
@@ -73,8 +74,8 @@ def password_needs_rehash(password_hash: str) -> bool:
 
 
 def validate_password(password: str) -> None:
-    if len(password) < 12:
-        raise HTTPException(422, "Password must contain at least 12 characters")
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise HTTPException(422, f"Password must contain at least {MIN_PASSWORD_LENGTH} characters")
     if len(password) > 256:
         raise HTTPException(422, "Password is too long")
 

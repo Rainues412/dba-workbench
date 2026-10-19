@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from backend.auth import (
+    MIN_PASSWORD_LENGTH,
     REAUTH_MINUTES,
     SESSION_COOKIE,
     SESSION_HOURS,
@@ -34,11 +35,11 @@ router = APIRouter()
 
 class Credentials(BaseModel):
     username: Annotated[str, Field(min_length=3, max_length=64)]
-    password: Annotated[str, Field(min_length=12, max_length=256)]
+    password: Annotated[str, Field(min_length=MIN_PASSWORD_LENGTH, max_length=256)]
 
 
 class Reauthenticate(BaseModel):
-    password: Annotated[str, Field(min_length=1, max_length=256)]
+    password: Annotated[str, Field(min_length=MIN_PASSWORD_LENGTH, max_length=256)]
 
 
 def _username(value: str) -> str:

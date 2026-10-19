@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
@@ -24,6 +25,7 @@ def test_first_owner_setup_session_and_csrf(raw_client: TestClient, isolated_app
 
     session = setup.json()
     assert session["user"]["roles"] == ["owner"]
+    assert session["reauth_minutes"] == 30
     assert raw_client.get("/api/dashboard/stats").status_code == 200
     assert raw_client.post("/api/tasks/", json={"title": "blocked"}).status_code == 403
     allowed = raw_client.post(
@@ -38,6 +40,19 @@ def test_first_owner_setup_session_and_csrf(raw_client: TestClient, isolated_app
         stored = conn.execute("SELECT password_hash FROM users").fetchone()[0]
         assert stored.startswith("$argon2id$")
         assert OWNER["password"] not in stored
+
+
+def test_password_minimum_is_nine_characters(raw_client: TestClient) -> None:
+    rejected = raw_client.post(
+        "/api/auth/setup",
+        json={"username": "owner", "password": "12345678"},
+    )
+    assert rejected.status_code == 422
+    accepted = raw_client.post(
+        "/api/auth/setup",
+        json={"username": "owner", "password": "123456789"},
+    )
+    assert accepted.status_code == 201
 
 
 def test_login_rotates_session_logout_revokes_and_reauthenticates(
@@ -56,7 +71,9 @@ def test_login_rotates_session_logout_revokes_and_reauthenticates(
         headers={"X-CSRF-Token": csrf},
     )
     assert reauth.status_code == 200
-    assert reauth.json()["reauthenticated_until"]
+    reauthenticated_until = datetime.fromisoformat(reauth.json()["reauthenticated_until"])
+    remaining = reauthenticated_until - datetime.now(timezone.utc)
+    assert timedelta(minutes=29, seconds=50) <= remaining <= timedelta(minutes=30, seconds=5)
 
     logout = raw_client.post(
         "/api/auth/logout", headers={"X-CSRF-Token": csrf}
