@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import re
 
 import httpx
 import pytest
@@ -51,7 +52,7 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
             page.get_by_role("navigation", name="主导航").get_by_role("link", name="脚本库").click()
             page.get_by_role("button", name="新增").click()
             page.get_by_label("名称").fill("Browser smoke script")
-            page.get_by_label("数据库").fill("Oracle")
+            page.get_by_role("dialog").get_by_label("数据库", exact=True).fill("Oracle")
             page.get_by_label("脚本正文").fill("select 1 from dual;")
             page.get_by_role("dialog").get_by_role("button", name="保存").click()
             page.get_by_text("Browser smoke script", exact=True).wait_for()
@@ -163,12 +164,8 @@ def test_edge_can_page_to_and_edit_records_after_200(live_server: str, isolated_
             page.set_default_timeout(10_000)
             _login(page, live_server)
             page.get_by_role("navigation", name="主导航").get_by_role("link", name="脚本库").click()
-            for _ in range(10):
-                next_button = page.get_by_role("button", name="下一页")
-                if next_button.is_disabled():
-                    break
-                next_button.click()
-                page.wait_for_load_state("networkidle")
+            page.get_by_role("spinbutton", name="跳转页码").fill("11")
+            page.get_by_role("spinbutton", name="跳转页码").press("Enter")
             page.get_by_text("第 11 / 11 页", exact=True).wait_for()
             page.get_by_role("button", name="查看/编辑").first.click()
             body = page.get_by_label("脚本正文").input_value()
@@ -181,5 +178,81 @@ def test_edge_can_page_to_and_edit_records_after_200(live_server: str, isolated_
             assert update.value.status == 200
             page.get_by_placeholder("搜索脚本库").fill("Edited beyond row 200")
             page.get_by_text("Edited beyond row 200", exact=True).wait_for()
+        finally:
+            browser.close()
+
+
+@pytest.mark.browser
+@pytest.mark.parametrize(
+    "module,nav_label,table,title_field,db_field,category_field,category,other_category,category_label",
+    [
+        ("scripts", "脚本库", "scripts", "title", "db_type", "wb_type", "巡检", "备份", "脚本类型"),
+        ("articles", "知识库", "articles", "title", "wb_db", "category", "安装部署", "排障手册", "文档分类"),
+        ("resources", "资源中心", "resources", "name", "wb_db", "kind", "安装包", "软件工具", ""),
+    ],
+)
+def test_classification_filters_and_page_jump(
+    live_server, isolated_app, module, nav_label, table, title_field, db_field,
+    category_field, category, other_category, category_label,
+) -> None:
+    client, _ = _api_client(live_server)
+    client.close()
+    _, test_db = isolated_app
+    with sqlite3.connect(test_db) as conn:
+        conn.executemany(
+            f"INSERT INTO {table} ({title_field}, {db_field}, {category_field}) VALUES (?, ?, ?)",
+            [(f"classification-target-{index:03d}", "Oracle", category) for index in range(41)]
+            + [(f"classification-other-{index}", "Oracle", other_category) for index in range(4)]
+            + [(f"mysql-record-{index}", "MySQL", category) for index in range(2)]
+            + [("custom-database-record", "达梦", category)],
+        )
+
+    with sync_playwright() as playwright:
+        browser = _edge(playwright)
+        try:
+            page = browser.new_page()
+            page.set_default_timeout(10_000)
+            _login(page, live_server)
+            page.get_by_role("navigation", name="主导航").get_by_role("link", name=nav_label).click()
+            databases = page.get_by_role("group", name="数据库分类")
+            oracle = databases.get_by_role("button", name=re.compile(r"^Oracle"))
+            oracle.wait_for()
+            assert oracle.inner_text().splitlines()[-1] == "45"
+            assert databases.get_by_role("button", name=re.compile(r"^达梦")).is_visible()
+            oracle.click()
+            if category_label:
+                categories = page.get_by_role("group", name=category_label, exact=True)
+                categories.get_by_role("button", name=re.compile("^" + category)).click()
+            page.get_by_text("第 1 / 3 页", exact=True).wait_for()
+            page.get_by_role("spinbutton", name="跳转页码").fill("99")
+            page.get_by_role("button", name="跳转", exact=True).click()
+            page.get_by_role("alert").filter(has_text="请输入 1 至 3 的整数页码").wait_for()
+            page.get_by_role("spinbutton", name="跳转页码").fill("3")
+            page.get_by_role("spinbutton", name="跳转页码").press("Enter")
+            page.get_by_text("第 3 / 3 页", exact=True).wait_for()
+
+            page.get_by_role("button", name="新增", exact=True).click()
+            dialog = page.get_by_role("dialog")
+            assert dialog.get_by_label("数据库", exact=True).input_value() == "Oracle"
+            if category_label:
+                label = "类型" if module == "scripts" else "分类"
+                assert dialog.get_by_label(label, exact=True).input_value() == category
+            dialog.get_by_role("button", name="取消", exact=True).click()
+
+            page.get_by_placeholder("搜索" + ("资源与快捷入口" if module == "resources" else nav_label)).fill("classification-target-040")
+            page.get_by_text("第 1 / 1 页", exact=True).wait_for()
+            page.get_by_text("classification-target-040", exact=True).wait_for()
+            assert oracle.get_attribute("aria-pressed") == "true"
+            page.get_by_placeholder("搜索" + ("资源与快捷入口" if module == "resources" else nav_label)).fill("")
+            page.get_by_text("第 1 / 3 页", exact=True).wait_for()
+            databases.get_by_role("button", name=re.compile(r"^MySQL")).click()
+            page.get_by_text("mysql-record-0", exact=True).wait_for()
+            assert page.get_by_role("button", name="下一页").is_disabled()
+            if category_label:
+                assert page.get_by_role("group", name=category_label, exact=True).get_by_role("button", name=re.compile(r"^全部")).get_attribute("aria-pressed") == "true"
+
+            page.set_viewport_size({"width": 390, "height": 844})
+            assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1")
+            assert page.get_by_role("spinbutton", name="跳转页码").is_visible()
         finally:
             browser.close()

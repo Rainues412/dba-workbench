@@ -87,9 +87,10 @@ export const authApi = {
 };
 
 export const entityApi = {
-  list: <T extends Entity>(path: string, page: number, keyword: string) => {
+  list: <T extends Entity>(path: string, page: number, keyword: string, filters: Record<string, string> = {}) => {
     const params = new URLSearchParams({ page: String(page), page_size: "20" });
     if (keyword) params.set("keyword", keyword);
+    for (const [field, value] of Object.entries(filters)) if (value) params.set(field, value);
     return api<Page<T>>(`${path}?${params}`);
   },
   detail: <T extends Entity>(path: string, id: number) => api<T>(`${path}${id}`),

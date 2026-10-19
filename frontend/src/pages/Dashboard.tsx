@@ -6,27 +6,12 @@ import {
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
-import linuxIcon from "../assets/database/linux.svg";
-import mysqlIcon from "../assets/database/mysql.svg";
-import oracleIcon from "../assets/database/oracle.svg";
-import otherIcon from "../assets/database/other.svg";
-import postgresqlIcon from "../assets/database/postgresql.svg";
-import sqlServerIcon from "../assets/database/sqlserver.svg";
+import { DatabaseLabel, databaseMeta } from "../components/DatabaseLabel";
 
 type Stats = Record<"script_count" | "article_count" | "task_total" | "task_pending" | "task_overdue" | "customer_count" | "resource_count" | "password_count", number>;
 type Task = { id: number; title: string; priority: string; due_date?: string; is_overdue: number };
 type DatabaseDistribution = { name: DatabaseName; count: number }[];
 type DatabaseName = "Oracle" | "MySQL" | "PostgreSQL" | "SQL Server" | "Linux" | "Redis" | "其他";
-
-const databaseMeta: Record<DatabaseName, { color: string; tint: string; icon?: string }> = {
-  Oracle: { color: "#dc2626", tint: "#fef2f2", icon: oracleIcon },
-  MySQL: { color: "#16a34a", tint: "#f0fdf4", icon: mysqlIcon },
-  PostgreSQL: { color: "#2563eb", tint: "#eff6ff", icon: postgresqlIcon },
-  "SQL Server": { color: "#404040", tint: "#f5f5f5", icon: sqlServerIcon },
-  Linux: { color: "#f59e0b", tint: "#fffbeb", icon: linuxIcon },
-  Redis: { color: "#dc2626", tint: "#fef2f2" },
-  其他: { color: "#64748b", tint: "#f1f5f9", icon: otherIcon },
-};
 
 const numberFormat = new Intl.NumberFormat("zh-CN");
 
@@ -92,12 +77,7 @@ export function Dashboard() {
           const meta = databaseMeta[item.name];
           const width = Math.max(item.count ? 8 : 0, item.count / largestDatabaseCount * 100);
           return <article className="database-distribution-item" key={item.name}>
-            <div className="database-label" style={{ color: meta.color, background: meta.tint }}>
-              <span className="database-logo" aria-hidden="true">
-                {meta.icon ? <img src={meta.icon} alt="" /> : <RedisIcon />}
-              </span>
-              <strong>{item.name}</strong>
-            </div>
+            <DatabaseLabel name={item.name} />
             <div className="database-bar-row">
               <div className="progress-track"><span style={{ width: `${width}%`, background: meta.color }} /></div>
               <strong>{numberFormat.format(item.count)}</strong>
@@ -121,14 +101,6 @@ export function Dashboard() {
 
 function QuickLink({ to, icon: Icon, title, detail }: { to: string; icon: typeof ScrollText; title: string; detail: string }) {
   return <Link className="quick-link" to={to}><span><Icon size={20} /></span><span><strong>{title}</strong><small>{detail}</small></span><ArrowRight size={17} /></Link>;
-}
-
-function RedisIcon() {
-  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="m12 4 8 4-8 4-8-4 8-4Z" />
-    <path d="m4 12 8 4 8-4" />
-    <path d="m4 16 8 4 8-4" />
-  </svg>;
 }
 
 function getPriorityMeta(priority: string) {

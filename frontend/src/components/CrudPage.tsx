@@ -1,8 +1,11 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, ChevronLeft, ChevronRight, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { CheckCircle2, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { ApiError, Entity, entityApi } from "../api/client";
+import { api, ApiError, Entity, entityApi } from "../api/client";
+import { CategoryNavigation } from "./CategoryNavigation";
+import type { Classification, Facets } from "./CategoryNavigation";
+import { Pagination } from "./Pagination";
 import { EmptyState, ErrorState, LoadingState, TableSkeleton } from "./States";
 
 type Field = {
@@ -22,25 +25,63 @@ export type CrudConfig = {
   icon: LucideIcon;
   fields: Field[];
   columns: { name: string; label: string }[];
+  classification?: Classification;
 };
 
 export function CrudPage({ config }: { config: CrudConfig }) {
+  return <CrudContent key={config.key} config={config} />;
+}
+
+function CrudContent({ config }: { config: CrudConfig }) {
   const PageIcon = config.icon;
   const client = useQueryClient();
   const [page, setPage] = useState(1);
   const [keyword, setKeyword] = useState("");
+  const [database, setDatabase] = useState("");
+  const [category, setCategory] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
   const [notice, setNotice] = useState("");
+  const filters: Record<string, string> = {};
+  if (config.classification) {
+    if (database) filters[config.classification.databaseField] = database;
+    if (category && config.classification.categoryField) filters[config.classification.categoryField] = category;
+  }
+  const facets = useQuery({
+    queryKey: [config.key, "facets"],
+    queryFn: () => api<Facets>(`${config.path}facets`),
+    enabled: !!config.classification,
+  });
   const list = useQuery({
-    queryKey: [config.key, page, keyword],
-    queryFn: () => entityApi.list<Entity>(config.path, page, keyword),
+    queryKey: [config.key, page, keyword, filters],
+    queryFn: () => entityApi.list<Entity>(config.path, page, keyword, filters),
   });
   const detail = useQuery({
     queryKey: [config.key, "detail", selectedId],
     queryFn: () => entityApi.detail<Entity>(config.path, selectedId!),
     enabled: selectedId !== null,
   });
+  useEffect(() => {
+    if (list.data && page > Math.max(1, list.data.pages)) setPage(Math.max(1, list.data.pages));
+  }, [list.data, page]);
+
+  function changeClassification(nextDatabase: string, nextCategory: string) {
+    setDatabase(nextDatabase); setCategory(nextCategory); setPage(1);
+  }
+
+  const editorConfig = {
+    ...config,
+    fields: config.fields.map((field) => {
+      const isClassification = field.name === config.classification?.databaseField || field.name === config.classification?.categoryField;
+      return {
+        ...field,
+        defaultValue: filters[field.name] || field.defaultValue,
+        options: isClassification
+          ? [...new Set([...(field.options ?? []), ...(facets.data?.items ?? []).map((row) => String(row[field.name] ?? ""))].filter(Boolean))]
+          : field.options,
+      };
+    }),
+  };
 
   function closeEditor() { setSelectedId(null); setCreating(false); }
   async function refresh() {
@@ -87,17 +128,19 @@ export function CrudPage({ config }: { config: CrudConfig }) {
 
   return <div className="page">
     <header className="page-header"><div className="page-title-group"><span className="page-title-icon"><PageIcon size={24} /></span><div><p className="eyebrow">DATA MODULE</p><h1>{config.title}</h1><p className="muted">{config.description}</p></div></div><button className="button primary" onClick={() => setCreating(true)}><Plus size={17} />新增</button></header>
+    {config.classification && <CategoryNavigation classification={config.classification} data={facets.data} loading={facets.isLoading} error={!!facets.error} retry={() => void facets.refetch()} database={database} category={category} onChange={changeClassification} />}
     <section className="panel data-panel">
       <div className="toolbar"><label className="search-field"><Search size={17} aria-hidden="true" /><span className="sr-only">搜索{config.title}</span><input value={keyword} onChange={(event) => { setKeyword(event.target.value); setPage(1); }} placeholder={`搜索${config.title}`} /></label><span className="result-count">共 <strong>{list.data?.total ?? 0}</strong> 条记录</span></div>
+      {(database || category) && <div className="active-classification"><span>{[database, category].filter(Boolean).join(" / ")}</span><button className="text-link" onClick={() => changeClassification("", "")}><X size={14} />清除分类</button></div>}
       {notice && <div className="alert" role="status"><span><CheckCircle2 size={17} />{notice}</span><button className="icon-button" aria-label="关闭通知" onClick={() => setNotice("")}><X size={17} /></button></div>}
-      {list.isLoading ? <TableSkeleton /> : list.error ? <ErrorState message="数据加载失败" retry={() => void list.refetch()} /> : !list.data?.items.length ? <EmptyState title={`没有${config.title}数据`} description="可通过右上角按钮创建第一条记录。" /> : <>
+      {list.isLoading ? <TableSkeleton /> : list.error ? <ErrorState message="数据加载失败" retry={() => void list.refetch()} /> : !list.data?.items.length ? <EmptyState title={`没有${config.title}数据`} description={database || category || keyword ? "当前分类或搜索条件下没有记录，可切换分类、清空搜索或新增记录。" : "可通过右上角按钮创建第一条记录。"} /> : <>
         <div className="table-wrap"><table><thead><tr>{config.columns.map((column) => <th key={column.name}>{column.label}</th>)}<th className="actions-heading"><span className="sr-only">操作</span></th></tr></thead><tbody>{list.data.items.map((row) => <tr key={row.id}>{config.columns.map((column, index) => <td key={column.name} data-label={column.label}><span className={index === 0 ? "primary-cell" : undefined}>{formatCell(row[column.name], column.name)}</span></td>)}<td className="row-actions" data-label="操作"><button className="button small" onClick={() => setSelectedId(row.id)}><Pencil size={14} />查看/编辑</button><button className="button small danger" onClick={() => void remove(row)}><Trash2 size={14} />删除</button></td></tr>)}</tbody></table></div>
-        <div className="pagination"><span className="page-indicator">第 <strong>{list.data.page}</strong> / {list.data.pages || 1} 页</span><div><button className="button pagination-button" aria-label="上一页" disabled={!list.data.has_previous} onClick={() => setPage((value) => value - 1)}><ChevronLeft size={17} />上一页</button><button className="button pagination-button" aria-label="下一页" disabled={!list.data.has_next} onClick={() => setPage((value) => value + 1)}>下一页<ChevronRight size={17} /></button></div></div>
       </>}
+      {list.data && !list.error && <Pagination key={`${database}-${category}-${keyword}-${list.data.pages}`} page={list.data.page} pages={list.data.pages} onChange={setPage} />}
     </section>
     {(creating || selectedId !== null) && <Editor
       key={creating ? "new" : `${selectedId}-${detail.data?.revision ?? "loading"}`}
-      config={config}
+      config={editorConfig}
       item={creating ? undefined : detail.data}
       loading={!creating && detail.isLoading}
       onClose={closeEditor}
@@ -145,7 +188,7 @@ function FieldInput({ field, value }: { field: Field; value: unknown }) {
   return <label className={field.type === "textarea" ? "full" : undefined}>{field.label}
     {field.type === "textarea" ? <textarea name={field.name} defaultValue={String(initial)} rows={field.name === "content" ? 12 : 4} required={field.required} />
       : field.type === "select" ? <select name={field.name} defaultValue={String(initial)} required={field.required}>{field.options?.map((option) => <option key={option}>{option}</option>)}</select>
-      : <input name={field.name} type={field.type ?? "text"} defaultValue={String(initial)} required={field.required} />}
+      : <><input name={field.name} type={field.type ?? "text"} defaultValue={String(initial)} required={field.required} list={field.options?.length ? `field-${field.name}-options` : undefined} />{field.options?.length ? <datalist id={`field-${field.name}-options`}>{field.options.map((option) => <option key={option} value={option} />)}</datalist> : null}</>}
   </label>;
 }
 
