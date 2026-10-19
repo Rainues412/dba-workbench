@@ -1,6 +1,9 @@
 """Tasks API - CRUD operations for the task list."""
+import hashlib
+import json
+from datetime import datetime
 from fastapi import APIRouter, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from backend.database import get_db_ctx, page_response, validate_page
 from backend.concurrency import expected_revision, raise_write_conflict
@@ -24,6 +27,48 @@ class TaskUpdate(BaseModel):
     priority: Optional[str] = None
     due_date: Optional[str] = None
     customer_id: Optional[int] = None
+
+
+class LegacyArchiveEntry(BaseModel):
+    id: str | int | None = None
+    title: str = Field(min_length=1, max_length=1000)
+    notes: str = ""
+    priority: str = "P1"
+    deadline: str | None = None
+    completedAt: str | None = None
+
+
+class LegacyArchiveImport(BaseModel):
+    items: list[LegacyArchiveEntry] = Field(min_length=1, max_length=200)
+
+
+@router.post("/legacy-archive")
+def import_legacy_archive(payload: LegacyArchiveImport):
+    """Explicit, additive archive migration; never clears browser source data."""
+    imported = skipped = 0
+    with get_db_ctx() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        for entry in payload.items:
+            key = hashlib.sha256(json.dumps(entry.model_dump(), ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+            if conn.execute("SELECT 1 FROM legacy_task_imports WHERE source_key = ?", (key,)).fetchone():
+                skipped += 1
+                continue
+            try:
+                due = datetime.strptime(entry.deadline, "%Y-%m-%d").date().isoformat() if entry.deadline else None
+                completed = datetime.fromisoformat(entry.completedAt.replace("Z", "+00:00")).isoformat() if entry.completedAt else None
+            except ValueError:
+                raise HTTPException(422, "旧归档日期格式无效，未导入任何记录")
+            priority = {"P0": "高", "P1": "中", "P2": "低", "高": "高", "中": "中", "低": "低"}.get(entry.priority)
+            if priority is None:
+                raise HTTPException(422, "旧归档优先级无效，未导入任何记录")
+            row = conn.execute(
+                "INSERT INTO tasks(title, description, priority, due_date, status, completed_at) VALUES (?, ?, ?, ?, '已完成', ?)",
+                (entry.title, entry.notes, priority, due, completed),
+            )
+            conn.execute("INSERT INTO legacy_task_imports(source_key, task_id) VALUES (?, ?)", (key, row.lastrowid))
+            imported += 1
+        conn.commit()
+    return {"ok": True, "imported": imported, "skipped": skipped}
 
 
 _TASK_SELECT = """

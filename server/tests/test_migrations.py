@@ -62,9 +62,10 @@ def test_query_plan_uses_filter_indexes(tmp_path: Path) -> None:
 def test_failed_migration_is_rolled_back_atomically(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     path = tmp_path / "atomic.db"
     original_files = migration_module._migration_files()
-    broken = tmp_path / "0005_broken.sql"
+    current_version = original_files[-1][0]
+    broken = tmp_path / f"{current_version + 1:04d}_broken.sql"
     broken.write_text("CREATE TABLE must_rollback(id INTEGER);\nTHIS IS NOT SQL;", encoding="utf-8")
-    monkeypatch.setattr(migration_module, "_migration_files", lambda: [*original_files, (5, broken)])
+    monkeypatch.setattr(migration_module, "_migration_files", lambda: [*original_files, (current_version + 1, broken)])
 
     with pytest.raises(sqlite3.OperationalError):
         migrate(path)
@@ -73,5 +74,5 @@ def test_failed_migration_is_rolled_back_atomically(tmp_path: Path, monkeypatch:
         tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
         versions = [row[0] for row in conn.execute("SELECT version FROM schema_migrations ORDER BY version")]
         assert "must_rollback" not in tables
-        assert versions == [1, 2, 3, 4]
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert versions == list(range(1, current_version + 1))
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == current_version

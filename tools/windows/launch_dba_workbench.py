@@ -51,9 +51,12 @@ def start_server() -> bool:
         roots = config.get("allowed_roots") if isinstance(config, dict) else None
         if not isinstance(roots, list) or not roots or not all(isinstance(root, str) and root.strip() for root in roots):
             raise ValueError(f"本机打开配置缺少有效 allowed_roots：{LOCAL_CONFIG}")
+        actions = config.get("allowed_actions", ["edit", "folder", "open"])
+        if not isinstance(actions, list) or not actions or not all(isinstance(action, str) and action in {"edit", "folder", "open", "scan", "pick-folder"} for action in actions):
+            raise ValueError(f"本机配置 allowed_actions 无效（不允许脚本执行）：{LOCAL_CONFIG}")
         env.setdefault("DBA_LOCAL_CAPABILITIES", "true")
         env.setdefault("DBA_ALLOWED_ROOTS", os.pathsep.join(roots))
-        env.setdefault("DBA_ALLOWED_LOCAL_ACTIONS", "edit,folder,open")
+        env.setdefault("DBA_ALLOWED_LOCAL_ACTIONS", ",".join(actions))
     env.update(
         {
             "DBA_MODE": "local",

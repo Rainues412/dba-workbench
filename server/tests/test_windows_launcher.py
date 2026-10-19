@@ -66,6 +66,32 @@ def test_empty_local_opening_configuration_is_rejected(launcher):
         launcher.start_server()
 
 
+def test_explicit_scan_permission_stays_scoped_to_roots(launcher, tmp_path, monkeypatch):
+    import json
+
+    launcher.LOCAL_CONFIG.write_text(json.dumps({"allowed_roots": [str(tmp_path)], "allowed_actions": ["edit", "folder", "open", "scan", "pick-folder"]}), encoding="utf-8")
+    monkeypatch.setattr(launcher, "LOG_DIR", tmp_path)
+    monkeypatch.setattr(launcher, "LOG_PATH", tmp_path / "server.log")
+    monkeypatch.setattr(launcher.time, "sleep", lambda _: None)
+    monkeypatch.setattr(launcher, "probe_service", lambda: "dba")
+    for key in ["DBA_LOCAL_CAPABILITIES", "DBA_ALLOWED_ROOTS", "DBA_ALLOWED_LOCAL_ACTIONS"]:
+        monkeypatch.delenv(key, raising=False)
+    calls = []
+    monkeypatch.setattr(launcher.subprocess, "Popen", lambda *args, **kwargs: calls.append(kwargs))
+    assert launcher.start_server()
+    assert calls[0]["env"]["DBA_ALLOWED_ROOTS"] == str(tmp_path)
+    assert calls[0]["env"]["DBA_ALLOWED_LOCAL_ACTIONS"] == "edit,folder,open,scan,pick-folder"
+
+
+@pytest.mark.parametrize("actions", [["run"], "scan", [], [None]])
+def test_local_configuration_never_enables_run(launcher, actions):
+    import json
+
+    launcher.LOCAL_CONFIG.write_text(json.dumps({"allowed_roots": ["D:\\Database"], "allowed_actions": actions}), encoding="utf-8")
+    with pytest.raises(ValueError, match="allowed_actions"):
+        launcher.start_server()
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows Edge launcher")
 def test_running_service_is_reused_and_opened_in_edge(launcher, tmp_path, monkeypatch):
     edge = tmp_path / "msedge.exe"

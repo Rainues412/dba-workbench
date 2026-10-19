@@ -161,6 +161,19 @@ def update_script(script_id: int, data: ScriptUpdate, if_match: str | None = Hea
         return dict(row)
 
 
+@router.get("/{script_id}/versions/{version}")
+def get_script_version(script_id: int, version: int):
+    """Read an immutable historical body; restoring uses the revision-checked PUT."""
+    with get_db_ctx() as conn:
+        row = conn.execute(
+            "SELECT version, content, created_at FROM script_versions WHERE script_id = ? AND version = ? ORDER BY id DESC LIMIT 1",
+            (script_id, version),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "Script version not found")
+        return dict(row)
+
+
 @router.delete("/{script_id}")
 def delete_script(script_id: int, if_match: str | None = Header(None)):
     """Delete a script."""
