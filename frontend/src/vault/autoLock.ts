@@ -1,26 +1,36 @@
 export const VAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
 export function startVaultAutoLock(
-  onLock: (reason: "idle" | "hidden") => void,
+  onLock: (reason: "idle") => void,
   timeout = VAULT_IDLE_TIMEOUT_MS,
   windowTarget: Window = window,
   documentTarget: Document = document,
 ) {
-  let timer = windowTarget.setTimeout(() => onLock("idle"), timeout);
-  const reset = () => {
-    windowTarget.clearTimeout(timer);
-    timer = windowTarget.setTimeout(() => onLock("idle"), timeout);
+  let deadline = Date.now() + timeout;
+  let locked = false;
+  const check = () => {
+    if (!locked && Date.now() >= deadline) { locked = true; onLock("idle"); }
   };
-  const hidden = () => {
-    if (documentTarget.visibilityState === "hidden") onLock("hidden");
+  let timer = windowTarget.setTimeout(check, timeout);
+  const reset = () => {
+    check();
+    if (locked) return;
+    deadline = Date.now() + timeout;
+    windowTarget.clearTimeout(timer);
+    timer = windowTarget.setTimeout(check, timeout);
+  };
+  const visible = () => {
+    if (documentTarget.visibilityState === "visible") check();
   };
   windowTarget.addEventListener("pointerdown", reset, { passive: true });
   windowTarget.addEventListener("keydown", reset);
-  documentTarget.addEventListener("visibilitychange", hidden);
+  windowTarget.addEventListener("focus", check);
+  documentTarget.addEventListener("visibilitychange", visible);
   return () => {
     windowTarget.clearTimeout(timer);
     windowTarget.removeEventListener("pointerdown", reset);
     windowTarget.removeEventListener("keydown", reset);
-    documentTarget.removeEventListener("visibilitychange", hidden);
+    windowTarget.removeEventListener("focus", check);
+    documentTarget.removeEventListener("visibilitychange", visible);
   };
 }

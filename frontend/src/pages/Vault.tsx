@@ -1,10 +1,11 @@
 import { FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Clipboard, Download, Eye, KeyRound, LockKeyhole, Pencil, Plus, Search, ShieldCheck, Star, Trash2, Upload, X } from "lucide-react";
+import { CheckCircle2, Clipboard, Download, Eye, EyeOff, KeyRound, LockKeyhole, Pencil, Plus, Search, ShieldCheck, Star, Trash2, Upload, X } from "lucide-react";
 import { ApiError, api, jsonBody, Page } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { Pagination } from "../components/Pagination";
+import { EdgePasswordImport } from "../components/EdgePasswordImport";
 import {
   createVaultProfile, decryptSecret, encryptSecret, RecoveryPublicKey,
   unlockVault, VaultCipherItem, VaultProfile, VaultSecret,
@@ -41,6 +42,9 @@ export function Vault() {
   const [notice, setNotice] = useState("");
   const [editing, setEditing] = useState<Decrypted | "new" | null>(null);
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
+  const deletingRef = useRef(false);
   const dekRef = useRef(dek);
   dekRef.current = dek;
   const profile = useQuery({ queryKey: ["vault", "profile"], queryFn: () => api<ProfileResponse>("/api/vault/profile") });
@@ -73,14 +77,16 @@ export function Vault() {
 
   function lock(message?: string) {
     dekRef.current?.fill(0);
-    setDek(null); setSecrets([]); setRevealed(new Set()); setEditing(null); setPage(1);
+    dekRef.current = null;
+    setDek(null); setSecrets([]); setRevealed(new Set()); setSelected(new Set()); setEditing(null); setPage(1);
     if (message) setNotice(message);
   }
 
-  useEffect(() => () => { dekRef.current?.fill(0); }, []);
+  useEffect(() => () => { dekRef.current?.fill(0); dekRef.current = null; }, []);
+  useEffect(() => { setSelected(new Set()); setRevealed(new Set()); }, [page, pageSize, search, favoritesOnly]);
   useEffect(() => {
     if (!dek) return;
-    return startVaultAutoLock((reason) => lock(reason === "idle" ? "保险箱已因闲置自动锁定" : "页面离开后保险箱已锁定"));
+    return startVaultAutoLock(() => lock("保险箱已因闲置自动锁定"));
   }, [dek]);
 
   useEffect(() => {
@@ -149,10 +155,42 @@ export function Vault() {
   }
 
   async function remove(entry: Decrypted) {
-    if (!reauthenticated) { setError("删除前请重新验证登录密码"); return; }
-    if (!window.confirm(`确定删除“${entry.secret.site}”吗？`)) return;
-    await api(`/api/vault/items/${entry.cipher.id}?revision=${entry.cipher.revision}`, { method: "DELETE" });
-    await items.refetch(); setNotice("条目已删除");
+    await removeEntries([entry]);
+  }
+
+  async function removeEntries(entries: Decrypted[]) {
+    if (!entries.length || deletingRef.current) return;
+    const key = dekRef.current;
+    const authorized = () => key && dekRef.current === key && Boolean(session?.reauthenticated_until && new Date(session.reauthenticated_until).getTime() > Date.now());
+    if (!authorized()) { setError("删除前请解锁并重新验证登录密码"); return; }
+    if (!window.confirm(`确定永久删除选中的 ${entries.length} 条密码吗？此操作不可撤销，请先确认已有加密备份。`)) return;
+    deletingRef.current = true; setDeleting(true); setError(""); setNotice("");
+    let removed = 0;
+    try {
+      for (const entry of entries) {
+        if (!authorized()) throw new Error("授权已失效");
+        await api(`/api/vault/items/${entry.cipher.id}?revision=${entry.cipher.revision}`, { method: "DELETE" });
+        removed += 1;
+        setSecrets((current) => current.filter((item) => item.cipher.item_key !== entry.cipher.item_key));
+        setSelected((current) => { const next = new Set(current); next.delete(entry.cipher.item_key); return next; });
+        setRevealed((current) => { const next = new Set(current); next.delete(entry.cipher.item_key); return next; });
+      }
+      setNotice(`已删除 ${removed} 条密码`);
+    } catch {
+      setError(`删除已暂停：已删除 ${removed} 条，剩余 ${entries.length - removed} 条未确认删除。请刷新核对；若条目已被修改，不会强制删除。`);
+    } finally {
+      deletingRef.current = false; setDeleting(false);
+      await items.refetch();
+    }
+  }
+
+  function togglePassword(entry: Decrypted) {
+    const itemKey = entry.cipher.item_key;
+    // Hiding remains available even after the sensitive-operation grant expires.
+    if (!revealed.has(itemKey) && !(session?.reauthenticated_until && new Date(session.reauthenticated_until).getTime() > Date.now())) {
+      setError("查看前请重新验证登录密码"); return;
+    }
+    setRevealed((current) => { const next = new Set(current); if (next.has(itemKey)) next.delete(itemKey); else next.add(itemKey); return next; });
   }
 
   async function copyPassword(entry: Decrypted) {
@@ -233,10 +271,26 @@ export function Vault() {
     {!profile.data!.initialized ? <section className="panel vault-gate"><span className="vault-gate-icon"><ShieldCheck size={30} /></span><h2>创建新保险箱</h2><p className="muted">保险箱主密码与登录密码分离。忘记后只能由本机管理员恢复。</p><form className="stack compact" onSubmit={initialize}><label>保险箱主密码<input name="master_password" type="password" minLength={12} autoComplete="new-password" required /></label><label>确认主密码<input name="confirm_master" type="password" minLength={12} autoComplete="new-password" required /></label><button className="button primary" disabled={!reauthenticated}><ShieldCheck size={17} />创建保险箱</button></form></section>
       : !dek ? <section className="panel vault-gate"><span className="vault-gate-icon"><LockKeyhole size={30} /></span><h2>保险箱已锁定</h2><p className="muted">刷新页面或离开页面后会保持锁定；闲置 5 分钟自动锁定。</p><form className="stack compact" onSubmit={unlock}><label>保险箱主密码<input name="master_password" type="password" autoComplete="current-password" required autoFocus /></label><button className="button primary" disabled={!reauthenticated}><LockKeyhole size={17} />解锁</button></form></section>
       : <>
+        <div className="button-row"><EdgePasswordImport dek={dek} userId={session!.user!.id} canImport={() => dekRef.current === dek && Boolean(session?.reauthenticated_until && new Date(session.reauthenticated_until).getTime() > Date.now())} loadExisting={async () => { const key = dekRef.current; if (!key) throw new Error("保险箱已锁定"); return Promise.all((await loadAllItems()).map((item) => decryptSecret(key, item))); }} onImported={async () => { await items.refetch(); }} /></div>
         {!profile.data!.profile?.recovery_confirmed_at && <section className="panel recovery-callout"><span className="callout-icon"><Download size={22} /></span><div><h2>请备份管理员恢复密钥</h2><p className="muted">运行 <code>python -m backend.admin backup-recovery-key --output D:\Software\AI\Codex\dba-vault-recovery</code>，并将副本与数据库分开保存。</p></div><button className="button" onClick={async () => { await api("/api/vault/recovery/confirm", { method: "POST" }); await profile.refetch(); }}>我已完成备份</button></section>}
         <section className="panel data-panel" ref={panelRef}><div className="toolbar"><label className="search-field"><Search size={17} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="在全部已解锁条目中搜索" aria-label="搜索保险箱" /></label><label className="button"><input type="checkbox" checked={favoritesOnly} onChange={(event) => { setFavoritesOnly(event.target.checked); setPage(1); }} /><Star size={16} />仅收藏</label><div className="button-row"><button className="button" onClick={() => void downloadBackup()}><Download size={16} />加密备份</button><label className="button file-button"><Upload size={16} />恢复加密备份<input className="sr-only" type="file" accept="application/json,.json" onChange={(event) => void restoreBackup(event)} /></label><button className="button primary" onClick={() => reauthenticated ? setEditing("new") : setError("新增前请重新验证登录密码")}><Plus size={17} />新增条目</button></div></div>
           {(legacyLocal.length > 0 || (legacyStatus.data?.backend_entries ?? 0) > 0) && <div className="migration-banner"><span>检测到 {legacyLocal.length} 条浏览器旧数据和 {legacyStatus.data?.backend_entries ?? 0} 条后端旧数据。</span><button className="button" onClick={() => void migrateLegacy()}>迁移并校验</button></div>}
-          {items.isLoading ? <LoadingState /> : items.error ? <ErrorState message="密文列表加载失败" retry={() => void items.refetch()} /> : !filtered.length ? <EmptyState title={search || favoritesOnly ? "没有匹配的条目" : "保险箱为空"} description={search || favoritesOnly ? "尝试调整搜索条件或取消收藏筛选。" : "新增条目，或迁移旧版保险箱数据。"} icon={ShieldCheck} /> : <div className="vault-grid">{visible.map((entry) => <article className="vault-card" key={entry.cipher.item_key}><div className="vault-card-heading"><span className="vault-item-icon"><KeyRound size={18} /></span><div><span className="badge">{entry.secret.category || "未分类"}</span>{entry.secret.favorite && <span className="badge"><Star size={13} />已收藏</span>}<h3>{entry.secret.site}</h3><p className="muted">{entry.secret.username || "未填写账号"}</p></div></div><div className="secret-row"><code>{revealed.has(entry.cipher.item_key) ? entry.secret.password : "••••••••••••"}</code><button className="button small" onClick={() => { if (!reauthenticated) return setError("查看前请重新验证登录密码"); setRevealed((current) => new Set(current).add(entry.cipher.item_key)); }}><Eye size={14} />查看</button><button className="button small" onClick={() => void copyPassword(entry)}><Clipboard size={14} />复制</button></div><div className="row-actions"><button className="button small" onClick={() => reauthenticated ? setEditing(entry) : setError("编辑前请重新验证登录密码")}><Pencil size={14} />编辑</button><button className="button small danger" onClick={() => void remove(entry)}><Trash2 size={14} />删除</button></div></article>)}</div>}
+          {!items.isLoading && !items.error && visible.length > 0 && <div className="vault-selection">
+            <label className="checkbox-label"><input type="checkbox" disabled={deleting} checked={visible.every((entry) => selected.has(entry.cipher.item_key))} ref={(input) => { if (input) input.indeterminate = visible.some((entry) => selected.has(entry.cipher.item_key)) && !visible.every((entry) => selected.has(entry.cipher.item_key)); }} onChange={(event) => setSelected(event.target.checked ? new Set(visible.map((entry) => entry.cipher.item_key)) : new Set())} />全选当前页</label>
+            <span className="muted">已选 {visible.filter((entry) => selected.has(entry.cipher.item_key)).length} 条</span>
+            <button className="button small" disabled={deleting || !selected.size} onClick={() => setSelected(new Set())}>取消选择</button>
+            <button className="button small danger" disabled={deleting || !selected.size} onClick={() => void removeEntries(visible.filter((entry) => selected.has(entry.cipher.item_key)))}><Trash2 size={14} />{deleting ? "正在删除…" : "删除所选"}</button>
+          </div>}
+          {items.isLoading ? <LoadingState /> : items.error ? <ErrorState message="密文列表加载失败" retry={() => void items.refetch()} /> : !filtered.length ? <EmptyState title={search || favoritesOnly ? "没有匹配的条目" : "保险箱为空"} description={search || favoritesOnly ? "尝试调整搜索条件或取消收藏筛选。" : "新增条目，或迁移旧版保险箱数据。"} icon={ShieldCheck} /> : <div className="vault-grid">{visible.map((entry) => {
+            const isRevealed = revealed.has(entry.cipher.item_key);
+            const isSelected = selected.has(entry.cipher.item_key);
+            return <article className={`vault-card${isSelected ? " is-selected" : ""}`} key={entry.cipher.item_key}>
+              <label className="checkbox-label vault-select"><input type="checkbox" aria-label={`选择 ${entry.secret.site}`} disabled={deleting} checked={isSelected} onChange={(event) => { const checked = event.target.checked; setSelected((current) => { const next = new Set(current); if (checked) next.add(entry.cipher.item_key); else next.delete(entry.cipher.item_key); return next; }); }} />选择条目</label>
+              <div className="vault-card-heading"><span className="vault-item-icon"><KeyRound size={18} /></span><div><span className="badge">{entry.secret.category || "未分类"}</span>{entry.secret.favorite && <span className="badge"><Star size={13} />已收藏</span>}<h3>{entry.secret.site}</h3><p className="muted">{entry.secret.username || "未填写账号"}</p></div></div>
+              <div className="secret-row"><code>{isRevealed ? entry.secret.password : "••••••••••••"}</code><button className="button small" aria-pressed={isRevealed} onClick={() => togglePassword(entry)}>{isRevealed ? <EyeOff size={14} /> : <Eye size={14} />}{isRevealed ? "隐藏" : "查看"}</button><button className="button small" onClick={() => void copyPassword(entry)}><Clipboard size={14} />复制</button></div>
+              <div className="row-actions"><button className="button small" disabled={deleting} onClick={() => reauthenticated ? setEditing(entry) : setError("编辑前请重新验证登录密码")}><Pencil size={14} />编辑</button><button className="button small danger" disabled={deleting} onClick={() => void remove(entry)}><Trash2 size={14} />删除</button></div>
+            </article>;
+          })}</div>}
           {!items.isLoading && !items.error && <Pagination page={currentPage} pages={pages} total={filtered.length} pageSize={pageSize} onChange={(next) => { paginationTop.current = panelRef.current?.querySelector(".pagination")?.getBoundingClientRect().top ?? null; setPage(next); }} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />}
         </section>
       </>}

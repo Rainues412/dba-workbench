@@ -16,6 +16,31 @@ describe("application shell", () => {
 });
 
 describe("vault automatic locking", () => {
+  it("does not lock on a short window switch, but still expires while hidden", () => {
+    vi.useFakeTimers();
+    const lock = vi.fn();
+    const stop = startVaultAutoLock(lock);
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    document.dispatchEvent(new Event("visibilitychange"));
+    vi.advanceTimersByTime(1000);
+    window.dispatchEvent(new Event("focus"));
+    expect(lock).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(VAULT_IDLE_TIMEOUT_MS);
+    expect(lock).toHaveBeenCalledExactlyOnceWith("idle");
+    stop();
+  });
+
+  it("checks elapsed time on return even when background timers were suspended", () => {
+    vi.useFakeTimers();
+    const lock = vi.fn();
+    const stop = startVaultAutoLock(lock);
+    vi.setSystemTime(Date.now() + VAULT_IDLE_TIMEOUT_MS + 1);
+    window.dispatchEvent(new Event("focus"));
+    window.dispatchEvent(new KeyboardEvent("keydown"));
+    expect(lock).toHaveBeenCalledExactlyOnceWith("idle");
+    stop();
+  });
+
   it("locks after five idle minutes and activity resets the timer", () => {
     vi.useFakeTimers();
     const lock = vi.fn();

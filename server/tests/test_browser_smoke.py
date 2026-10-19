@@ -81,6 +81,83 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
             page.get_by_role("heading", name="test-service").wait_for()
             assert "test-only-vault-secret" not in page.locator("body").inner_text()
 
+            # Switching windows must not immediately discard the vault key.
+            page.evaluate("""() => {
+                Object.defineProperty(document, 'visibilityState', {configurable: true, value: 'hidden'});
+                document.dispatchEvent(new Event('visibilitychange'));
+                Object.defineProperty(document, 'visibilityState', {configurable: true, value: 'visible'});
+                document.dispatchEvent(new Event('visibilitychange'));
+                window.dispatchEvent(new Event('focus'));
+            }""")
+            page.get_by_role("button", name="新增条目", exact=True).wait_for()
+
+            # Synthetic credentials only: exercise real browser encryption,
+            # persisted-envelope readback and duplicate-safe retries.
+            writes = []
+            page.on("request", lambda request: writes.append(request.post_data or "")
+                    if request.method == "POST" and request.url.endswith("/api/vault/items") else None)
+            sample_csv = b'name,url,username,password\r\nCSV Example,https://csv.test,csv-user,test-only-csv-secret\r\nCSV Example,https://csv.test,csv-user,test-only-csv-secret\r\n'
+            page.get_by_role("button", name="导入 Edge 密码", exact=True).click()
+            page.get_by_label("选择 Edge CSV").set_input_files({"name": "sample.csv", "mimeType": "text/csv", "buffer": sample_csv})
+            assert page.get_by_label("选择 Edge CSV").input_value().endswith("sample.csv")
+            page.get_by_text("待导入 2 条", exact=False).wait_for()
+            assert len(writes) == 0
+            page.get_by_role("button", name="确认加密导入", exact=True).click()
+            page.get_by_text("导入完成：新增 1 条，跳过重复 1 条", exact=False).wait_for()
+            assert page.get_by_label("选择 Edge CSV").input_value() == ""
+            assert len(writes) == 1
+            assert "test-only-csv-secret" not in writes[0]
+            assert "csv-user" not in writes[0]
+            assert "ciphertext" in writes[0]
+            page.get_by_role("button", name="关闭 Edge 导入", exact=True).click()
+            page.get_by_role("heading", name="CSV Example", exact=True).wait_for()
+            page.get_by_role("button", name="导入 Edge 密码", exact=True).click()
+            page.get_by_label("选择 Edge CSV").set_input_files({"name": "sample.csv", "mimeType": "text/csv", "buffer": sample_csv})
+            page.get_by_text("待导入 2 条", exact=False).wait_for()
+            page.get_by_role("button", name="确认加密导入", exact=True).click()
+            page.get_by_text("导入完成：新增 0 条，跳过重复 2 条", exact=False).wait_for()
+            assert len(writes) == 1
+            page.get_by_role("button", name="关闭 Edge 导入", exact=True).click()
+
+            # Long imported labels must not widen grid tracks or push buttons
+            # outside the card. All values below belong to the isolated test DB.
+            page.get_by_role("heading", name="CSV Example", exact=True).locator("xpath=ancestor::article").get_by_role("button", name="编辑", exact=True).click()
+            dialog = page.get_by_role("dialog")
+            long_site = "long-service-" + "x" * 180
+            dialog.get_by_label("系统/网站").fill(long_site)
+            dialog.get_by_label("账号", exact=True).fill("u" * 180 + "@example.test")
+            dialog.get_by_label("分类", exact=True).fill("category" * 35)
+            dialog.get_by_label("密码", exact=True).fill("test-only-long-secret-" * 20)
+            dialog.get_by_role("button", name="保存", exact=True).click()
+            long_card = page.locator(".vault-card").filter(has=page.get_by_role("heading", name=long_site, exact=True))
+            long_card.wait_for()
+            long_card.get_by_role("button", name="查看", exact=True).click()
+            for width in (1440, 1024, 768, 390):
+                page.set_viewport_size({"width": width, "height": 1000})
+                page.wait_for_timeout(180)  # Allow the card hover transition to settle.
+                assert page.locator(".vault-card").evaluate_all("""cards => cards.every(card => {
+                    const box = card.getBoundingClientRect();
+                    const grid = card.parentElement.getBoundingClientRect();
+                    return box.right <= grid.right + 1 && card.scrollWidth <= card.clientWidth + 1 &&
+                        [...card.querySelectorAll('h3, p, .badge, code, button')].every(el => {
+                            const r = el.getBoundingClientRect();
+                            return r.left >= box.left - 1 && r.right <= box.right + 1 &&
+                                (el.tagName === 'CODE' || el.scrollWidth <= el.clientWidth + 1);
+                        });
+                })"""), f"Vault card content overflow at {width}px"
+
+            long_card.get_by_role("button", name="隐藏", exact=True).click()
+            assert long_card.locator("code").inner_text() == "••••••••••••"
+            page.get_by_role("checkbox", name="全选当前页", exact=True).check()
+            page.get_by_text("已选 2 条", exact=True).wait_for()
+            page.once("dialog", lambda dialog: dialog.dismiss())
+            page.get_by_role("button", name="删除所选", exact=True).click()
+            assert page.locator(".vault-card").count() == 2
+            page.once("dialog", lambda dialog: dialog.accept())
+            page.get_by_role("button", name="删除所选", exact=True).click()
+            page.get_by_text("已删除 2 条密码", exact=True).wait_for()
+            page.get_by_text("保险箱为空", exact=True).wait_for()
+
             page.reload(wait_until="networkidle")
             page.get_by_role("heading", name="保险箱已锁定").wait_for()
             assert "test-only-vault-secret" not in page.locator("body").inner_text()
