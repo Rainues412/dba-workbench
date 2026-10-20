@@ -75,7 +75,7 @@ export function Vault() {
   const filtered = useMemo(() => {
     const value = search.trim().toLocaleLowerCase();
     return secrets
-      .filter(({ secret }) => (categoryFilter === null || secret.category.trim() === categoryFilter) && (!favoritesOnly || secret.favorite) && (!value || [secret.site, secret.url, secret.username, secret.category, secret.notes].some((field) => field.toLocaleLowerCase().includes(value))))
+      .filter(({ secret }) => (categoryFilter === null || secret.category.trim() === categoryFilter) && (!favoritesOnly || secret.favorite) && (!value || secret.site.toLocaleLowerCase().includes(value)))
       .sort((left, right) => Number(right.secret.favorite) - Number(left.secret.favorite) || NAME_COLLATOR.compare(left.secret.site.trim(), right.secret.site.trim()) || NAME_COLLATOR.compare(left.secret.url, right.secret.url) || NAME_COLLATOR.compare(left.secret.username, right.secret.username) || left.cipher.id - right.cipher.id);
   }, [categoryFilter, search, secrets, favoritesOnly]);
   const pages = Math.max(1, Math.ceil(filtered.length / pageSize));

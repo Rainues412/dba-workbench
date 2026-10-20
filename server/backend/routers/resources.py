@@ -50,9 +50,9 @@ def list_resources(
 ):
     with get_db_ctx() as conn:
         conditions, params = [], []
-        if keyword:
-            conditions.append("(name LIKE ? OR path LIKE ? OR url LIKE ? OR notes LIKE ? OR tags LIKE ?)")
-            params.extend([f"%{keyword}%"] * 5)
+        if keyword.strip():
+            conditions.append("title_matches(name, ?) = 1")
+            params.append(keyword.strip())
         if kind:
             conditions.append("kind = ?")
             params.append(kind)

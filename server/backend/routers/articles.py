@@ -45,9 +45,9 @@ def list_articles(
         conditions = []
         params = []
 
-        if keyword:
-            conditions.append("(title LIKE ? OR summary LIKE ? OR content LIKE ?)")
-            params.extend([f"%{keyword}%"] * 3)
+        if keyword.strip():
+            conditions.append("title_matches(title, ?) = 1")
+            params.append(keyword.strip())
         if category:
             conditions.append("category = ?")
             params.append(category)

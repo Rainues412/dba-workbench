@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from backend.migrations import latest_version, migrate
+from backend.search_utils import title_matches
 
 
 DB_PATH = os.path.join(
@@ -25,6 +26,7 @@ def get_db() -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA busy_timeout = 5000")
+    conn.create_function("title_matches", 2, title_matches, deterministic=True)
     return conn
 
 

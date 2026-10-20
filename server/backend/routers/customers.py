@@ -57,9 +57,9 @@ class CommCreate(BaseModel):
 def list_customers(keyword: str = "", status: str = "", page: int = 1, page_size: int = 50):
     with get_db_ctx() as conn:
         conditions, params = [], []
-        if keyword:
-            conditions.append("(c.name LIKE ? OR c.project_name LIKE ? OR c.group_name LIKE ? OR c.notes LIKE ?)")
-            params.extend([f"%{keyword}%"] * 4)
+        if keyword.strip():
+            conditions.append("title_matches(c.name, ?) = 1")
+            params.append(keyword.strip())
         if status:
             conditions.append("c.status = ?")
             params.append(status)

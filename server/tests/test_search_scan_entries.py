@@ -2,6 +2,47 @@
 from backend.config import Settings
 
 
+def test_global_search_excludes_tasks(client):
+    created = client.post("/api/tasks/", json={"title": "global-search-excluded-task"})
+    assert created.status_code == 200, created.text
+    found = client.get("/api/search/", params={"q": "global-search-excluded-task", "limit": 0}).json()
+    assert found["tasks"] == []
+    assert all(not records for key, records in found.items() if key != "tasks")
+
+
+def test_all_searches_match_primary_titles_only_and_escape_wildcards(client):
+    created = {
+        "scripts": client.post("/api/scripts/", json={"title": "script-title-hit", "description": "secondary-only-token"}),
+        "articles": client.post("/api/articles/", json={"title": "article-title-hit", "summary": "secondary-only-token"}),
+        "resources": client.post("/api/resources/", json={"name": "resource-title-hit", "notes": "secondary-only-token"}),
+        "tasks": client.post("/api/tasks/", json={"title": "task-title-hit", "description": "secondary-only-token"}),
+        "customers": client.post("/api/customers/", json={"name": "customer-title-hit", "project_name": "secondary-only-token"}),
+    }
+    assert all(response.status_code == 200 for response in created.values())
+
+    for module in created:
+        assert client.get(f"/api/{module}/", params={"keyword": "secondary-only-token"}).json()["total"] == 0
+        assert client.get(f"/api/{module}/", params={"keyword": f"{module[:-1] if module.endswith('s') else module}-title-hit"}).json()["total"] == 1
+        assert client.get(f"/api/{module}/", params={"keyword": "%"}).json()["total"] == 0
+
+    global_secondary = client.get("/api/search/", params={"q": "secondary-only-token", "limit": 0}).json()
+    assert all(not records for records in global_secondary.values())
+    global_wildcard = client.get("/api/search/", params={"q": "%", "limit": 0}).json()
+    assert all(not records for records in global_wildcard.values())
+
+
+def test_ascii_search_matches_word_prefix_without_matching_inside_oracle(client):
+    client.post("/api/articles/", json={"title": "Oracle 正式参数"})
+    rac = client.post("/api/articles/", json={"title": "Oracle RAC11g 正式参数"}).json()
+    client.post("/api/articles/", json={"title": "optimize trace 分析"})
+
+    module_results = client.get("/api/articles/", params={"keyword": "rac"}).json()
+    assert [item["id"] for item in module_results["items"]] == [rac["id"]]
+    global_results = client.get("/api/search/", params={"q": "rac", "limit": 0}).json()
+    assert [item["id"] for item in global_results["articles"]] == [rac["id"]]
+    assert client.get("/api/articles/", params={"keyword": "ora"}).json()["total"] == 2
+
+
 def test_scan_preview_commit_and_search_roundtrip(client, tmp_path, monkeypatch):
     from backend import local_capabilities
 

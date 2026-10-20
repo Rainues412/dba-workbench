@@ -5,53 +5,43 @@ from backend.database import get_db_ctx
 router = APIRouter()
 
 
-def _escape_like(s: str) -> str:
-    """转义 LIKE 通配符，避免用户输入中的 %/_ 被误解析。"""
-    return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
 @router.get("/")
 def global_search(q: str = "", limit: int = 10):
     """Search non-secret modules; vault search is performed client-side after unlock."""
     if not q.strip():
         return {"scripts": [], "articles": [], "tasks": [], "customers": [], "resources": [], "passwords": []}
 
-    # limit=0 lets the inline dropdown return all local matches and scroll them.
+    # limit=0 is used by the inline search dropdown to return every local match.
     limit = -1 if limit == 0 else max(1, min(limit, 100))
 
     with get_db_ctx() as conn:
-        kw = f"%{_escape_like(q)}%"
+        query = q.strip()
 
-        # Scripts: search title, description, and content
+        # Search each module's primary display title only.
         scripts = [dict(r) for r in conn.execute(
-            "SELECT id, title, description, db_type, tags FROM scripts "
-            "WHERE title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\' "
+            "SELECT id, title, description, db_type, tags FROM scripts WHERE title_matches(title, ?) = 1 "
             "ORDER BY updated_at DESC LIMIT ?",
-            (kw, kw, kw, limit),
+            (query, limit),
         ).fetchall()]
 
-        # Articles: search title, summary, and content
         articles = [dict(r) for r in conn.execute(
-            "SELECT id, title, summary, category, tags FROM articles "
-            "WHERE title LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\' "
+            "SELECT id, title, summary, category, tags FROM articles WHERE title_matches(title, ?) = 1 "
             "ORDER BY updated_at DESC LIMIT ?",
-            (kw, kw, kw, limit),
+            (query, limit),
         ).fetchall()]
 
         # Customers
         customers = [dict(r) for r in conn.execute(
-            "SELECT id, name, project_name, group_name, status FROM customers "
-            "WHERE name LIKE ? ESCAPE '\\' OR project_name LIKE ? ESCAPE '\\' OR group_name LIKE ? ESCAPE '\\' "
+            "SELECT id, name, project_name, group_name, status FROM customers WHERE title_matches(name, ?) = 1 "
             "ORDER BY updated_at DESC LIMIT ?",
-            (kw, kw, kw, limit),
+            (query, limit),
         ).fetchall()]
 
         # Resources (toolbox)
         resources = [dict(r) for r in conn.execute(
-            "SELECT id, name, kind, path, url, category FROM resources "
-            "WHERE name LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\' OR url LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\' "
+            "SELECT id, name, kind, path, url, category FROM resources WHERE title_matches(name, ?) = 1 "
             "ORDER BY updated_at DESC LIMIT ?",
-            (kw, kw, kw, kw, kw, limit),
+            (query, limit),
         ).fetchall()]
 
     return {"scripts": scripts, "articles": articles, "tasks": [],

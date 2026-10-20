@@ -44,9 +44,9 @@ def list_scripts(
         conditions = []
         params = []
 
-        if keyword:
-            conditions.append("(title LIKE ? OR description LIKE ? OR content LIKE ?)")
-            params.extend([f"%{keyword}%"] * 3)
+        if keyword.strip():
+            conditions.append("title_matches(title, ?) = 1")
+            params.append(keyword.strip())
         if db_type:
             conditions.append("db_type = ?")
             params.append(db_type)

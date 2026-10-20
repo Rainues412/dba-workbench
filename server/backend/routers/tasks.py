@@ -98,9 +98,9 @@ def list_tasks(
         if priority:
             conditions.append("t.priority = ?")
             params.append(priority)
-        if keyword:
-            conditions.append("(t.title LIKE ? OR t.description LIKE ?)")
-            params.extend([f"%{keyword}%"] * 2)
+        if keyword.strip():
+            conditions.append("title_matches(t.title, ?) = 1")
+            params.append(keyword.strip())
 
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         total = conn.execute(f"SELECT COUNT(*) FROM tasks t {where}", params).fetchone()[0]
