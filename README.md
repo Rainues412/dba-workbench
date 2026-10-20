@@ -29,6 +29,7 @@
 - “创建桌面快捷方式”默认勾选，也可取消。
 - 完成后可直接启动，目标机不需要安装 Python 或 Node.js。
 - 首次运行会在 `%LOCALAPPDATA%\DBA Workbench\data` 创建数据库和保险箱恢复密钥，日志位于同级 `logs` 目录；升级和卸载程序不会自动删除这些业务数据。
+- 安装版使用“目录批量导入”时，点击“选择目录”会仅授权所选目录及其子目录；授权保存在同级 `local-capabilities.json`，重启后继续有效，不会开放整块磁盘或脚本执行权限。
 
 安装程序目前没有商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”。发布时应同时提供生成的 `.sha256` 文件用于完整性核验。Nuitka 编译能显著提高 Python 源码逆向成本，安装包不会包含 `.py`、`.ts`、`.tsx`、源码映射、Git 元数据、业务数据库或恢复密钥；浏览器端必须接收前端 JavaScript，因此不能承诺绝对不可逆。
 
@@ -71,7 +72,7 @@ py -3.12 -m venv .runtime\.venv
 构建机需要 Windows 10/11 x64、Python 3.12 x64 和网络连接。构建脚本固定使用 Nuitka 4.3.1，并从 Inno Setup 官方 GitHub Release 下载、校验和安装 Inno Setup 7.1.0 到源码目录之外。目标机不需要这些构建工具。
 
 ```powershell
-.\packaging\windows\build-installer.ps1 -Version "1.0.0"
+.\packaging\windows\build-installer.ps1 -Version "1.0.1"
 ```
 
 默认输出到仓库同级的 `DBA工作台-发布\installer`，最终只需分发其中的安装程序和同名 `.sha256` 文件；`.build` 是可删除的构建缓存。构建脚本拒绝把输出写进 Git 源码目录，并在打包前运行后端测试、扫描发行目录中的源码和业务数据。也可以通过 `-OutputDirectory` 指定其他源码目录之外的位置。
