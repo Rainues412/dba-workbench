@@ -26,6 +26,17 @@ def test_archive_import_appends_completed_tasks_and_is_idempotent(client):
     assert client.get(f"/api/tasks/{existing['id']}").json()["status"] == "待处理"
 
 
+def test_overdue_filter_only_returns_unfinished_past_due_tasks(client):
+    overdue = client.post("/api/tasks/", json={"title": "逾期任务", "due_date": "2000-01-01"}).json()
+    client.post("/api/tasks/", json={"title": "未来任务", "due_date": "2999-01-01"})
+    client.post("/api/tasks/", json={"title": "已完成旧任务", "due_date": "2000-01-01", "status": "已完成"})
+
+    result = client.get("/api/tasks/", params={"overdue": "true"}).json()
+    assert result["total"] == 1
+    assert result["items"][0]["id"] == overdue["id"]
+    assert result["items"][0]["is_overdue"] == 1
+
+
 @pytest.mark.parametrize("invalid", [{"deadline": "not-a-date"}, {"completedAt": "not-a-date"}, {"priority": "unknown"}])
 def test_archive_failed_batch_rolls_back_tasks_and_receipts(client, invalid):
     response = client.post("/api/tasks/legacy-archive", json={"items": [archive_entry(), archive_entry(id="bad-entry", **invalid)]})

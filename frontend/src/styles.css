@@ -455,6 +455,46 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 
 .list-filters { display: flex; flex-wrap: wrap; gap: 1rem; align-items: end; padding: 0 1.15rem 1rem; }
 .list-filters > label { min-width: 140px; }
+.task-filters { gap: .75rem; padding-top: .9rem; border-top: 1px solid var(--border); background: color-mix(in srgb, var(--surface-soft) 45%, transparent); }
+.task-filters > label { gap: .32rem; }
+.task-filters select { min-height: 38px; padding-block: .45rem; background: var(--surface); }
+.task-overdue-filter { min-height: 38px; display: inline-flex; align-items: center; gap: .42rem; padding: .45rem .72rem; border: 1px solid var(--border); border-radius: 9px; color: var(--muted); background: var(--surface); cursor: pointer; font-size: .75rem; font-weight: 700; }
+.task-overdue-filter:hover { border-color: color-mix(in srgb, var(--danger) 38%, var(--border)); color: var(--danger); background: var(--danger-soft); }
+.task-overdue-filter.active { border-color: color-mix(in srgb, var(--danger) 48%, var(--border)); color: var(--danger); background: var(--danger-soft); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 9%, transparent); }
+.task-table { border-spacing: 0 .55rem; }
+.task-table thead th { border-bottom: 0; }
+.task-table tbody td { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: var(--surface); transition: background .15s ease, border-color .15s ease; }
+.task-table tbody td:first-child { border-left: 4px solid var(--task-tone); border-radius: 11px 0 0 11px; }
+.task-table tbody td:last-child { border-right: 1px solid var(--border); border-radius: 0 11px 11px 0; }
+.task-table tbody tr:hover td { background: color-mix(in srgb, var(--task-tint) 72%, var(--surface)); border-color: color-mix(in srgb, var(--task-tone) 25%, var(--border)); }
+.task-table .task-priority-high { --task-tone: #dc5164; --task-tint: #fff1f3; }
+.task-table .task-priority-medium { --task-tone: #d99620; --task-tint: #fff8e8; }
+.task-table .task-priority-low { --task-tone: #4c78c7; --task-tint: #f1f6ff; }
+:root[data-theme="dark"] .task-table .task-priority-high { --task-tint: #321b23; }
+:root[data-theme="dark"] .task-table .task-priority-medium { --task-tint: #302719; }
+:root[data-theme="dark"] .task-table .task-priority-low { --task-tint: #19263b; }
+.task-table .task-row.is-overdue td { border-top-color: color-mix(in srgb, var(--danger) 32%, var(--border)); border-bottom-color: color-mix(in srgb, var(--danger) 32%, var(--border)); background: color-mix(in srgb, var(--danger-soft) 40%, var(--surface)); }
+.task-table .task-row.is-overdue td:first-child { border-left-color: var(--danger); }
+.task-table .task-row.is-completed { opacity: .68; }
+.task-title-cell { display: grid; gap: .26rem; min-width: 180px; }
+.task-title-cell strong { color: var(--text-strong); font-size: .86rem; overflow-wrap: anywhere; }
+.task-title-cell small { max-width: 360px; overflow: hidden; color: var(--muted); font-size: .68rem; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.task-priority-badge { display: inline-flex; align-items: center; gap: .3rem; min-height: 28px; padding: .3rem .58rem; border: 1px solid transparent; border-radius: 8px; font-size: .69rem; font-weight: 800; white-space: nowrap; }
+.task-priority-badge.high { color: #b91c1c; border-color: #fecdd3; background: #fff1f2; }
+.task-priority-badge.medium { color: #a15c05; border-color: #fde3a7; background: #fff8e8; }
+.task-priority-badge.low { color: #315f9f; border-color: #cbdcf6; background: #f1f6ff; }
+:root[data-theme="dark"] .task-priority-badge.high { color: #ff91a0; border-color: #67303b; background: #321b23; }
+:root[data-theme="dark"] .task-priority-badge.medium { color: #f2bc66; border-color: #5d4826; background: #302719; }
+:root[data-theme="dark"] .task-priority-badge.low { color: #8fb5f1; border-color: #30466a; background: #19263b; }
+.task-state-cell { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; }
+.task-state-cell .badge { gap: .28rem; }
+.task-due-cell { display: grid; gap: .3rem; font-variant-numeric: tabular-nums; }
+.task-due-cell > span { display: inline-flex; align-items: center; gap: .38rem; color: var(--text); white-space: nowrap; }
+.task-due-cell small { color: var(--muted); font-size: .66rem; font-weight: 650; }
+.task-due-cell.overdue > span, .task-due-cell.overdue small { color: var(--danger); }
+.task-table .actions-heading { width: 270px; }
+.task-table td.row-actions { display: table-cell; max-width: 270px; text-align: right; }
+.task-table td.row-actions > button { margin: .18rem 0 .18rem .38rem; }
 .checkbox-label { display: inline-flex; align-items: center; gap: .5rem; }
 .checkbox-label input, .scan-preview input, input[type="checkbox"] { width: auto; }
 .row-actions { flex-wrap: wrap; max-width: 350px; }
@@ -542,8 +582,11 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
   tbody tr { padding: .65rem .75rem; border: 1px solid var(--border); border-radius: 11px; background: var(--surface); }
   tbody tr:hover { background: var(--surface); }
   td { display: grid; grid-template-columns: minmax(90px, .45fr) minmax(0, 1fr); gap: .65rem; padding: .5rem 0; border-bottom: 1px dashed var(--border); }
+  .task-table tbody tr { border-left: 4px solid var(--task-tone); }
+  .task-table tbody td, .task-table tbody td:first-child, .task-table tbody td:last-child { border-top: 0; border-right: 0; border-left: 0; border-radius: 0; background: transparent; }
+  .task-table tbody tr:hover td, .task-table .task-row.is-overdue td { background: transparent; }
   td::before { content: attr(data-label); color: var(--muted); font-size: .68rem; font-weight: 700; }
-  td.row-actions { display: flex; justify-content: flex-end; padding-top: .7rem; border: 0; }
+  td.row-actions, .task-table td.row-actions { display: flex; justify-content: flex-end; max-width: none; padding-top: .7rem; border: 0; }
   .auth-layout { grid-template-columns: 1fr; }
   .auth-showcase { display: none; }
   .auth-panel { min-height: 100vh; padding: 1.25rem; background: radial-gradient(circle at top, var(--primary-soft), var(--surface) 48%); }

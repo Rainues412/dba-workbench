@@ -304,7 +304,7 @@ def test_edge_can_page_to_and_edit_records_after_200(live_server: str, isolated_
             ) as update:
                 page.get_by_role("dialog").get_by_role("button", name="保存").click()
             assert update.value.status == 200
-            page.get_by_placeholder("搜索脚本库").fill("Edited beyond row 200")
+            page.get_by_placeholder("按标题搜索脚本库").fill("Edited beyond row 200")
             page.get_by_text("Edited beyond row 200", exact=True).wait_for()
         finally:
             browser.close()
@@ -371,11 +371,11 @@ def test_classification_filters_and_page_jump(
                 assert dialog.get_by_label(label, exact=True).input_value() == category
             dialog.get_by_role("button", name="取消", exact=True).click()
 
-            page.get_by_placeholder("搜索" + ("资源与快捷入口" if module == "resources" else nav_label)).fill("classification-target-040")
+            page.get_by_placeholder("按标题搜索" + ("资源与快捷入口" if module == "resources" else nav_label)).fill("classification-target-040")
             page.get_by_text("第 1 / 1 页", exact=True).wait_for(state="attached")
             page.get_by_text("classification-target-040", exact=True).wait_for()
             assert oracle.get_attribute("aria-pressed") == "true"
-            page.get_by_placeholder("搜索" + ("资源与快捷入口" if module == "resources" else nav_label)).fill("")
+            page.get_by_placeholder("按标题搜索" + ("资源与快捷入口" if module == "resources" else nav_label)).fill("")
             page.get_by_text("第 1 / 3 页", exact=True).wait_for(state="attached")
             databases.get_by_role("button", name=re.compile(r"^MySQL")).click()
             page.get_by_text("mysql-record-0", exact=True).wait_for()

@@ -56,10 +56,13 @@ describe("review report CRUD regressions", () => {
     const requests: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (path: string) => {
       requests.push(path);
-      return listResponse(path, { id: 2, revision: 1, title: "筛选任务", priority: "高", status: "进行中" }, 30);
+      return listResponse(path, { id: 2, revision: 1, title: "筛选任务", description: "需要优先处理", priority: "高", status: "进行中", due_date: "2020-01-01", is_overdue: 1 }, 30);
     }));
     show(tasksConfig);
     await screen.findByText("筛选任务");
+    expect(screen.getByText("高优先级")).toBeInTheDocument();
+    expect(screen.getByText("已逾期", { selector: ".badge" })).toBeInTheDocument();
+    expect(screen.getByText(/已逾期 \d+ 天/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "第 2 页" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "第 2 页" })).toHaveAttribute("aria-current", "page"));
     fireEvent.change(screen.getByLabelText("筛选任务状态"), { target: { value: "进行中" } });
@@ -75,11 +78,18 @@ describe("review report CRUD regressions", () => {
       expect(params.get("priority")).toBe("高");
       expect(params.get("page")).toBe("1");
     });
+    fireEvent.click(screen.getByRole("button", { name: "仅看逾期" }));
+    await waitFor(() => {
+      const params = new URL(requests.at(-1)!, "http://localhost").searchParams;
+      expect(params.get("overdue")).toBe("1");
+      expect(screen.getByRole("button", { name: "仅看逾期" })).toHaveAttribute("aria-pressed", "true");
+    });
     fireEvent.change(screen.getByLabelText("筛选任务状态"), { target: { value: "" } });
     await waitFor(() => {
       const params = new URL(requests.at(-1)!, "http://localhost").searchParams;
       expect(params.has("status")).toBe(false);
       expect(params.get("priority")).toBe("高");
+      expect(params.get("overdue")).toBe("1");
     });
   });
 
