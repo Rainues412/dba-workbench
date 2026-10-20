@@ -41,6 +41,38 @@ def test_home_and_empty_dashboard(client: TestClient) -> None:
     ]
 
 
+def test_dashboard_recent_tasks_computes_overdue_and_exposes_revision(client: TestClient) -> None:
+    overdue = client.post(
+        "/api/tasks/",
+        json={"title": "dashboard overdue", "due_date": "2000-01-01", "priority": "高"},
+    ).json()
+    client.post(
+        "/api/tasks/",
+        json={"title": "dashboard future", "due_date": "2099-01-01", "priority": "中"},
+    )
+    completed = client.post(
+        "/api/tasks/",
+        json={"title": "dashboard completed", "due_date": "2000-01-01", "priority": "低"},
+    ).json()
+    client.put(
+        f"/api/tasks/{completed['id']}",
+        headers={"If-Match": str(completed["revision"])},
+        json={"status": "已完成"},
+    )
+
+    stats = client.get("/api/dashboard/stats")
+    assert stats.status_code == 200
+    assert stats.json()["task_overdue"] == 1
+
+    response = client.get("/api/dashboard/recent-tasks")
+    assert response.status_code == 200
+    tasks = response.json()
+    overdue_row = next(item for item in tasks if item["id"] == overdue["id"])
+    assert overdue_row["is_overdue"] == 1
+    assert overdue_row["revision"] == overdue["revision"]
+    assert all(item["status"] != "已完成" for item in tasks)
+
+
 def test_database_distribution_combines_scripts_and_articles(client: TestClient) -> None:
     assert client.post("/api/scripts/", json={"title": "Oracle script", "db_type": "Oracle"}).status_code == 200
     assert client.post("/api/scripts/", json={"title": "Redis script", "db_type": "Redis"}).status_code == 200

@@ -291,6 +291,7 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .task-list li.task-priority-high::before { background: #dc2626; }
 .task-list li.task-priority-medium::before { background: #d97706; }
 .task-list li.task-priority-low::before { background: #4f72b8; }
+.task-list li:has(.task-status-icon.overdue) { border-color: color-mix(in srgb, var(--danger) 28%, var(--border)); background: color-mix(in srgb, var(--danger-soft) 24%, var(--surface)); }
 .task-status-icon { flex: 0 0 auto; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; color: var(--primary); background: var(--primary-soft); }
 .task-status-icon.overdue { color: var(--danger); background: var(--danger-soft); }
 .task-copy { min-width: 0; flex: 1; }
@@ -298,6 +299,12 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .task-copy strong { color: var(--text-strong); font-size: .8rem; }
 .task-copy small { margin-top: .2rem; color: var(--muted); font-size: .68rem; }
 .task-badges { display: flex; flex: 0 0 auto; align-items: center; gap: .4rem; }
+.task-panel-heading-actions { display: flex; align-items: center; gap: .75rem; }
+.dashboard-overdue-summary { display: inline-flex; align-items: center; gap: .3rem; padding: .3rem .48rem; border: 1px solid color-mix(in srgb, var(--danger) 24%, var(--border)); border-radius: 999px; color: var(--danger); background: var(--danger-soft); font-size: .67rem; font-weight: 750; text-decoration: none; }
+.dashboard-overdue-summary:hover { border-color: var(--danger); }
+.task-quick-complete { flex: 0 0 auto; min-height: 30px; display: inline-flex; align-items: center; gap: .32rem; padding: .32rem .52rem; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--surface); cursor: pointer; font-size: .68rem; font-weight: 700; }
+.task-quick-complete:hover:not(:disabled) { border-color: color-mix(in srgb, var(--success) 42%, var(--border)); color: var(--success); background: var(--success-soft); }
+.task-quick-complete:disabled { opacity: .55; cursor: wait; }
 .priority-badge { display: inline-flex; align-items: center; min-height: 23px; padding: .16rem .48rem; border: 1px solid transparent; border-radius: 999px; font-size: .64rem; font-weight: 800; line-height: 1; white-space: nowrap; }
 .priority-badge.high { color: #b91c1c; border-color: #fecaca; background: #fef2f2; }
 .priority-badge.medium { color: #b45309; border-color: #fde68a; background: #fffbeb; }
