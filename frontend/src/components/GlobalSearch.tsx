@@ -5,7 +5,7 @@ import { api } from "../api/client";
 
 const modules = [
   ["scripts", "脚本库"], ["articles", "知识库"], ["resources", "资源中心"],
-  ["tasks", "任务管理"], ["customers", "客户项目"],
+  ["customers", "客户项目"],
 ] as const;
 type ModuleKey = (typeof modules)[number][0];
 type SearchRecord = { id: number; title?: string; name?: string };

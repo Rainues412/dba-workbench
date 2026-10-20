@@ -38,14 +38,6 @@ def global_search(q: str = "", limit: int = 10):
             (kw, kw, kw, limit),
         ).fetchall()]
 
-        # Tasks
-        tasks = [dict(r) for r in conn.execute(
-            "SELECT id, title, status, priority, due_date FROM tasks "
-            "WHERE title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' "
-            "ORDER BY updated_at DESC LIMIT ?",
-            (kw, kw, limit),
-        ).fetchall()]
-
         # Customers
         customers = [dict(r) for r in conn.execute(
             "SELECT id, name, project_name, group_name, status FROM customers "
@@ -62,5 +54,5 @@ def global_search(q: str = "", limit: int = 10):
             (kw, kw, kw, kw, kw, limit),
         ).fetchall()]
 
-    return {"scripts": scripts, "articles": articles, "tasks": tasks,
+    return {"scripts": scripts, "articles": articles, "tasks": [],
             "customers": customers, "resources": resources, "passwords": []}

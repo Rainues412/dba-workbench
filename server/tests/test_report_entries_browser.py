@@ -16,7 +16,6 @@ def test_global_search_opens_exact_record_in_each_module(live_server):
         ("scripts", "title", "名称"),
         ("articles", "title", "标题"),
         ("resources", "name", "名称"),
-        ("tasks", "title", "任务"),
         ("customers", "name", "客户"),
     ]
     client, csrf = _api_client(live_server)
@@ -34,20 +33,21 @@ def test_global_search_opens_exact_record_in_each_module(live_server):
                 _login(page, live_server)
                 for module, _, label in records:
                     page.keyboard.press("Control+k")
-                    search = page.get_by_role("dialog", name="全局搜索", exact=True)
-                    expect(search.get_by_role("textbox")).to_be_focused()
-                    search.get_by_role("textbox").fill("跨模块定位")
-                    search.get_by_role("button", name=f"跨模块定位-{module}", exact=True).click()
+                    search = page.get_by_role("combobox", name="跨模块搜索关键词")
+                    expect(search).to_be_focused()
+                    search.fill("跨模块定位")
+                    results = page.get_by_role("listbox", name="全局搜索结果")
+                    results.get_by_role("option", name=re.compile(f"跨模块定位-{module}")).click()
                     page.wait_for_url(f"**/{module}?record={ids[module]}")
                     editor = page.get_by_role("dialog")
                     expect(editor.get_by_label(label, exact=True)).to_have_value(f"跨模块定位-{module}")
                     editor.get_by_role("button", name="关闭", exact=True).click()
                     page.wait_for_url(f"**/{module}")
                 page.keyboard.press("Control+k")
-                search = page.get_by_role("dialog", name="全局搜索", exact=True)
-                search.get_by_role("textbox").press("Escape")
-                expect(search).not_to_be_visible()
-                expect(page.get_by_role("button", name="全局搜索（Ctrl+K）")).to_be_focused()
+                search = page.get_by_role("combobox", name="跨模块搜索关键词")
+                search.press("Escape")
+                expect(page.get_by_role("listbox", name="全局搜索结果")).not_to_be_visible()
+                expect(search).not_to_be_focused()
             finally:
                 browser.close()
     finally:
