@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -51,6 +52,41 @@ def test_local_capabilities_are_closed_by_default(
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "FORBIDDEN"
     assert response.json()["error"]["message"] == "本机能力已关闭"
+
+
+def test_packaged_picker_enrolls_only_the_selected_directory(
+    client, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from backend import local_capabilities
+    from backend.routers import launcher
+
+    selected = tmp_path / "selected"
+    selected.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    config_file = tmp_path / "app-data" / "local-capabilities.json"
+    monkeypatch.setenv("DBA_FOLDER_ENROLLMENT", "true")
+    monkeypatch.setenv("DBA_LOCAL_CAPABILITIES_FILE", str(config_file))
+    monkeypatch.setattr(local_capabilities, "_enrolled_roots", set())
+
+    class FakeRoot:
+        def withdraw(self): pass
+        def attributes(self, *_): pass
+        def destroy(self): pass
+
+    import tkinter
+    from tkinter import filedialog
+    monkeypatch.setattr(tkinter, "Tk", FakeRoot)
+    monkeypatch.setattr(filedialog, "askdirectory", lambda **_: str(selected))
+
+    picked = client.post("/api/launcher/pick-folder", json={})
+    assert picked.status_code == 200
+    assert picked.json()["path"] == str(selected.resolve())
+    assert client.post("/api/scan/run", json={"paths": [str(selected)]}).status_code == 200
+    assert client.post("/api/scan/run", json={"paths": [str(outside)]}).status_code == 403
+    saved = json.loads(config_file.read_text(encoding="utf-8"))
+    assert saved["allowed_roots"] == [str(selected.resolve())]
+    assert "run" not in saved["allowed_actions"]
 
 
 def test_allowed_root_rejects_outside_traversal_and_unc(

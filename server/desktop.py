@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import json
 import socket
 import sys
 import threading
@@ -28,6 +29,30 @@ def _data_directory() -> Path:
     return Path(local_app_data) / "DBA Workbench" / "data"
 
 
+def _configure_local_capabilities(data_dir: Path) -> None:
+    capability_file = data_dir.parent / "local-capabilities.json"
+    os.environ.setdefault("DBA_LOCAL_CAPABILITIES_FILE", str(capability_file))
+    os.environ.setdefault("DBA_FOLDER_ENROLLMENT", "true")
+    if not capability_file.is_file() or "DBA_ALLOWED_ROOTS" in os.environ:
+        return
+    try:
+        config = json.loads(capability_file.read_text(encoding="utf-8"))
+        roots = [
+            str(Path(root).resolve())
+            for root in config.get("allowed_roots", [])
+            if isinstance(root, str)
+            and Path(root).is_absolute()
+            and not root.startswith(("\\\\", "//"))
+            and Path(root).is_dir()
+        ]
+        if roots:
+            os.environ["DBA_LOCAL_CAPABILITIES"] = "true"
+            os.environ["DBA_ALLOWED_ROOTS"] = os.pathsep.join(roots)
+            os.environ["DBA_ALLOWED_LOCAL_ACTIONS"] = "check,edit,folder,open,pick-folder,scan"
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        pass
+
+
 def _configure_runtime() -> Path:
     data_dir = _data_directory()
     log_dir = data_dir.parent / "logs"
@@ -38,6 +63,7 @@ def _configure_runtime() -> Path:
     os.environ.setdefault("DBA_HOST", HOST)
     os.environ.setdefault("DBA_PORT", str(PORT))
     os.environ.setdefault("DBA_OPEN_BROWSER", "false")
+    _configure_local_capabilities(data_dir)
 
     log = (log_dir / "server.log").open("a", encoding="utf-8", buffering=1)
     sys.stdout = log

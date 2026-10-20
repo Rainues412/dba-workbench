@@ -16,7 +16,10 @@ from pydantic import BaseModel
 
 from backend.config import settings
 from backend.local_capabilities import (
+    allowed_roots,
     audit_local_action,
+    enroll_allowed_root,
+    folder_enrollment_enabled,
     require_local_action,
     resolve_allowed_path,
 )
@@ -158,7 +161,9 @@ def check_path(req: OpenRequest):
 @router.post("/pick-folder")
 def pick_folder(req: PickFolderRequest):
     """Open a native folder picker dialog and return the selected path."""
-    require_local_action("pick-folder")
+    native_enrollment = folder_enrollment_enabled()
+    if not native_enrollment:
+        require_local_action("pick-folder")
     try:
         import tkinter as tk
         from tkinter import filedialog
@@ -168,18 +173,20 @@ def pick_folder(req: PickFolderRequest):
         root.attributes("-topmost", True)
 
         kwargs = {"title": req.title}
-        initial_dir = (
-            _target(req.initial_dir, expect="directory")
-            if req.initial_dir
-            else Path(settings.allowed_roots[0])
-        )
-        kwargs["initialdir"] = str(initial_dir)
+        roots = allowed_roots()
+        if req.initial_dir and roots:
+            try:
+                kwargs["initialdir"] = str(_target(req.initial_dir, expect="directory"))
+            except HTTPException:
+                pass
+        elif roots:
+            kwargs["initialdir"] = roots[0]
 
         path = filedialog.askdirectory(**kwargs)
         root.destroy()
 
         if path:
-            selected = _target(path, expect="directory")
+            selected = enroll_allowed_root(path) if native_enrollment else _target(path, expect="directory")
             audit_local_action("pick-folder", "success", selected)
             return {"ok": True, "path": str(selected)}
         else:
