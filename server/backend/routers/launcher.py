@@ -23,6 +23,7 @@ from backend.local_capabilities import (
     require_local_action,
     resolve_allowed_path,
 )
+from backend.windows_dialog import pick_folder as pick_native_folder
 
 router = APIRouter()
 
@@ -165,25 +166,17 @@ def pick_folder(req: PickFolderRequest):
     if not native_enrollment:
         require_local_action("pick-folder")
     try:
-        import tkinter as tk
-        from tkinter import filedialog
-
-        root = tk.Tk()
-        root.withdraw()
-        root.attributes("-topmost", True)
-
-        kwargs = {"title": req.title}
         roots = allowed_roots()
+        initial_dir = ""
         if req.initial_dir and roots:
             try:
-                kwargs["initialdir"] = str(_target(req.initial_dir, expect="directory"))
+                initial_dir = str(_target(req.initial_dir, expect="directory"))
             except HTTPException:
                 pass
         elif roots:
-            kwargs["initialdir"] = roots[0]
+            initial_dir = roots[0]
 
-        path = filedialog.askdirectory(**kwargs)
-        root.destroy()
+        path = pick_native_folder(req.title, initial_dir)
 
         if path:
             selected = enroll_allowed_root(path) if native_enrollment else _target(path, expect="directory")

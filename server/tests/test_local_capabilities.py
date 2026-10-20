@@ -69,15 +69,7 @@ def test_packaged_picker_enrolls_only_the_selected_directory(
     monkeypatch.setenv("DBA_LOCAL_CAPABILITIES_FILE", str(config_file))
     monkeypatch.setattr(local_capabilities, "_enrolled_roots", set())
 
-    class FakeRoot:
-        def withdraw(self): pass
-        def attributes(self, *_): pass
-        def destroy(self): pass
-
-    import tkinter
-    from tkinter import filedialog
-    monkeypatch.setattr(tkinter, "Tk", FakeRoot)
-    monkeypatch.setattr(filedialog, "askdirectory", lambda **_: str(selected))
+    monkeypatch.setattr(launcher, "pick_native_folder", lambda *_: str(selected))
 
     picked = client.post("/api/launcher/pick-folder", json={})
     assert picked.status_code == 200
