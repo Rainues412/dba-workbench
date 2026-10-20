@@ -68,6 +68,7 @@ try {
         --output-dir=$nuitkaRoot `
         --output-filename="DBA工作台.exe" `
         --include-data-dir="frontend_dist=frontend_dist" `
+        --include-data-files="$iconPath=assets/dba-workbench-icon.ico" `
         --include-data-files="backend/migrations/*.sql=backend/migrations/" `
         --include-module=main `
         --include-package=backend `

@@ -37,3 +37,21 @@ def test_packaged_runtime_restores_persisted_directory_permissions(monkeypatch, 
 
     assert os.environ["DBA_LOCAL_CAPABILITIES"] == "true"
     assert os.environ["DBA_ALLOWED_ROOTS"] == str(allowed.resolve())
+
+
+def test_tray_exit_stops_server_and_icon() -> None:
+    class Server:
+        should_exit = False
+
+    class Icon:
+        stopped = False
+
+        def stop(self):
+            self.stopped = True
+
+    server = Server()
+    icon = Icon()
+    desktop._exit_from_tray(server, icon)
+
+    assert server.should_exit is True
+    assert icon.stopped is True

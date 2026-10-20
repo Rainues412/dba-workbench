@@ -101,6 +101,45 @@ def _show_error(message: str) -> None:
         print(message, file=sys.stderr)
 
 
+def _tray_icon_path() -> Path:
+    source = Path(__file__).resolve()
+    candidates = (
+        source.parent / "assets" / "dba-workbench-icon.ico",
+        source.parents[1] / "assets" / "dba-workbench-icon.ico",
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise RuntimeError("未找到系统托盘图标。")
+
+
+def _exit_from_tray(server, icon) -> None:
+    server.should_exit = True
+    icon.stop()
+
+
+def _run_tray(server) -> None:
+    import pystray
+    from PIL import Image
+
+    icon = pystray.Icon(
+        "dba-workbench",
+        Image.open(_tray_icon_path()),
+        APP_TITLE,
+        pystray.Menu(
+            pystray.MenuItem("打开工作台", lambda *_: webbrowser.open(URL, new=1), default=True),
+            pystray.MenuItem("退出", lambda tray, _: _exit_from_tray(server, tray)),
+        ),
+    )
+    icon.run()
+
+
+def _start_tray(server) -> threading.Thread:
+    thread = threading.Thread(target=_run_tray, args=(server,), name="system-tray", daemon=True)
+    thread.start()
+    return thread
+
+
 def main() -> None:
     log_dir = _configure_runtime()
     state = _probe_service()
@@ -114,16 +153,19 @@ def main() -> None:
     from main import app
 
     threading.Thread(target=_open_browser_when_ready, daemon=True).start()
+    config = uvicorn.Config(
+        app,
+        host=HOST,
+        port=PORT,
+        loop="asyncio",
+        http="h11",
+        ws="none",
+        log_level="info",
+    )
+    server = uvicorn.Server(config)
+    _start_tray(server)
     try:
-        uvicorn.run(
-            app,
-            host=HOST,
-            port=PORT,
-            loop="asyncio",
-            http="h11",
-            ws="none",
-            log_level="info",
-        )
+        server.run()
     except Exception as error:
         raise RuntimeError(f"启动失败，请查看日志：{log_dir / 'server.log'}") from error
 
