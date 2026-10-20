@@ -4,9 +4,45 @@
 
 > 当前版本只支持 Windows 本机回环访问（`127.0.0.1` / `localhost`），不是局域网或公网部署版本。
 
-## 部署与启动
+## 环境与版本要求
 
-运行需要 Windows 10/11 x64 与 Python 3.12；仅重新构建前端时需要 Node.js。
+### 仅部署和运行
+
+| 依赖 | 要求 | 说明 |
+| --- | --- | --- |
+| 操作系统 | Windows 10/11 x64 | 打开本机文件、目录选择和桌面启动器依赖 Windows |
+| Python | **3.12.x x64** | 必需；当前验收版本为 3.12.10 |
+| pip / venv | 随 Python 3.12 安装 | 用于创建项目独立运行环境 |
+| 浏览器 | Edge、Chrome 或其他现代浏览器 | Edge 可选，找不到时使用系统默认浏览器 |
+| Node.js / npm | 不需要 | 仓库已包含 `server/frontend_dist` 生产前端 |
+
+后端直接依赖已固定在 `server/requirements.txt`：
+
+- FastAPI 0.115.0
+- Uvicorn 0.30.6（含 standard 扩展）
+- cryptography 43.0.1
+- argon2-cffi 25.1.0
+
+新电脑没有 Python 时，先安装 [Python 3.12 x64](https://www.python.org/downloads/)，并在安装器中启用 Python Launcher。也可以使用 Windows Package Manager：
+
+```powershell
+winget install --id Python.Python.3.12 -e
+py -3.12 --version
+```
+
+当前仓库**没有提供免 Python 的独立 EXE**。如果系统策略禁止安装 Python，需要另行制作并测试便携运行包，不能直接复制源码后双击运行。
+
+### 开发、测试或重新构建前端
+
+| 依赖 | 要求 | 当前验收版本 |
+| --- | --- | --- |
+| Node.js | **22.12.0 以上**，推荐 24.x | 24.15.0 |
+| npm | 随 Node.js 安装 | 11.12.1 |
+| Python | 3.12.x x64 | 3.12.10 |
+
+前端直接依赖版本由 `frontend/package.json` 与 `frontend/package-lock.json` 锁定：React 19.3.1、React Router 7.18.4、TanStack Query 5.104.4、Lucide React 1.59.0、hash-wasm 4.12.0；构建工具为 TypeScript 7.0.2、Vite 8.3.4、Vitest 5.0.5。测试依赖见 `server/requirements-dev.txt`：pytest 8.3.5、httpx 0.28.1、Playwright 1.48.0。
+
+## 部署与启动
 
 以下命令均从仓库根目录执行，项目可以位于任意本地磁盘和任意目录，不要求固定为 `D:\coding\workspace`。
 
