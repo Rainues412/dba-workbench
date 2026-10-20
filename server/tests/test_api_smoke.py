@@ -59,6 +59,11 @@ def test_dashboard_recent_tasks_computes_overdue_and_exposes_revision(client: Te
         headers={"If-Match": str(completed["revision"])},
         json={"status": "已完成"},
     )
+    for index in range(10):
+        client.post(
+            "/api/tasks/",
+            json={"title": f"dashboard extra {index}", "priority": "低"},
+        )
 
     stats = client.get("/api/dashboard/stats")
     assert stats.status_code == 200
@@ -71,6 +76,7 @@ def test_dashboard_recent_tasks_computes_overdue_and_exposes_revision(client: Te
     assert overdue_row["is_overdue"] == 1
     assert overdue_row["revision"] == overdue["revision"]
     assert all(item["status"] != "已完成" for item in tasks)
+    assert len(tasks) == 12
 
 
 def test_database_distribution_combines_scripts_and_articles(client: TestClient) -> None:

@@ -76,7 +76,7 @@ export function Dashboard() {
           <div className="task-panel-heading-actions">{data.task_overdue > 0 && <Link className="dashboard-overdue-summary" to="/tasks"><TriangleAlert size={14} />{data.task_overdue} 项逾期</Link>}<Link className="text-link" to="/tasks">查看全部 <ArrowRight size={15} /></Link></div>
         </div>
         {quickError && <div className="alert error" role="alert">{quickError}</div>}
-        {!tasks.data?.length ? <EmptyState title="任务队列已清空" description="暂时没有待处理任务，可以专注处理当前工作。" icon={CheckCircle2} /> : <ul className="task-list">{tasks.data.map((task) => {
+        {!tasks.data?.length ? <EmptyState title="任务队列已清空" description="暂时没有待处理任务，可以专注处理当前工作。" icon={CheckCircle2} /> : <ul className="task-list dashboard-task-list" aria-label="未完成任务列表" tabIndex={tasks.data.length > 6 ? 0 : undefined}>{tasks.data.map((task) => {
           const priority = getPriorityMeta(task.priority);
           return <li className={`task-priority-${priority.tone}`} key={task.id}>
             <span className={`task-status-icon${task.is_overdue ? " overdue" : ""}`}>{task.is_overdue ? <TriangleAlert size={17} /> : <Clock3 size={17} />}</span>

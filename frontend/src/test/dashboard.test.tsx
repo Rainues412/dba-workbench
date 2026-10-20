@@ -33,4 +33,24 @@ describe("dashboard task queue", () => {
     expect(JSON.parse(String(writes[0].init?.body))).toEqual({ status: "已完成" });
     expect(await screen.findByText("任务队列已清空")).toBeInTheDocument();
   });
+
+  it("keeps more than six unfinished tasks in an internally scrollable list", async () => {
+    const taskRows = Array.from({ length: 8 }, (_, index) => ({
+      id: index + 1, revision: 1, title: `任务 ${index + 1}`, priority: "低",
+      status: "待处理", due_date: "2099-01-01", is_overdue: 0,
+    }));
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+      if (path === "/api/dashboard/stats") return Response.json({ script_count: 0, article_count: 0, task_total: 8, task_pending: 8, task_overdue: 0, customer_count: 0, resource_count: 0, password_count: 0 });
+      if (path === "/api/dashboard/recent-tasks") return Response.json(taskRows);
+      if (path === "/api/dashboard/database-distribution") return Response.json([]);
+      throw new Error(`Unexpected request: ${path}`);
+    }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    render(<MemoryRouter><QueryClientProvider client={client}><Dashboard /></QueryClientProvider></MemoryRouter>);
+
+    const list = await screen.findByRole("list", { name: "未完成任务列表" });
+    expect(list).toHaveClass("dashboard-task-list");
+    expect(list).toHaveAttribute("tabindex", "0");
+    expect(screen.getAllByRole("listitem")).toHaveLength(8);
+  });
 });

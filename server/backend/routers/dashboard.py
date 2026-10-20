@@ -35,7 +35,6 @@ def get_recent_tasks():
             ORDER BY is_overdue DESC,
                      CASE priority WHEN '高' THEN 1 WHEN '中' THEN 2 WHEN '低' THEN 3 END,
                      due_date ASC NULLS LAST
-            LIMIT 10
         """).fetchall()
         return [dict(r) for r in rows]
 
