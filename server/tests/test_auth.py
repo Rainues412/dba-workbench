@@ -82,6 +82,25 @@ def test_login_rotates_session_logout_revokes_and_reauthenticates(
     assert raw_client.get("/api/dashboard/stats").status_code == 401
 
 
+def test_repeated_status_requests_keep_the_session_csrf_token_valid(
+    raw_client: TestClient,
+) -> None:
+    setup = raw_client.post("/api/auth/setup", json=OWNER)
+    original_csrf = setup.json()["csrf_token"]
+
+    first_status = raw_client.get("/api/auth/status")
+    second_status = raw_client.get("/api/auth/status")
+
+    assert first_status.json()["csrf_token"] == original_csrf
+    assert second_status.json()["csrf_token"] == original_csrf
+    response = raw_client.post(
+        "/api/auth/reauthenticate",
+        json={"password": OWNER["password"]},
+        headers={"X-CSRF-Token": original_csrf},
+    )
+    assert response.status_code == 200
+
+
 def test_login_rate_limit_uses_backoff(raw_client: TestClient) -> None:
     raw_client.post("/api/auth/setup", json=OWNER)
     raw_client.cookies.clear()

@@ -55,6 +55,15 @@ def digest(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def csrf_for_session(token: str) -> str:
+    """Return a stable CSRF token bound to one HttpOnly session cookie."""
+    return hmac.new(
+        token.encode("utf-8"),
+        b"dba-workbench-csrf-v1",
+        hashlib.sha256,
+    ).hexdigest()
+
+
 def hash_password(password: str) -> str:
     return _hasher.hash(password)
 
@@ -119,12 +128,15 @@ def load_session(request: Request):
     token = request.cookies.get(SESSION_COOKIE)
     if not token:
         return None
-    return _session_row(token)
+    session = _session_row(token)
+    if session:
+        session["csrf_token"] = csrf_for_session(token)
+    return session
 
 
 def create_session(user_id: int) -> tuple[str, str]:
     token = secrets.token_urlsafe(32)
-    csrf = secrets.token_urlsafe(32)
+    csrf = csrf_for_session(token)
     with get_db_ctx() as conn:
         conn.execute("DELETE FROM sessions WHERE expires_at <= ?", (timestamp(utcnow()),))
         conn.execute(
@@ -143,17 +155,6 @@ def create_session(user_id: int) -> tuple[str, str]:
     return token, csrf
 
 
-def rotate_csrf(session_id: int) -> str:
-    csrf = secrets.token_urlsafe(32)
-    with get_db_ctx() as conn:
-        conn.execute(
-            "UPDATE sessions SET csrf_hash = ? WHERE id = ?",
-            (digest(csrf), session_id),
-        )
-        conn.commit()
-    return csrf
-
-
 def revoke_session(token: str | None) -> None:
     if not token:
         return
@@ -163,7 +164,8 @@ def revoke_session(token: str | None) -> None:
 
 
 def verify_csrf(session: dict, supplied: str | None) -> bool:
-    return bool(supplied) and hmac.compare_digest(session["csrf_hash"], digest(supplied))
+    expected = session.get("csrf_token")
+    return bool(supplied and expected) and hmac.compare_digest(expected, supplied)
 
 
 def mark_reauthenticated(session_id: int) -> str:

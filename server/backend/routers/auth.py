@@ -21,7 +21,6 @@ from backend.auth import (
     password_needs_rehash,
     record_failed_attempt,
     retry_after,
-    rotate_csrf,
     revoke_session,
     validate_password,
     verify_password,
@@ -82,7 +81,7 @@ def status(request: Request):
     session = load_session(request)
     if not session:
         return {"authenticated": False, "setup_required": setup_required}
-    return _session_payload(session, rotate_csrf(session["id"]))
+    return _session_payload(session, session["csrf_token"])
 
 
 @router.post("/setup", status_code=201)
