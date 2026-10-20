@@ -1,5 +1,6 @@
 import linuxIcon from "../assets/database/linux.svg";
 import mysqlIcon from "../assets/database/mysql.svg";
+import mongodbIcon from "../assets/database/mongodb.svg";
 import oracleIcon from "../assets/database/oracle.svg";
 import otherIcon from "../assets/database/other.svg";
 import postgresqlIcon from "../assets/database/postgresql.svg";
@@ -12,6 +13,7 @@ export const databaseMeta: Record<string, { color: string; tint: string; icon?: 
   "SQL Server": { color: "#404040", tint: "#f5f5f5", icon: sqlServerIcon },
   Linux: { color: "#f59e0b", tint: "#fffbeb", icon: linuxIcon },
   Redis: { color: "#dc2626", tint: "#fef2f2" },
+  MongoDB: { color: "#00684a", tint: "#e8f7f0", icon: mongodbIcon },
   其他: { color: "#64748b", tint: "#f1f5f9", icon: otherIcon },
 };
 
