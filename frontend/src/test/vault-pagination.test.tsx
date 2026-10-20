@@ -130,7 +130,7 @@ describe("vault complete loading, pagination and favorites", () => {
     fireEvent.click(screen.getByRole("button", { name: "第 2 页" }));
     expect(screen.getByText("全选当前页 20 条")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("checkbox", { name: "全选当前页" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "搜索保险箱" }), { target: { value: "Site 201" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "按名称搜索保险箱" }), { target: { value: "Site 201" } });
     expect(screen.getByText("全选当前页 1 条")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("checkbox", { name: "全选当前页" }));
     expect(screen.getByText("本页已全选 1 条")).toBeInTheDocument();
@@ -157,9 +157,11 @@ describe("vault complete loading, pagination and favorites", () => {
     expect(document.querySelector(".vault-card h3")?.textContent).toBe("Site 201");
     fireEvent.click(screen.getByRole("button", { name: "第 11 页" }));
     expect(screen.getByRole("heading", { name: "Site 200" })).toBeInTheDocument();
-    fireEvent.change(screen.getByRole("textbox", { name: "搜索保险箱" }), { target: { value: "Site 201" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "按名称搜索保险箱" }), { target: { value: "Site 201" } });
     expect(screen.getByText("共 1 条")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "第 1 页" })).toHaveAttribute("aria-current", "page");
+    fireEvent.change(screen.getByRole("textbox", { name: "按名称搜索保险箱" }), { target: { value: "user" } });
+    expect(screen.getByText("没有匹配的条目")).toBeInTheDocument();
   });
 
   it("filters favorites globally and preserves the favorite when editing", async () => {
@@ -179,7 +181,7 @@ describe("vault complete loading, pagination and favorites", () => {
   it("toggles favorite directly from the card", async () => {
     await unlock();
     await screen.findByRole("heading", { name: "Site 1" });
-    fireEvent.change(screen.getByRole("textbox", { name: "搜索保险箱" }), { target: { value: "Site 201" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "按名称搜索保险箱" }), { target: { value: "Site 201" } });
     const button = screen.getByRole("button", { name: "取消收藏 Site 201" });
     expect(button).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(button);

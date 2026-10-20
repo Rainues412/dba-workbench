@@ -127,6 +127,13 @@ def test_missing_edge_uses_default_browser(launcher, tmp_path, monkeypatch):
     assert calls == [launcher.URL]
 
 
+def test_edge_discovery_accepts_portable_environment_override(launcher, tmp_path, monkeypatch):
+    edge = tmp_path / "msedge.exe"
+    edge.touch()
+    monkeypatch.setenv("DBA_EDGE_PATH", str(edge))
+    assert launcher.find_edge() == edge
+
+
 def test_foreign_service_is_not_opened(launcher, monkeypatch):
     monkeypatch.setattr(launcher, "probe_service", lambda: "other")
     monkeypatch.setattr(launcher.webbrowser, "open", lambda *args, **kwargs: pytest.fail("must not open a foreign service"))

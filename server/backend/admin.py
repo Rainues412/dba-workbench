@@ -96,10 +96,12 @@ def recover_vault(username: str) -> None:
 
 
 def backup_recovery_key(output: Path) -> None:
+    if not output.is_absolute():
+        raise SystemExit("Recovery backup output must be an absolute path")
     output = output.resolve()
-    required_root = Path(r"D:\Software\AI\Codex").resolve()
-    if output != required_root and required_root not in output.parents:
-        raise SystemExit(r"Recovery backups must stay under D:\Software\AI\Codex")
+    data_directory = Path(database.DB_PATH).resolve().parent
+    if output == data_directory or data_directory in output.parents:
+        raise SystemExit("Recovery backup output must be outside the server data directory")
     output.mkdir(parents=True, exist_ok=True)
     private_path, public_path = ensure_recovery_key()
     shutil.copy2(private_path, output / private_path.name)

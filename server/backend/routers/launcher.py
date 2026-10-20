@@ -4,6 +4,7 @@ The workspace only stores *paths*; opening happens here via os.startfile
 (files/folders) or webbrowser (URLs). Files never move.
 """
 import os
+import shutil
 import subprocess
 import sys
 import webbrowser
@@ -22,12 +23,21 @@ from backend.local_capabilities import (
 
 router = APIRouter()
 
-# Common editors, first existing one wins
-EDITORS = [
-    r"C:\Program Files\Microsoft VS Code\Code.exe",
-    r"C:\Program Files (x86)\Microsoft VS Code\Code.exe",
-    r"C:\Program Files\Notepad++\notepad++.exe",
-]
+def _discover_editors() -> list[str]:
+    """Resolve configured/PATH editors without fixed installation directories."""
+    candidates = [os.environ.get("DBA_EDITOR", ""), "code", "notepad++"]
+    resolved: list[str] = []
+    for candidate in candidates:
+        candidate = candidate.strip().strip('"')
+        if not candidate:
+            continue
+        executable = candidate if Path(candidate).is_file() else shutil.which(candidate)
+        if executable and executable not in resolved:
+            resolved.append(executable)
+    return resolved
+
+
+EDITORS = _discover_editors()
 
 
 class OpenRequest(BaseModel):
@@ -114,8 +124,9 @@ def open_path(req: OpenRequest):
             subprocess.Popen([sys.executable, str(target)], cwd=str(target.parent))
         elif suffix == ".sh":
             # Run via Git Bash if available
-            bash = r"C:\Program Files\Git\bin\bash.exe"
-            if os.path.exists(bash):
+            configured_bash = os.environ.get("DBA_GIT_BASH", "").strip().strip('"')
+            bash = configured_bash if configured_bash and Path(configured_bash).is_file() else shutil.which("bash")
+            if bash:
                 subprocess.Popen([bash, str(target)], cwd=str(target.parent))
             else:
                 raise HTTPException(400, "未找到 Git Bash，无法执行 .sh")

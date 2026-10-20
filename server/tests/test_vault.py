@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import sqlite3
+from pathlib import Path
 
 import pytest
 from argon2.low_level import Type, hash_secret_raw
@@ -19,6 +20,29 @@ from backend import admin
 
 LOGIN_PASSWORD = "test-only-owner-passphrase"
 MASTER_PASSWORD = "test-only-vault-passphrase"
+
+
+def test_recovery_key_backup_destination_is_portable_and_separate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data_directory = tmp_path / "server-data"
+    data_directory.mkdir()
+    private_key = data_directory / ".vault_recovery_private.pem"
+    public_key = data_directory / ".vault_recovery_public.pem"
+    private_key.write_text("private", encoding="utf-8")
+    public_key.write_text("public", encoding="utf-8")
+    monkeypatch.setattr(admin.database, "DB_PATH", str(data_directory / "workspace.db"))
+    monkeypatch.setattr(admin, "ensure_recovery_key", lambda: (private_key, public_key))
+
+    destination = tmp_path / "portable-backup"
+    admin.backup_recovery_key(destination)
+    assert (destination / private_key.name).read_text(encoding="utf-8") == "private"
+    assert (destination / public_key.name).read_text(encoding="utf-8") == "public"
+
+    with pytest.raises(SystemExit, match="absolute path"):
+        admin.backup_recovery_key(Path("relative-backup"))
+    with pytest.raises(SystemExit, match="outside the server data directory"):
+        admin.backup_recovery_key(data_directory / "backup")
 
 
 def b64(value: bytes) -> str:
