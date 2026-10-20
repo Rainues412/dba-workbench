@@ -286,7 +286,7 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .dashboard-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.15rem; }
 .task-panel, .database-panel { min-height: 330px; }
 .task-list { padding: 0; margin: 0; list-style: none; }
-.dashboard-task-list { max-height: calc(348px + 2.1rem); overflow-y: auto; overscroll-behavior-y: contain; padding-right: .35rem; scrollbar-gutter: stable; }
+.dashboard-task-list { max-height: calc(348px + 2.1rem); overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain; padding-right: .35rem; scrollbar-gutter: stable; }
 .dashboard-task-list:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; border-radius: 10px; }
 .dashboard-task-list > li { min-height: 58px; }
 .task-list li { position: relative; display: flex; align-items: center; gap: .75rem; margin-top: .35rem; padding: .68rem .65rem .68rem .8rem; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
