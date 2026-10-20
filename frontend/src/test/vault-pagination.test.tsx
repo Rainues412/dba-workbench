@@ -3,9 +3,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Vault } from "../pages/Vault";
 
-const mocks = vi.hoisted(() => ({ encrypt: vi.fn(), decrypt: vi.fn(), unlock: vi.fn() }));
+const mocks = vi.hoisted(() => ({ encrypt: vi.fn(), decrypt: vi.fn(), unlock: vi.fn(), rewrap: vi.fn() }));
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ session: { user: { id: 1 }, reauthenticated_until: "2099-01-01T00:00:00Z" }, reauthenticate: vi.fn() }) }));
-vi.mock("../vault/crypto", () => ({ encryptSecret: mocks.encrypt, decryptSecret: mocks.decrypt, unlockVault: mocks.unlock, createVaultProfile: vi.fn() }));
+vi.mock("../vault/crypto", () => ({ encryptSecret: mocks.encrypt, decryptSecret: mocks.decrypt, unlockVault: mocks.unlock, createVaultProfile: vi.fn(), rewrapVaultProfile: mocks.rewrap }));
 
 let requests: string[];
 let updates: Array<Record<string, unknown>>;
@@ -21,10 +21,13 @@ beforeEach(() => {
   mocks.unlock.mockResolvedValue(new Uint8Array(32));
   mocks.decrypt.mockImplementation(async (_key, item) => ({ site: `Site ${item.id}`, url: "", username: "user", password: "secret", category: "测试", notes: "", favorite: item.id === 201 }));
   mocks.encrypt.mockImplementation(async (_key, _user, secret, itemKey) => ({ item_key: itemKey, ciphertext: JSON.stringify(secret) }));
+  mocks.rewrap.mockResolvedValue({ kdf_salt: "salt", kdf_memory_kib: 65536, kdf_iterations: 3, kdf_parallelism: 1, wrapped_dek: "wrapped", wrapped_dek_nonce: "nonce" });
   vi.stubGlobal("fetch", vi.fn(async (path: string, init?: RequestInit) => {
     requests.push(path);
     if (path === "/api/vault/profile") return Response.json({ initialized: true, profile: { recovery_confirmed_at: "2026-01-01" } });
     if (path === "/api/vault/legacy/status") return Response.json({ backend_entries: 0 });
+    if (path === "/api/vault/captcha") return Response.json({ challenge_id: "a".repeat(32), image: "data:image/svg+xml;base64,PHN2Zy8+", expires_in: 180 });
+    if (path === "/api/vault/profile/rewrap" && init?.method === "PUT") return Response.json({ updated_at: "2026-01-01" });
     if (path.startsWith("/api/vault/items?")) {
       const page = Number(new URL(path, "http://localhost").searchParams.get("page"));
       if (page === 2 && failSecondPage) return Response.json({}, { status: 500 });
@@ -56,6 +59,19 @@ async function unlock() {
 }
 
 describe("vault complete loading, pagination and favorites", () => {
+  it("changes the master password after login-password and captcha verification", async () => {
+    await unlock();
+    fireEvent.click(screen.getByRole("button", { name: "修改主密码" }));
+    await screen.findByRole("img", { name: "本机验证码" });
+    fireEvent.change(screen.getByLabelText("登录密码"), { target: { value: "LoginPass9!" } });
+    fireEvent.change(screen.getByLabelText("新保险箱主密码"), { target: { value: "NewMaster9!" } });
+    fireEvent.change(screen.getByLabelText("确认新主密码"), { target: { value: "NewMaster9!" } });
+    fireEvent.change(screen.getByPlaceholderText("输入 5 位验证码"), { target: { value: "AAAAA" } });
+    fireEvent.click(screen.getByRole("button", { name: "确认修改" }));
+    await screen.findByText("保险箱主密码已修改");
+    expect(requests).toContain("/api/vault/profile/rewrap");
+  });
+
   it("sorts cards by name with natural case-insensitive ordering", async () => {
     for (let id = 4; id <= 201; id += 1) deleted.add(id);
     const names = new Map([[1, "zulu"], [2, "Alpha"], [3, "beta"]]);

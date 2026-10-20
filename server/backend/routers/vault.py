@@ -2,8 +2,13 @@
 from __future__ import annotations
 
 import hashlib
+import base64
 import json
+import secrets
 import sqlite3
+import string
+import threading
+import time
 from pathlib import Path
 from typing import Annotated
 
@@ -12,7 +17,15 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from backend import database
-from backend.auth import require_recent_reauth
+from backend.auth import (
+    MIN_PASSWORD_LENGTH,
+    attempt_identifier,
+    clear_attempts,
+    record_failed_attempt,
+    require_recent_reauth,
+    retry_after,
+    verify_password,
+)
 from backend.database import get_db_ctx, page_response, validate_page
 from backend.vault_recovery import public_key_payload
 
@@ -20,6 +33,10 @@ from backend.vault_recovery import public_key_payload
 router = APIRouter()
 ENCODED = Annotated[str, Field(min_length=16, max_length=131072)]
 ITEM_KEY = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{16,80}$")]
+CAPTCHA_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+CAPTCHA_TTL_SECONDS = 180
+_captcha_lock = threading.Lock()
+_captchas: dict[str, tuple[int, float, str]] = {}
 
 
 class VaultProfileCreate(BaseModel):
@@ -42,6 +59,9 @@ class VaultProfileRewrap(BaseModel):
     kdf_parallelism: int = 1
     wrapped_dek: ENCODED
     wrapped_dek_nonce: ENCODED
+    login_password: Annotated[str, Field(min_length=MIN_PASSWORD_LENGTH, max_length=256)]
+    captcha_id: Annotated[str, Field(min_length=32, max_length=64)]
+    captcha_code: Annotated[str, Field(min_length=5, max_length=5)]
 
 
 class VaultItemWrite(BaseModel):
@@ -66,6 +86,54 @@ class BackupRestore(BaseModel):
 
 def _user(request: Request) -> int:
     return int(request.state.session["user_id"])
+
+
+def _captcha_image(code: str) -> str:
+    letters = "".join(
+        f'<text x="{18 + index * 28}" y="38" transform="rotate({(-7, 5, -4, 7, -5)[index]} {18 + index * 28} 38)">{character}</text>'
+        for index, character in enumerate(code)
+    )
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="164" height="52" viewBox="0 0 164 52">'
+        '<rect width="164" height="52" rx="8" fill="#edf3ff"/>'
+        '<path d="M8 17L156 35M12 40L151 12M4 29L159 24" stroke="#9db7ff" stroke-width="1"/>'
+        '<g fill="#2454c6" font-family="Consolas,monospace" font-size="25" font-weight="700">'
+        f'{letters}</g></svg>'
+    )
+    return "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode("ascii")
+
+
+def _consume_captcha(request: Request, challenge_id: str, supplied: str) -> bool:
+    now = time.monotonic()
+    session_id = int(request.state.session["id"])
+    with _captcha_lock:
+        expired = [key for key, (_, expires, _) in _captchas.items() if expires <= now]
+        for key in expired:
+            _captchas.pop(key, None)
+        challenge = _captchas.pop(challenge_id, None)
+    if not challenge or challenge[0] != session_id or challenge[1] <= now:
+        return False
+    expected = challenge[2]
+    actual = hashlib.sha256(f"{challenge_id}:{supplied.strip().upper()}".encode()).hexdigest()
+    return secrets.compare_digest(actual, expected)
+
+
+def _verify_rewrap(request: Request, data: VaultProfileRewrap) -> None:
+    identifier = attempt_identifier(request, f"vault-rewrap:{request.state.session['username']}")
+    delay = retry_after(identifier)
+    if delay:
+        raise HTTPException(429, f"Too many verification attempts; retry in {delay} seconds")
+    captcha_ok = _consume_captcha(request, data.captcha_id, data.captcha_code)
+    with get_db_ctx() as conn:
+        row = conn.execute(
+            "SELECT password_hash FROM users WHERE id = ? AND is_active = 1",
+            (_user(request),),
+        ).fetchone()
+    password_ok = bool(row and verify_password(row["password_hash"], data.login_password))
+    if not captcha_ok or not password_ok:
+        record_failed_attempt(identifier)
+        raise HTTPException(401, "Invalid login password or verification code")
+    clear_attempts(identifier)
 
 
 def _validate_profile(data: VaultProfileCreate | VaultProfileRewrap) -> None:
@@ -124,6 +192,20 @@ def get_profile(request: Request):
     return {"initialized": bool(row), "profile": dict(row) if row else None}
 
 
+@router.get("/captcha")
+def create_captcha(request: Request):
+    challenge_id = secrets.token_hex(16)
+    code = "".join(secrets.choice(CAPTCHA_ALPHABET) for _ in range(5))
+    digest = hashlib.sha256(f"{challenge_id}:{code}".encode()).hexdigest()
+    with _captcha_lock:
+        _captchas[challenge_id] = (
+            int(request.state.session["id"]),
+            time.monotonic() + CAPTCHA_TTL_SECONDS,
+            digest,
+        )
+    return {"challenge_id": challenge_id, "image": _captcha_image(code), "expires_in": CAPTCHA_TTL_SECONDS}
+
+
 @router.post("/profile", status_code=201)
 def create_profile(
     data: VaultProfileCreate,
@@ -161,8 +243,8 @@ def create_profile(
 def rewrap_profile(
     data: VaultProfileRewrap,
     request: Request,
-    _: dict = Depends(require_recent_reauth),
 ):
+    _verify_rewrap(request, data)
     _validate_profile(data)
     user_id = _user(request)
     with get_db_ctx() as conn:

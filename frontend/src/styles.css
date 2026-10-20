@@ -354,6 +354,11 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .modal-header { margin-bottom: 1.1rem; padding-bottom: .9rem; border-bottom: 1px solid var(--border); }
 .modal-header h2 { margin-bottom: 0; }
 .modal-actions { justify-content: flex-end; padding-top: .2rem; }
+.vault-password-modal { width: min(640px, 100%); }
+.captcha-row { display: grid; grid-template-columns: 164px minmax(150px, 1fr) 38px; align-items: center; gap: .6rem; }
+.captcha-row img, .captcha-placeholder { width: 164px; height: 52px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-soft); }
+.captcha-placeholder { display: grid; place-items: center; color: var(--muted); font-size: .72rem; }
+.captcha-row .icon-button { border: 1px solid var(--border); background: var(--surface); }
 
 /* Authentication */
 .auth-layout { min-height: 100vh; display: grid; grid-template-columns: minmax(420px, .95fr) minmax(480px, 1.05fr); background: var(--surface); }
@@ -606,6 +611,8 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
   .reauth-panel form { flex-direction: column; }
   .vault-grid { grid-template-columns: 1fr; padding-inline: .75rem; }
   .modal { padding: 1rem; }
+  .captcha-row { grid-template-columns: 1fr 38px; }
+  .captcha-row img, .captcha-placeholder { grid-column: 1 / -1; }
   .global-search { width: min(260px, 42vw); }
   .global-search-box kbd { display: none; }
   .global-search-box input { padding-right: .7rem; }

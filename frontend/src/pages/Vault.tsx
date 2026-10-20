@@ -1,13 +1,13 @@
 import { FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Clipboard, Download, Eye, EyeOff, Globe2, KeyRound, LockKeyhole, Pencil, Plus, Search, ShieldCheck, Star, Tags, Trash2, Upload, UserRound, X } from "lucide-react";
+import { CheckCircle2, Clipboard, Download, Eye, EyeOff, Globe2, KeyRound, LockKeyhole, Pencil, Plus, RefreshCw, Search, ShieldCheck, Star, Tags, Trash2, Upload, UserRound, X } from "lucide-react";
 import { ApiError, api, jsonBody, Page } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { Pagination } from "../components/Pagination";
 import { EdgePasswordImport } from "../components/EdgePasswordImport";
 import {
-  createVaultProfile, decryptSecret, encryptSecret, RecoveryPublicKey,
+  createVaultProfile, decryptSecret, encryptSecret, RecoveryPublicKey, rewrapVaultProfile,
   unlockVault, VaultCipherItem, VaultProfile, VaultSecret,
 } from "../vault/crypto";
 import { startVaultAutoLock } from "../vault/autoLock";
@@ -18,6 +18,7 @@ const NAME_COLLATOR = new Intl.Collator(["zh-CN", "en"], { numeric: true, sensit
 
 type ProfileResponse = { initialized: boolean; profile: VaultProfile | null };
 type Decrypted = { cipher: VaultCipherItem; secret: VaultSecret };
+type CaptchaChallenge = { challenge_id: string; image: string; expires_in: number };
 
 async function loadAllItems(signal?: AbortSignal): Promise<VaultCipherItem[]> {
   const result: VaultCipherItem[] = [];
@@ -43,6 +44,7 @@ export function Vault() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [editing, setEditing] = useState<Decrypted | "new" | null>(null);
+  const [changingPassword, setChangingPassword] = useState(false);
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
@@ -309,7 +311,7 @@ export function Vault() {
       : <>
         <div className="button-row"><EdgePasswordImport dek={dek} userId={session!.user!.id} canImport={() => dekRef.current === dek && Boolean(session?.reauthenticated_until && new Date(session.reauthenticated_until).getTime() > Date.now())} loadExisting={async () => { const key = dekRef.current; if (!key) throw new Error("保险箱已锁定"); return Promise.all((await loadAllItems()).map((item) => decryptSecret(key, item))); }} onImported={async () => { await items.refetch(); }} /></div>
         {!profile.data!.profile?.recovery_confirmed_at && <section className="panel recovery-callout"><span className="callout-icon"><Download size={22} /></span><div><h2>请备份管理员恢复密钥</h2><p className="muted">在 server 目录运行 <code>python -m backend.admin backup-recovery-key --output &lt;绝对备份目录&gt;</code>，并将副本与数据库分开保存。</p></div><button className="button" onClick={async () => { await api("/api/vault/recovery/confirm", { method: "POST" }); await profile.refetch(); }}>我已完成备份</button></section>}
-        <section className="panel data-panel" ref={panelRef}><div className="toolbar"><label className="search-field"><Search size={17} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="按名称搜索已解锁条目" aria-label="按名称搜索保险箱" /></label><button className={`button vault-filter-toggle${favoritesOnly ? " is-active" : ""}`} aria-pressed={favoritesOnly} onClick={() => { setFavoritesOnly((current) => !current); setPage(1); }}><Star size={16} fill={favoritesOnly ? "currentColor" : "none"} />仅看收藏</button><div className="button-row"><button className="button" onClick={() => void downloadBackup()}><Download size={16} />加密备份</button><label className="button file-button"><Upload size={16} />恢复加密备份<input className="sr-only" type="file" accept="application/json,.json" onChange={(event) => void restoreBackup(event)} /></label><button className="button primary" onClick={() => reauthenticated ? setEditing("new") : setError("新增前请重新验证登录密码")}><Plus size={17} />新增条目</button></div></div>
+        <section className="panel data-panel" ref={panelRef}><div className="toolbar"><label className="search-field"><Search size={17} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="按名称搜索已解锁条目" aria-label="按名称搜索保险箱" /></label><button className={`button vault-filter-toggle${favoritesOnly ? " is-active" : ""}`} aria-pressed={favoritesOnly} onClick={() => { setFavoritesOnly((current) => !current); setPage(1); }}><Star size={16} fill={favoritesOnly ? "currentColor" : "none"} />仅看收藏</button><div className="button-row"><button className="button" onClick={() => setChangingPassword(true)}><KeyRound size={16} />修改主密码</button><button className="button" onClick={() => void downloadBackup()}><Download size={16} />加密备份</button><label className="button file-button"><Upload size={16} />恢复加密备份<input className="sr-only" type="file" accept="application/json,.json" onChange={(event) => void restoreBackup(event)} /></label><button className="button primary" onClick={() => reauthenticated ? setEditing("new") : setError("新增前请重新验证登录密码")}><Plus size={17} />新增条目</button></div></div>
           {(legacyLocal.length > 0 || (legacyStatus.data?.backend_entries ?? 0) > 0) && <div className="migration-banner"><span>检测到 {legacyLocal.length} 条浏览器旧数据和 {legacyStatus.data?.backend_entries ?? 0} 条后端旧数据。</span><button className="button" onClick={() => void migrateLegacy()}>迁移并校验</button></div>}
           {!items.isLoading && !items.error && secrets.length > 0 && <div className="vault-category-groups" role="group" aria-label="保险箱分类分组">
             <span className="vault-category-title"><Tags size={15} />分类分组</span>
@@ -344,7 +346,41 @@ export function Vault() {
         </section>
       </>}
     {editing && <SecretEditor current={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} onSave={saveSecret} />}
+    {changingPassword && dek && <MasterPasswordEditor dek={dek} userId={session!.user!.id} onClose={() => setChangingPassword(false)} onChanged={async () => { await profile.refetch(); setNotice("保险箱主密码已修改"); setChangingPassword(false); }} />}
   </VaultPage>;
+}
+
+function MasterPasswordEditor({ dek, userId, onClose, onChanged }: { dek: Uint8Array<ArrayBuffer>; userId: number; onClose: () => void; onChanged: () => Promise<void> }) {
+  const [captcha, setCaptcha] = useState<CaptchaChallenge | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function refreshCaptcha() {
+    try { setCaptcha(await api<CaptchaChallenge>("/api/vault/captcha")); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "验证码加载失败"); }
+  }
+  useEffect(() => { void refreshCaptcha(); }, []);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const next = String(form.get("new_master_password") ?? "");
+    if (next.length < 9 || next !== String(form.get("confirm_master_password") ?? "")) { setError("新主密码至少 9 位，且两次输入必须一致"); return; }
+    if (!captcha) { setError("请先获取验证码"); return; }
+    setBusy(true); setError("");
+    try {
+      const wrapped = await rewrapVaultProfile(dek, next, userId);
+      await api("/api/vault/profile/rewrap", { method: "PUT", body: jsonBody({
+        ...wrapped,
+        login_password: String(form.get("login_password") ?? ""),
+        captcha_id: captcha.challenge_id,
+        captcha_code: String(form.get("captcha_code") ?? ""),
+      }) });
+      await onChanged();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "主密码修改失败");
+      await refreshCaptcha();
+    } finally { setBusy(false); }
+  }
+  return <div className="modal-backdrop"><section className="modal vault-password-modal" role="dialog" aria-modal="true" aria-labelledby="vault-password-title"><div className="modal-header"><div><p className="eyebrow">SECURITY</p><h2 id="vault-password-title">修改保险箱主密码</h2></div><button className="icon-button modal-close" onClick={onClose} aria-label="关闭"><X size={19} /></button></div><p className="muted">修改只会重新保护保险箱数据密钥，不会逐条解密或重写密码记录。</p><form className="form-grid" onSubmit={submit}><label className="full">登录密码<input name="login_password" type="password" minLength={9} autoComplete="current-password" required autoFocus /></label><label>新保险箱主密码<input name="new_master_password" type="password" minLength={9} autoComplete="new-password" required /></label><label>确认新主密码<input name="confirm_master_password" type="password" minLength={9} autoComplete="new-password" required /></label><label className="full">验证码<div className="captcha-row">{captcha ? <img src={captcha.image} alt="本机验证码" /> : <span className="captcha-placeholder">正在生成…</span>}<input name="captcha_code" minLength={5} maxLength={5} autoComplete="off" placeholder="输入 5 位验证码" required /><button type="button" className="icon-button" onClick={() => void refreshCaptcha()} aria-label="刷新验证码" title="刷新验证码"><RefreshCw size={17} /></button></div></label>{error && <div className="alert error full" role="alert">{error}</div>}<div className="modal-actions full"><button type="button" className="button" onClick={onClose}>取消</button><button className="button primary" disabled={busy || !captcha}><KeyRound size={17} />{busy ? "正在修改…" : "确认修改"}</button></div></form></section></div>;
 }
 
 function SecretEditor({ current, onClose, onSave }: { current?: Decrypted; onClose: () => void; onSave: (secret: VaultSecret, current?: Decrypted) => Promise<void> }) {

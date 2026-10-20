@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 
 from backend.vault_recovery import decrypt_recovery_envelope
 from backend import admin
+from backend.routers import vault as vault_router
 
 
 LOGIN_PASSWORD = "test-only-owner-passphrase"
@@ -154,7 +155,7 @@ def test_versioned_envelope_tamper_nonce_and_recovery(
     assert "test-secret-value" not in db_dump
 
 
-def test_master_password_change_only_rewraps_dek(client: TestClient) -> None:
+def test_master_password_change_only_rewraps_dek(client: TestClient, monkeypatch) -> None:
     dek, _ = initialize_vault(client)
     item = encrypted_item(dek, "test-item-key-0001", bytes(range(12)), "test-value")
     created = client.post("/api/vault/items", json=item).json()
@@ -167,13 +168,24 @@ def test_master_password_change_only_rewraps_dek(client: TestClient) -> None:
     wrapped = AESGCM(new_kek).encrypt(
         new_nonce, dek, b"dba-vault:profile:1:v1"
     )
+    monkeypatch.setattr(vault_router.secrets, "choice", lambda _: "A")
+    challenge = client.get("/api/vault/captcha").json()
+    payload = {
+        "kdf_salt": b64(new_salt), "kdf_memory_kib": 65536,
+        "kdf_iterations": 3, "kdf_parallelism": 1,
+        "wrapped_dek": b64(wrapped), "wrapped_dek_nonce": b64(new_nonce),
+        "login_password": LOGIN_PASSWORD,
+        "captcha_id": challenge["challenge_id"], "captcha_code": "WRONG",
+    }
+    assert client.put("/api/vault/profile/rewrap", json=payload).status_code == 401
+    payload["captcha_code"] = "AAAAA"
+    assert client.put("/api/vault/profile/rewrap", json=payload).status_code == 401
+
+    challenge = client.get("/api/vault/captcha").json()
+    payload.update(captcha_id=challenge["challenge_id"], captcha_code="AAAAA")
     changed = client.put(
         "/api/vault/profile/rewrap",
-        json={
-            "kdf_salt": b64(new_salt), "kdf_memory_kib": 65536,
-            "kdf_iterations": 3, "kdf_parallelism": 1,
-            "wrapped_dek": b64(wrapped), "wrapped_dek_nonce": b64(new_nonce),
-        },
+        json=payload,
     )
     assert changed.status_code == 200
     listed = client.get("/api/vault/items").json()["items"][0]
