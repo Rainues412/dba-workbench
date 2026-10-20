@@ -11,8 +11,8 @@ import { DataBackup } from "./DataBackup";
 
 const navigation = [
   { to: "/", label: "工作台", description: "数据概览", icon: LayoutDashboard },
-  { to: "/scripts", label: "脚本库", description: "运维脚本", icon: ScrollText },
   { to: "/articles", label: "知识库", description: "文档沉淀", icon: BookOpenText },
+  { to: "/scripts", label: "脚本库", description: "运维脚本", icon: ScrollText },
   { to: "/resources", label: "资源中心", description: "工具与入口", icon: PackageOpen },
   { to: "/tasks", label: "任务管理", description: "计划与进度", icon: ListTodo },
   { to: "/customers", label: "客户项目", description: "客户与联系人", icon: Building2 },
@@ -37,11 +37,11 @@ export function Shell() {
     <div className={`app-shell${collapsed ? " sidebar-collapsed" : ""}`}>
       <aside className="sidebar">
         <div className="brand-row">
-          <NavLink to="/" className="brand" aria-label="返回工作台">
+          <NavLink to="/" className="brand" aria-label="返回工作台" title={collapsed ? "返回工作台" : undefined}>
             <span className="brand-mark small"><HardDrive size={20} strokeWidth={2.2} /></span>
             <span className="brand-copy"><strong>DBA 工作台</strong><small>LOCAL OPERATIONS</small></span>
           </NavLink>
-          <button className="sidebar-toggle" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? "展开侧栏" : "收起侧栏"}>
+          <button className="sidebar-toggle" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? "展开侧栏" : "收起侧栏"} title={collapsed ? "展开侧栏" : "收起侧栏"}>
             {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
           </button>
         </div>
@@ -49,7 +49,7 @@ export function Shell() {
         <div className="nav-section-label">工作区</div>
         <nav aria-label="主导航">
           {navigation.map(({ to, label, description, icon: Icon }) => (
-            <NavLink key={to} to={to} end={to === "/"} title={collapsed ? label : undefined} className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>
+            <NavLink key={to} to={to} end={to === "/"} aria-label={label} title={collapsed ? `${label}：${description}` : undefined} className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>
               <span className="nav-icon" aria-hidden="true"><Icon size={19} strokeWidth={1.9} /></span>
               <span className="nav-copy"><strong>{label}</strong><small>{description}</small></span>
               <ChevronRight className="nav-chevron" size={15} aria-hidden="true" />
