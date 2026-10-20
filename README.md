@@ -1,18 +1,18 @@
 # DBA 工作台
 
-本机单用户 DBA 运维工作台，用于管理脚本、知识文章、安装资源、任务、客户资料和客户端加密保险箱。前端采用 React + TypeScript，后端采用 FastAPI，数据保存在项目内的 SQLite 数据库。
+本机单用户 DBA 运维工作台，用于管理脚本、知识文章、安装资源、任务、客户资料和客户端加密保险箱。前端采用 React + TypeScript，后端采用 FastAPI，数据保存在本机 SQLite 数据库。
 
 > 当前版本只支持 Windows 本机回环访问（`127.0.0.1` / `localhost`），不是局域网或公网部署版本。
 
 ## 环境与版本要求
 
-### 仅部署和运行
+### 使用 EXE 安装程序（推荐）
 
 | 依赖 | 要求 | 说明 |
 | --- | --- | --- |
 | 操作系统 | Windows 10/11 x64 | 打开本机文件、目录选择和桌面启动器依赖 Windows |
-| Python | **3.12.x x64** | 必需；当前验收版本为 3.12.10 |
-| pip / venv | 随 Python 3.12 安装 | 用于创建项目独立运行环境 |
+| Python | 不需要 | Python 运行时已编译进应用发行目录 |
+| pip / venv | 不需要 | 仅从源码开发和重新打包时需要 |
 | 浏览器 | Edge、Chrome 或其他现代浏览器 | Edge 可选，找不到时使用系统默认浏览器 |
 | Node.js / npm | 不需要 | 仓库已包含 `server/frontend_dist` 生产前端 |
 
@@ -23,14 +23,18 @@
 - cryptography 43.0.1
 - argon2-cffi 25.1.0
 
-新电脑没有 Python 时，先安装 [Python 3.12 x64](https://www.python.org/downloads/)，并在安装器中启用 Python Launcher。也可以使用 Windows Package Manager：
+将 `DBA工作台-安装程序-<版本>-x64.exe` 复制到新电脑并双击：
 
-```powershell
-winget install --id Python.Python.3.12 -e
-py -3.12 --version
-```
+- 安装向导允许自行选择安装目录；默认安装到当前用户的 `%LOCALAPPDATA%\Programs\DBA 工作台`，不要求管理员权限。
+- “创建桌面快捷方式”默认勾选，也可取消。
+- 完成后可直接启动，目标机不需要安装 Python 或 Node.js。
+- 首次运行会在 `%LOCALAPPDATA%\DBA Workbench\data` 创建数据库和保险箱恢复密钥，日志位于同级 `logs` 目录；升级和卸载程序不会自动删除这些业务数据。
 
-当前仓库**没有提供免 Python 的独立 EXE**。如果系统策略禁止安装 Python，需要另行制作并测试便携运行包，不能直接复制源码后双击运行。
+安装程序目前没有商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”。发布时应同时提供生成的 `.sha256` 文件用于完整性核验。Nuitka 编译能显著提高 Python 源码逆向成本，安装包不会包含 `.py`、`.ts`、`.tsx`、源码映射、Git 元数据、业务数据库或恢复密钥；浏览器端必须接收前端 JavaScript，因此不能承诺绝对不可逆。
+
+### 从源码部署
+
+从源码运行需要 Python **3.12.x x64**（当前验收版本 3.12.10）以及随 Python 安装的 pip/venv；目标机若只使用 EXE 安装程序则不需要这些依赖。
 
 ### 开发、测试或重新构建前端
 
@@ -61,6 +65,16 @@ py -3.12 -m venv .runtime\.venv
 ```
 
 访问 `http://127.0.0.1:8686/`。首次启动没有默认账号或密码，需要在页面创建第一个 Owner。数据库和保险箱恢复密钥会在首次使用相应功能时创建，均不会提交到 Git。
+
+### 生成 Windows 安装程序
+
+构建机需要 Windows 10/11 x64、Python 3.12 x64 和网络连接。构建脚本固定使用 Nuitka 4.3.1，并从 Inno Setup 官方 GitHub Release 下载、校验和安装 Inno Setup 7.1.0 到源码目录之外。目标机不需要这些构建工具。
+
+```powershell
+.\packaging\windows\build-installer.ps1 -Version "1.0.0"
+```
+
+默认输出到仓库同级的 `DBA工作台-发布\installer`，最终只需分发其中的安装程序和同名 `.sha256` 文件；`.build` 是可删除的构建缓存。构建脚本拒绝把输出写进 Git 源码目录，并在打包前运行后端测试、扫描发行目录中的源码和业务数据。也可以通过 `-OutputDirectory` 指定其他源码目录之外的位置。
 
 Windows 桌面启动方式：
 
@@ -95,7 +109,7 @@ Set-Location ..
                  ├─ local_capabilities.py  本机文件访问边界
                  ├─ migrations/            SQLite 前向迁移
                  ├─ admin.py               离线恢复命令
-                 └─ workspace.db           本机业务数据
+                 └─ workspace.db           本机业务数据（开发默认位置）
 ```
 
 主要目录：
@@ -108,6 +122,7 @@ server/backend/routers/      按业务模块拆分的 REST API
 server/backend/migrations/   有序 SQLite 迁移
 server/tests/                后端与浏览器测试
 tools/windows/               Windows 启动器
+packaging/windows/           Nuitka 构建脚本与 Inno Setup 安装定义
 assets/                      桌面图标资源
 .runtime/                    本机虚拟环境、日志和配置（Git 忽略）
 ```
@@ -122,6 +137,7 @@ assets/                      桌面图标资源
 | --- | --- |
 | `DBA_HOST` / `DBA_PORT` | 监听地址和端口；地址只允许本机回环 |
 | `DBA_OPEN_BROWSER` | 启动后是否自动打开浏览器 |
+| `DBA_DATA_DIR` | 可选，数据库和恢复密钥目录；安装版自动使用当前用户的 LocalAppData |
 | `DBA_EDGE_PATH` | 可选，Edge 可执行文件路径 |
 | `DBA_EDITOR` | 可选，首选编辑器命令或可执行文件路径 |
 | `DBA_GIT_BASH` | 可选，执行获准 `.sh` 文件时使用的 Bash 路径 |
@@ -142,10 +158,10 @@ assets/                      桌面图标资源
 
 ## 数据迁移与备份
 
-停止服务后迁移以下文件：
+停止服务后迁移以下文件。源码模式默认位于 `server`，安装版默认位于 `%LOCALAPPDATA%\DBA Workbench\data`：
 
-- `server/workspace.db`：业务数据、账号、会话元数据和保险箱密文。
-- `server/.vault_recovery_private.pem` 与 `server/.vault_recovery_public.pem`：保险箱恢复密钥。
+- `workspace.db`：业务数据、账号、会话元数据和保险箱密文。
+- `.vault_recovery_private.pem` 与 `.vault_recovery_public.pem`：保险箱恢复密钥。
 - 原脚本、知识文章和安装包目录：数据库只保存索引和路径，不会打包原文件。
 
 恢复密钥备份目录必须是绝对路径，并且必须位于 `server` 数据目录之外：

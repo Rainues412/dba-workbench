@@ -11,9 +11,17 @@ from backend.migrations import latest_version, migrate
 from backend.search_utils import title_matches
 
 
-DB_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "workspace.db"
-)
+def _default_db_path() -> str:
+    """Keep development data local while allowing packaged installs to be read-only."""
+    configured = os.environ.get("DBA_DATA_DIR", "").strip()
+    if configured:
+        return str(Path(configured).expanduser().resolve() / "workspace.db")
+    return os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "workspace.db"
+    )
+
+
+DB_PATH = _default_db_path()
 
 PAGE_SIZE_MIN = 1
 PAGE_SIZE_MAX = 200
@@ -21,6 +29,7 @@ PAGE_SIZE_MAX = 200
 
 def get_db() -> sqlite3.Connection:
     """Open an application connection with consistent safety settings."""
+    Path(DB_PATH).resolve().parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -79,5 +88,6 @@ def check_schema_compatibility() -> None:
 
 def run_startup_migrations() -> None:
     """Apply tested, forward-only migrations in a transaction per version."""
+    Path(DB_PATH).resolve().parent.mkdir(parents=True, exist_ok=True)
     check_schema_compatibility()
     migrate(Path(DB_PATH))

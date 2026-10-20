@@ -212,8 +212,10 @@ def open_browser():
 
 
 if __name__ == "__main__":
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    if sys.stdout is not None and hasattr(sys.stdout, "buffer"):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    if sys.stderr is not None and hasattr(sys.stderr, "buffer"):
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
     print("=" * 50)
     print("  DBA Workspace Server v0.5")
     print(f"  Mode: {settings.mode}")
@@ -225,7 +227,7 @@ if __name__ == "__main__":
         threading.Thread(target=open_browser, daemon=True).start()
 
     uvicorn.run(
-        "main:app",
+        "main:app" if settings.reload else app,
         host=settings.host,
         port=settings.port,
         reload=settings.reload,
