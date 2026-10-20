@@ -72,7 +72,7 @@ py -3.12 -m venv .runtime\.venv
 构建机需要 Windows 10/11 x64、Python 3.12 x64 和网络连接。构建脚本固定使用 Nuitka 4.3.1，并从 Inno Setup 官方 GitHub Release 下载、校验和安装 Inno Setup 7.1.0 到源码目录之外。目标机不需要这些构建工具。
 
 ```powershell
-.\packaging\windows\build-installer.ps1 -Version "1.0.1"
+.\packaging\windows\build-installer.ps1 -Version "1.0.2"
 ```
 
 默认输出到仓库同级的 `DBA工作台-发布\installer`，最终只需分发其中的安装程序和同名 `.sha256` 文件；`.build` 是可删除的构建缓存。构建脚本拒绝把输出写进 Git 源码目录，并在打包前运行后端测试、扫描发行目录中的源码和业务数据。也可以通过 `-OutputDirectory` 指定其他源码目录之外的位置。
