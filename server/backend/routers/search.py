@@ -16,7 +16,8 @@ def global_search(q: str = "", limit: int = 10):
     if not q.strip():
         return {"scripts": [], "articles": [], "tasks": [], "customers": [], "resources": [], "passwords": []}
 
-    limit = max(1, min(limit, 100))
+    # limit=0 lets the inline dropdown return all local matches and scroll them.
+    limit = -1 if limit == 0 else max(1, min(limit, 100))
 
     with get_db_ctx() as conn:
         kw = f"%{_escape_like(q)}%"

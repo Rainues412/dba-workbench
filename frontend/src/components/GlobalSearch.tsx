@@ -1,6 +1,5 @@
-import { useEffect, useId, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { Search, X } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 
@@ -8,74 +7,118 @@ const modules = [
   ["scripts", "脚本库"], ["articles", "知识库"], ["resources", "资源中心"],
   ["tasks", "任务管理"], ["customers", "客户项目"],
 ] as const;
-type Results = Record<string, { id: number; title?: string; name?: string }[]>;
+type ModuleKey = (typeof modules)[number][0];
+type SearchRecord = { id: number; title?: string; name?: string };
+type Results = Partial<Record<ModuleKey, SearchRecord[]>>;
+type SearchItem = SearchRecord & { module: ModuleKey; moduleLabel: string };
 
 export function GlobalSearch() {
   const navigate = useNavigate();
-  const titleId = useId();
-  const trigger = useRef<HTMLButtonElement>(null);
-  const dialog = useRef<HTMLElement>(null);
+  const listId = useId();
+  const root = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
-  const [open, setOpen] = useState(false);
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const [focused, setFocused] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Results>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [activeIndex, setActiveIndex] = useState(-1);
+
+  const items = useMemo(() => modules.flatMap(([module, moduleLabel]) =>
+    (results[module] ?? []).map((record) => ({ ...record, module, moduleLabel }))), [results]);
+  const open = focused && !!query.trim();
+
+  function choose(item: SearchItem) {
+    setFocused(false);
+    input.current?.blur();
+    navigate(`/${item.module}?record=${item.id}`);
+  }
 
   useEffect(() => {
     function shortcut(event: KeyboardEvent) {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault(); setOpen((value) => !value);
+        event.preventDefault(); input.current?.focus();
       }
     }
+    function outside(event: PointerEvent) {
+      if (!root.current?.contains(event.target as Node)) setFocused(false);
+    }
     window.addEventListener("keydown", shortcut);
-    return () => window.removeEventListener("keydown", shortcut);
+    document.addEventListener("pointerdown", outside);
+    return () => {
+      window.removeEventListener("keydown", shortcut);
+      document.removeEventListener("pointerdown", outside);
+    };
   }, []);
+
   useEffect(() => {
-    if (!open) return;
-    input.current?.focus();
-    return () => trigger.current?.focus();
-  }, [open]);
-  useEffect(() => {
-    setResults({}); setError("");
-    if (!open || !query.trim()) { setLoading(false); return; }
+    setResults({}); setError(""); setActiveIndex(-1);
+    if (!query.trim()) { setLoading(false); return; }
     let active = true;
     const controller = new AbortController();
     setLoading(true);
     const timer = window.setTimeout(() => {
-      void api<Results>(`/api/search/?${new URLSearchParams({ q: query.trim(), limit: "10" })}`, { signal: controller.signal })
+      void api<Results>(`/api/search/?${new URLSearchParams({ q: query.trim(), limit: "0" })}`, { signal: controller.signal })
         .then((data) => { if (active) setResults(data); })
-        .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : "搜索失败，请重试"); })
+        .catch((reason: unknown) => { if (active && !(reason instanceof DOMException && reason.name === "AbortError")) setError(reason instanceof Error ? reason.message : "搜索失败，请重试"); })
         .finally(() => { if (active) setLoading(false); });
-    }, 200);
+    }, 180);
     return () => { active = false; window.clearTimeout(timer); controller.abort(); };
-  }, [open, query]);
+  }, [query]);
 
-  const count = modules.reduce((sum, [key]) => sum + (results[key]?.length ?? 0), 0);
-  return <>
-    <button ref={trigger} className="button global-search-trigger" onClick={() => setOpen(true)} aria-label="全局搜索（Ctrl+K）"><Search size={17} /><span>搜索</span><kbd>Ctrl K</kbd></button>
-    {open && createPortal(<div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
-      <section ref={dialog} className="modal global-search-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={(event) => {
-        if (event.key === "Escape") { event.preventDefault(); setOpen(false); }
-        if (event.key === "Tab") {
-          const controls = dialog.current?.querySelectorAll<HTMLElement>("button:not(:disabled), input");
-          const first = controls?.[0]; const last = controls?.[controls.length - 1];
-          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
-          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
-        }
-        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-          const controls = [input.current, ...Array.from(dialog.current?.querySelectorAll<HTMLButtonElement>(".global-search-result") ?? [])].filter((item): item is HTMLInputElement | HTMLButtonElement => !!item);
-          const index = controls.indexOf(document.activeElement as HTMLInputElement | HTMLButtonElement);
-          if (index >= 0) { event.preventDefault(); controls[(index + (event.key === "ArrowDown" ? 1 : controls.length - 1)) % controls.length]?.focus(); }
-        }
-      }}>
-        <div className="modal-header"><h2 id={titleId}>全局搜索</h2><button className="icon-button" onClick={() => setOpen(false)} aria-label="关闭搜索"><X size={19} /></button></div>
-        <label className="search-field"><Search size={17} /><span className="sr-only">跨模块搜索关键词</span><input ref={input} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索脚本、文档、资源、任务和客户" /></label>
-        <p className="muted">保险箱内容仅在解锁后的保险箱内搜索。</p>
-        <div className="global-search-results" aria-live="polite" aria-busy={loading}>
-          {loading ? <p role="status">搜索中…</p> : error ? <div className="alert error" role="alert">{error}</div> : !query.trim() ? <p className="muted">输入关键词快速跳转到记录。</p> : !count ? <p>没有匹配记录</p> : modules.map(([key, label]) => !!results[key]?.length && <section key={key} aria-label={label}><h3>{label}</h3>{results[key].map((result) => <button className="button global-search-result" key={result.id} onClick={() => { setOpen(false); navigate(`/${key}?record=${result.id}`); }}>{result.title || result.name || `记录 ${result.id}`}</button>)}{results[key].length === 10 && <small className="muted">每个模块最多显示 10 条，请细化关键词。</small>}</section>)}
-        </div>
-      </section>
-    </div>, document.body)}
-  </>;
+  useEffect(() => {
+    const item = itemRefs.current[activeIndex];
+    if (activeIndex >= 0 && typeof item?.scrollIntoView === "function") item.scrollIntoView({ block: "nearest" });
+  }, [activeIndex]);
+
+  return <div ref={root} className="global-search">
+    <label className="global-search-box">
+      <Search size={17} aria-hidden="true" />
+      <span className="sr-only">跨模块搜索关键词</span>
+      <input
+        ref={input}
+        value={query}
+        onFocus={() => setFocused(true)}
+        onChange={(event) => setQuery(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") { event.preventDefault(); setFocused(false); input.current?.blur(); return; }
+          if (!items.length || (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Enter")) return;
+          event.preventDefault();
+          if (event.key === "Enter") { if (activeIndex >= 0) choose(items[activeIndex]); return; }
+          const step = event.key === "ArrowDown" ? 1 : -1;
+          setActiveIndex((current) => current < 0 ? (step > 0 ? 0 : items.length - 1) : (current + step + items.length) % items.length);
+        }}
+        placeholder="全局搜索标题"
+        role="combobox"
+        aria-label="跨模块搜索关键词"
+        aria-autocomplete="list"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        aria-activedescendant={activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined}
+      />
+      <kbd>Ctrl K</kbd>
+    </label>
+    {open && <div id={listId} className="global-search-dropdown" role="listbox" aria-label="全局搜索结果" aria-busy={loading}>
+      {loading ? <div className="global-search-state" role="status">搜索中…</div>
+        : error ? <div className="global-search-state error-text" role="alert">{error}</div>
+        : !items.length ? <div className="global-search-state">没有匹配记录</div>
+        : items.map((item, index) => {
+          const displayTitle = item.title || item.name || `记录 ${item.id}`;
+          return <button
+            ref={(node) => { itemRefs.current[index] = node; }}
+            id={`${listId}-${index}`}
+            className={`global-search-result${activeIndex === index ? " is-active" : ""}`}
+            key={`${item.module}-${item.id}`}
+            role="option"
+            aria-selected={activeIndex === index}
+            onMouseEnter={() => setActiveIndex(index)}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => choose(item)}
+          >
+            <span className="global-search-result-title" title={displayTitle}>{displayTitle}</span>
+            <span className="global-search-result-module">{item.moduleLabel}</span>
+          </button>})}
+    </div>}
+  </div>;
 }
