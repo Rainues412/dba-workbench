@@ -8,7 +8,7 @@ import sqlServerIcon from "../assets/database/sqlserver.svg";
 
 export const databaseMeta: Record<string, { color: string; tint: string; icon?: string }> = {
   Oracle: { color: "#dc2626", tint: "#fef2f2", icon: oracleIcon },
-  MySQL: { color: "#16a34a", tint: "#f0fdf4", icon: mysqlIcon },
+  MySQL: { color: "#00618a", tint: "#eaf6fb", icon: mysqlIcon },
   PostgreSQL: { color: "#2563eb", tint: "#eff6ff", icon: postgresqlIcon },
   "SQL Server": { color: "#404040", tint: "#f5f5f5", icon: sqlServerIcon },
   Linux: { color: "#f59e0b", tint: "#fffbeb", icon: linuxIcon },
