@@ -73,14 +73,19 @@ jobs:
           if (-not (Test-Path $installer) -or -not (Test-Path $checksum)) {
             throw "Release assets were not generated."
           }
+          $releaseInstaller = Join-Path $assetRoot "DBA-Workbench-Setup-$version-x64.exe"
+          $releaseChecksum = "$releaseInstaller.sha256"
+          Copy-Item -LiteralPath $installer -Destination $releaseInstaller
+          $hash = (Get-FileHash -LiteralPath $releaseInstaller -Algorithm SHA256).Hash
+          Set-Content -LiteralPath $releaseChecksum -Value "$hash *$(Split-Path -Leaf $releaseInstaller)" -Encoding ascii
           $notes = @"
           Windows 10/11 x64 安装程序。目标电脑不需要预装 Python 或 Node.js。
 
           安装时可以选择安装目录，并可创建桌面快捷方式。请同时下载 `.sha256` 文件核对完整性。
           "@
           gh release create $env:GITHUB_REF_NAME `
-            $installer `
-            $checksum `
+            $releaseInstaller `
+            $releaseChecksum `
             --repo $env:GITHUB_REPOSITORY `
             --title "DBA 工作台 $version" `
             --notes $notes `
