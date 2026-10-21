@@ -44,7 +44,7 @@ def test_detail_failure_never_becomes_create_and_retry_uses_put(live_server, sta
 
 
 @pytest.mark.browser
-def test_tasks_filters_complete_restore_and_legacy_archive(live_server):
+def test_tasks_filters_complete_restore(live_server):
     client, csrf = _api_client(live_server)
     for title, priority in [("重点任务", "高"), ("普通任务", "低")]:
         client.post("/api/tasks/", json={"title": title, "priority": priority}, headers={"X-CSRF-Token": csrf}).raise_for_status()
@@ -53,7 +53,6 @@ def test_tasks_filters_complete_restore_and_legacy_archive(live_server):
         try:
             page = browser.new_page()
             page.set_default_timeout(10_000)
-            page.add_init_script("localStorage.setItem('wb_dba_workbench_tasks_archive', JSON.stringify([{id:98,title:'旧归档任务',priority:'P0',deadline:'2025-01-01',completedAt:'2025-01-02',notes:'历史描述'}]))")
             _login(page, live_server)
             page.get_by_role("navigation", name="主导航").get_by_role("link", name="任务管理").click()
             page.get_by_label("筛选任务优先级").select_option("高")
@@ -64,17 +63,6 @@ def test_tasks_filters_complete_restore_and_legacy_archive(live_server):
             page.get_by_label("筛选任务状态").select_option("已完成")
             page.get_by_role("button", name="恢复", exact=True).click()
             page.get_by_text("没有任务数据", exact=True).wait_for()
-            page.get_by_role("button", name="旧任务归档", exact=True).click()
-            dialog = page.get_by_role("dialog")
-            page.on("dialog", lambda alert: alert.accept())
-            dialog.get_by_role("button", name="追加导入已完成任务", exact=True).click()
-            dialog.get_by_text(re.compile("已导入 1 条")).wait_for()
-            assert len(page.evaluate("JSON.parse(localStorage.getItem('wb_dba_workbench_tasks_archive'))")) == 1
-            dialog.get_by_role("button", name="追加导入已完成任务", exact=True).click()
-            dialog.get_by_text(re.compile("已导入 0 条，跳过已迁移 1 条")).wait_for()
-            dialog.get_by_role("button", name="关闭归档").click()
-            page.get_by_label("筛选任务状态").select_option("已归档")
-            page.get_by_text("旧归档任务", exact=True).wait_for()
         finally:
             browser.close()
             client.close()

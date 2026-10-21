@@ -140,11 +140,13 @@ describe("review report CRUD regressions", () => {
     show(tasksConfig);
     await screen.findByText("归档任务");
     expect(screen.getByRole("columnheader", { name: "创建时间" })).toBeInTheDocument();
+    expect(within(screen.getByLabelText("筛选任务状态")).getAllByRole("option").map((option) => option.textContent)).toEqual(["全部状态", "待处理", "进行中", "已完成"]);
+    expect(screen.queryByRole("button", { name: "旧任务归档" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "第 2 页" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "第 2 页" })).toHaveAttribute("aria-current", "page"));
     fireEvent.click(screen.getByRole("button", { name: "仅看逾期" }));
     await waitFor(() => expect(new URL(requests.at(-1)!, "http://localhost").searchParams.get("overdue")).toBe("1"));
-    fireEvent.change(screen.getByLabelText("筛选任务状态"), { target: { value: "已归档" } });
+    fireEvent.click(screen.getByRole("button", { name: "查看归档" }));
     await waitFor(() => {
       const params = new URL(requests.at(-1)!, "http://localhost").searchParams;
       expect(params.get("archived")).toBe("1");
@@ -152,17 +154,47 @@ describe("review report CRUD regressions", () => {
       expect(params.has("status")).toBe(false);
       expect(params.has("overdue")).toBe(false);
     });
+    expect(screen.getByRole("heading", { name: "归档任务" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("筛选任务状态")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "仅看逾期" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "新增" })).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "恢复" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "恢复" }));
     await waitFor(() => expect(writes).toHaveLength(1));
     expect(new Headers(writes[0].headers).get("If-Match")).toBe("9");
     expect(JSON.parse(String(writes[0].body))).toEqual({ status: "待处理" });
-    fireEvent.click(screen.getByRole("button", { name: "仅看逾期" }));
+    fireEvent.click(screen.getByRole("button", { name: "返回任务列表" }));
     await waitFor(() => {
       const params = new URL(requests.at(-1)!, "http://localhost").searchParams;
-      expect(params.get("overdue")).toBe("1");
+      expect(params.has("overdue")).toBe(false);
       expect(params.has("archived")).toBe(false);
     });
     expect(screen.getByLabelText("筛选任务状态")).toHaveValue("");
+  });
+
+  it("keeps the archive return button available after load errors and empty results without touching browser archives", async () => {
+    const key = "wb_dba_workbench_tasks_archive";
+    const legacy = JSON.stringify([{ title: "保留旧浏览器数据" }]);
+    localStorage.setItem(key, legacy);
+    let fail = true;
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+      const archived = new URL(path, "http://localhost").searchParams.get("archived") === "1";
+      if (archived && fail) return Response.json({}, { status: 500 });
+      return archived ? Response.json({ items: [], total: 0, page: 1, page_size: 10, pages: 0 }) : listResponse(path, { id: 1, revision: 1, title: "普通任务", status: "待处理" });
+    }));
+    show(tasksConfig);
+    await screen.findByText("普通任务");
+    fireEvent.click(screen.getByRole("button", { name: "查看归档" }));
+    expect(screen.queryByText("普通任务")).not.toBeInTheDocument();
+    await screen.findByText("数据加载失败");
+    expect(screen.getByRole("button", { name: "返回任务列表" })).toBeEnabled();
+    fail = false;
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    await screen.findByText("没有已归档任务");
+    fireEvent.click(screen.getByRole("button", { name: "返回任务列表" }));
+    await screen.findByText("普通任务");
+    expect(screen.getByLabelText("筛选任务状态")).toHaveValue("");
+    expect(localStorage.getItem(key)).toBe(legacy);
+    localStorage.removeItem(key);
   });
 });

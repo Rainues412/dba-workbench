@@ -1,31 +1,3 @@
-import pytest
-
-from backend.database import get_db_ctx
-
-
-def archive_entry(**changes):
-    return {"id": "legacy-01", "title": "历史归档任务", "notes": "归档说明", "priority": "P0", "deadline": "2025-05-01", "completedAt": "2025-05-02T08:30:00Z", **changes}
-
-
-def test_archive_import_appends_completed_tasks_and_is_idempotent(client):
-    existing = client.post("/api/tasks/", json={"title": "现有任务"}).json()
-    payload = {"items": [archive_entry()]}
-    result = client.post("/api/tasks/legacy-archive", json=payload)
-    assert result.status_code == 200, result.text
-    assert result.json() == {"ok": True, "imported": 1, "skipped": 0}
-    assert client.post("/api/tasks/legacy-archive", json=payload).json() == {"ok": True, "imported": 0, "skipped": 1}
-    rows = client.get("/api/tasks/", params={"page_size": 200}).json()["items"] + client.get("/api/tasks/", params={"archived": True, "page_size": 200}).json()["items"]
-    assert len(rows) == 2
-    imported = next(row for row in rows if row["id"] != existing["id"])
-    assert imported["title"] == "历史归档任务"
-    assert imported["description"] == "归档说明"
-    assert imported["status"] == "已完成"
-    assert imported["priority"] == "高"
-    assert imported["due_date"] == "2025-05-01"
-    assert imported["completed_at"] == "2025-05-02T08:30:00+00:00"
-    assert client.get(f"/api/tasks/{existing['id']}").json()["status"] == "待处理"
-
-
 def test_overdue_filter_only_returns_unfinished_past_due_tasks(client):
     overdue = client.post("/api/tasks/", json={"title": "逾期任务", "due_date": "2000-01-01"}).json()
     client.post("/api/tasks/", json={"title": "未来任务", "due_date": "2999-01-01"})
@@ -35,29 +7,6 @@ def test_overdue_filter_only_returns_unfinished_past_due_tasks(client):
     assert result["total"] == 1
     assert result["items"][0]["id"] == overdue["id"]
     assert result["items"][0]["is_overdue"] == 1
-
-
-@pytest.mark.parametrize("invalid", [{"deadline": "not-a-date"}, {"completedAt": "not-a-date"}, {"priority": "unknown"}])
-def test_archive_failed_batch_rolls_back_tasks_and_receipts(client, invalid):
-    response = client.post("/api/tasks/legacy-archive", json={"items": [archive_entry(), archive_entry(id="bad-entry", **invalid)]})
-    assert response.status_code == 422, response.text
-    assert client.get("/api/tasks/").json()["total"] == 0
-    with get_db_ctx() as conn:
-        assert conn.execute("SELECT COUNT(*) FROM legacy_task_imports").fetchone()[0] == 0
-    # The successfully processed first row was also rolled back, so retry imports it.
-    assert client.post("/api/tasks/legacy-archive", json={"items": [archive_entry()]}).json()["imported"] == 1
-
-
-def test_archive_retry_after_deleting_imported_task_does_not_resurrect_it(client):
-    payload = {"items": [archive_entry()]}
-    assert client.post("/api/tasks/legacy-archive", json=payload).status_code == 200
-    row = client.get("/api/tasks/", params={"archived": True}).json()["items"][0]
-    assert client.delete(f"/api/tasks/{row['id']}", headers={"If-Match": str(row["revision"])}).status_code == 200
-    assert client.post("/api/tasks/legacy-archive", json=payload).json() == {"ok": True, "imported": 0, "skipped": 1}
-    assert client.get("/api/tasks/").json()["total"] == 0
-    with get_db_ctx() as conn:
-        receipt = conn.execute("SELECT task_id FROM legacy_task_imports").fetchone()
-        assert receipt is not None and receipt["task_id"] is None
 
 
 def test_script_historical_body_endpoint_reads_exact_version_and_404(client):

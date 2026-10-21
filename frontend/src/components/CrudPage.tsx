@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CalendarDays, CheckCircle2, ChevronDown, ChevronsUp, Minus, Pencil, Pin, Plus, Search, Star, Trash2, Undo2, X } from "lucide-react";
+import { AlertTriangle, Archive, ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, ChevronsUp, Minus, Pencil, Pin, Plus, Search, Star, Trash2, Undo2, X } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import { api, ApiError, Entity, entityApi } from "../api/client";
@@ -10,7 +10,6 @@ import { Pagination } from "./Pagination";
 import { LocalFileLinks } from "./LocalFileLinks";
 import type { FileLinksConfig } from "./LocalFileLinks";
 import { ScanImport } from "./ScanImport";
-import { LegacyTaskArchive } from "./LegacyTaskArchive";
 import { EntityDetails } from "./EntityDetails";
 import { EmptyState, ErrorState, LoadingState, TableSkeleton } from "./States";
 
@@ -50,6 +49,7 @@ function CrudContent({ config }: { config: CrudConfig }) {
   const [database, setDatabase] = useState("");
   const [category, setCategory] = useState("");
   const [status, setStatus] = useState("");
+  const [taskArchive, setTaskArchive] = useState(false);
   const [priority, setPriority] = useState("");
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [favoriteOnly, setFavoriteOnly] = useState(false);
@@ -61,7 +61,7 @@ function CrudContent({ config }: { config: CrudConfig }) {
   const filters: Record<string, string> = {};
   const isTask = config.key === "tasks";
   const hasFavorites = ["scripts", "articles", "resources"].includes(config.key);
-  if (isTask && status === "已归档") filters.archived = "1";
+  if (isTask && taskArchive) filters.archived = "1";
   else if (isTask && status) filters.status = status;
   if (isTask && priority) filters.priority = priority;
   if (isTask && overdueOnly) filters.overdue = "1";
@@ -78,7 +78,10 @@ function CrudContent({ config }: { config: CrudConfig }) {
   const list = useQuery({
     queryKey: [config.key, page, pageSize, debouncedKeyword, filters],
     queryFn: ({ signal }) => entityApi.list<Entity>(config.path, page, debouncedKeyword, filters, pageSize, signal),
-    placeholderData: keepPreviousData,
+    placeholderData: (previousData, previousQuery) => {
+      const previousFilters = previousQuery?.queryKey[4] as Record<string, string> | undefined;
+      return isTask && Boolean(previousFilters?.archived) !== taskArchive ? undefined : keepPreviousData(previousData);
+    },
     refetchInterval: isTask ? 60_000 : false,
   });
   useEffect(() => {
@@ -135,6 +138,13 @@ function CrudContent({ config }: { config: CrudConfig }) {
     }),
   };
 
+  function changeTaskView() {
+    paginationTop.current = null;
+    setTaskArchive((value) => !value);
+    setStatus(""); setPriority(""); setOverdueOnly(false);
+    setKeyword(""); setDebouncedKeyword(""); setPage(1); setNotice("");
+  }
+
   function closeEditor() {
     setSelectedId(null); setCreating(false);
     if (searchParams.has("record")) { const next = new URLSearchParams(searchParams); next.delete("record"); setSearchParams(next, { replace: true }); }
@@ -188,14 +198,14 @@ function CrudContent({ config }: { config: CrudConfig }) {
   }
 
   return <div className="page">
-    <header className="page-header"><div className="page-title-group"><span className="page-title-icon"><PageIcon size={24} /></span><div><p className="eyebrow">DATA MODULE</p><h1>{config.title}</h1><p className="muted">{config.description}</p></div></div><div className="button-row">{hasFavorites && <ScanImport module={config.key as "scripts" | "articles" | "resources"} onImported={refresh} />}{isTask && <LegacyTaskArchive onImported={refresh} />}<button className="button primary" onClick={() => { setSelectedId(null); setCreating(true); }}><Plus size={17} />新增</button></div></header>
+    <header className="page-header"><div className="page-title-group"><span className="page-title-icon"><PageIcon size={24} /></span><div><p className="eyebrow">DATA MODULE</p><h1>{taskArchive ? "归档任务" : config.title}</h1><p className="muted">{taskArchive ? "查看已归档的任务，可查看详情或恢复到任务列表。" : config.description}</p></div></div><div className="button-row">{hasFavorites && <ScanImport module={config.key as "scripts" | "articles" | "resources"} onImported={refresh} />}{isTask && <button className="button" onClick={changeTaskView}>{taskArchive ? <ArrowLeft size={17} /> : <Archive size={17} />}{taskArchive ? "返回任务列表" : "查看归档"}</button>}{!taskArchive && <button className="button primary" onClick={() => { setSelectedId(null); setCreating(true); }}><Plus size={17} />新增</button>}</div></header>
     {config.classification && <CategoryNavigation classification={config.classification} data={facets.data} loading={facets.isLoading} error={!!facets.error} retry={() => void facets.refetch()} database={database} category={category} onChange={changeClassification} />}
     <section className="panel data-panel" ref={panelRef} aria-busy={list.isFetching}>
       <div className="toolbar"><label className="search-field"><Search size={17} aria-hidden="true" /><span className="sr-only">按标题搜索{config.title}</span><input value={keyword} onChange={(event) => { paginationTop.current = null; setKeyword(event.target.value); setPage(1); }} placeholder={`按标题搜索${config.title}`} /></label><span className="result-count" aria-live="polite">{list.isPlaceholderData ? "正在加载…" : <>共 <strong>{list.data?.total ?? 0}</strong> 条记录</>}</span></div>
-      {(isTask || hasFavorites) && <div className={`list-filters${isTask ? " task-filters" : ""}`}>{isTask && <><label>状态<select aria-label="筛选任务状态" value={status} onChange={(event) => { paginationTop.current = null; setStatus(event.target.value); if (["已完成", "已归档"].includes(event.target.value)) setOverdueOnly(false); setPage(1); }}><option value="">全部状态</option>{["待处理", "进行中", "已完成", "已归档"].map((value) => <option key={value}>{value}</option>)}</select></label><label>优先级<select aria-label="筛选任务优先级" value={priority} onChange={(event) => { paginationTop.current = null; setPriority(event.target.value); setPage(1); }}><option value="">全部优先级</option>{["高", "中", "低"].map((value) => <option key={value}>{value}</option>)}</select></label><button className={`task-overdue-filter${overdueOnly ? " active" : ""}`} type="button" aria-pressed={overdueOnly} onClick={() => { paginationTop.current = null; setOverdueOnly((value) => !value); if (!overdueOnly && ["已完成", "已归档"].includes(status)) setStatus(""); setPage(1); }}><AlertTriangle size={16} />仅看逾期</button><span className="muted task-retention-note">已完成任务按创建时间从新到旧排列，完成满 15 天自动归档，可在“已归档”中查看或恢复。</span></>}{hasFavorites && <label className="checkbox-label"><input type="checkbox" checked={favoriteOnly} onChange={(event) => { paginationTop.current = null; setFavoriteOnly(event.target.checked); setPage(1); }} />只看收藏</label>}</div>}
+      {(isTask || hasFavorites) && <div className={`list-filters${isTask ? " task-filters" : ""}`}>{isTask && <>{!taskArchive && <label>状态<select aria-label="筛选任务状态" value={status} onChange={(event) => { paginationTop.current = null; setStatus(event.target.value); if (event.target.value === "已完成") setOverdueOnly(false); setPage(1); }}><option value="">全部状态</option>{["待处理", "进行中", "已完成"].map((value) => <option key={value}>{value}</option>)}</select></label>}<label>优先级<select aria-label="筛选任务优先级" value={priority} onChange={(event) => { paginationTop.current = null; setPriority(event.target.value); setPage(1); }}><option value="">全部优先级</option>{["高", "中", "低"].map((value) => <option key={value}>{value}</option>)}</select></label>{!taskArchive && <button className={`task-overdue-filter${overdueOnly ? " active" : ""}`} type="button" aria-pressed={overdueOnly} onClick={() => { paginationTop.current = null; setOverdueOnly((value) => !value); if (!overdueOnly && status === "已完成") setStatus(""); setPage(1); }}><AlertTriangle size={16} />仅看逾期</button>}<span className="muted task-retention-note">{taskArchive ? "归档任务按创建时间从新到旧排列，可查看详情或恢复到任务列表。" : "已完成任务按创建时间从新到旧排列，完成满 15 天自动归档，可通过“查看归档”查看或恢复。"}</span></>}{hasFavorites && <label className="checkbox-label"><input type="checkbox" checked={favoriteOnly} onChange={(event) => { paginationTop.current = null; setFavoriteOnly(event.target.checked); setPage(1); }} />只看收藏</label>}</div>}
       {(database || category) && <div className="active-classification"><span>{[database, category].filter(Boolean).join(" / ")}</span><button className="text-link" onClick={() => changeClassification("", "")}><X size={14} />清除分类</button></div>}
       {notice && <div className="alert" role="status"><span><CheckCircle2 size={17} />{notice}</span><button className="icon-button" aria-label="关闭通知" onClick={() => setNotice("")}><X size={17} /></button></div>}
-      {list.isLoading ? <TableSkeleton /> : list.error ? <ErrorState message="数据加载失败" retry={() => void list.refetch()} /> : !list.data?.items.length ? <EmptyState title={isTask && status === "已归档" ? "没有已归档任务" : `没有${config.title}数据`} description={isTask && status === "已归档" ? "已完成任务保留 15 天后自动归档，可在此查看或恢复。" : database || category || keyword ? "当前分类或搜索条件下没有记录，可切换分类、清空搜索或新增记录。" : "可通过右上角按钮创建第一条记录。"} /> : <>
+      {list.isLoading ? <TableSkeleton /> : list.error ? <ErrorState message="数据加载失败" retry={() => void list.refetch()} /> : !list.data?.items.length ? <EmptyState title={isTask && taskArchive ? "没有已归档任务" : `没有${config.title}数据`} description={isTask && taskArchive ? "已完成任务保留 15 天后自动归档，可在此查看或恢复。" : database || category || keyword ? "当前分类或搜索条件下没有记录，可切换分类、清空搜索或新增记录。" : "可通过右上角按钮创建第一条记录。"} /> : <>
         <div className="table-wrap"><table className={isTask ? "task-table" : undefined}><thead><tr>{config.columns.map((column) => <th key={column.name}>{column.label}</th>)}<th className="actions-heading"><span className="sr-only">操作</span></th></tr></thead><tbody>{list.data.items.map((row) => <tr className={isTask ? taskRowClass(row) : undefined} key={row.id}>{config.columns.map((column, index) => <td key={column.name} data-label={column.label}><span className={index === 0 ? "primary-cell" : undefined}>{index === 0 && config.fileLinks ? <LocalFileLinks row={row} label={String(row[column.name] ?? "")} config={config.fileLinks} disabled={list.isPlaceholderData} onNotice={setNotice} /> : isTask ? formatTaskCell(row, column.name) : formatCell(row[column.name], column.name)}</span></td>)}<td className="row-actions" data-label="操作">{hasFavorites && <button className="icon-button" aria-label={row.is_favorite ? "取消收藏" : "收藏"} disabled={list.isPlaceholderData} onClick={() => void quickUpdate(row, { is_favorite: row.is_favorite ? 0 : 1 })}><Star size={15} fill={row.is_favorite ? "currentColor" : "none"} /></button>}{config.key === "articles" && <button className="icon-button" aria-label={row.is_pinned ? "取消置顶" : "置顶"} disabled={list.isPlaceholderData} onClick={() => void quickUpdate(row, { is_pinned: row.is_pinned ? 0 : 1 })}><Pin size={15} fill={row.is_pinned ? "currentColor" : "none"} /></button>}{isTask && <button className="button small" disabled={list.isPlaceholderData} onClick={() => void quickUpdate(row, { status: row.status === "已完成" ? "待处理" : "已完成" })}>{row.status === "已完成" ? <><Undo2 size={14} />恢复</> : <><CheckCircle2 size={14} />完成</>}</button>}<button className="button small" disabled={list.isPlaceholderData} onClick={() => { setCreating(false); setSelectedId(row.id); }}><Pencil size={14} />查看/编辑</button><button className="button small danger" disabled={list.isPlaceholderData} onClick={() => void remove(row)}><Trash2 size={14} />删除</button></td></tr>)}</tbody></table></div>
       </>}
       {list.data && !list.error && <Pagination page={list.data.page} pages={list.data.pages} total={list.data.total} pageSize={pageSize} onChange={changePage} onPageSizeChange={(size) => { paginationTop.current = null; setPageSize(size); setPage(1); }} />}

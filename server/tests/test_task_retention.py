@@ -100,8 +100,10 @@ def test_backup_import_preserves_aged_completions_and_dates_missing_start_now(cl
     assert client.get("/api/tasks/", params={"archived": True}).json()["total"] == 2
 
 
-def test_legacy_import_missing_completion_gets_full_retention(client):
-    response = client.post("/api/tasks/legacy-archive", json={"items": [{"title": "无日期旧归档"}]})
-    assert response.status_code == 200
-    row = client.get("/api/tasks/").json()["items"][0]
-    assert row["completed_at"] is not None and row["is_archived"] == 0
+def test_removed_legacy_import_does_not_modify_existing_tasks(client):
+    original = task(client, "保留原任务")
+    before = client.get("/api/export/all").json()["tasks"]
+    response = client.post("/api/tasks/legacy-archive", json={"items": [{"title": "不再导入"}]})
+    assert response.status_code == 405
+    assert client.get("/api/export/all").json()["tasks"] == before
+    assert client.get(f"/api/tasks/{original['id']}").json()["title"] == "保留原任务"
