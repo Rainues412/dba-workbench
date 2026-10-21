@@ -51,7 +51,7 @@ export const tasksConfig: CrudConfig = {
 };
 
 export const customersConfig: CrudConfig = {
-  key: "customers", title: "客户", description: "记录客户、项目与负责人信息。", path: "/api/customers/", icon: Building2,
+  key: "customers", title: "客户项目", description: "集中查看客户项目、负责人及联系信息。", path: "/api/customers/", icon: Building2,
   columns: [{ name: "name", label: "客户" }, { name: "project_name", label: "项目" }, { name: "wb_person", label: "负责人" }, { name: "status", label: "状态" }],
   fields: [
     { name: "name", label: "客户", required: true }, { name: "project_name", label: "项目" }, { name: "group_name", label: "分组" },
