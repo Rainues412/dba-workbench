@@ -513,8 +513,11 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .task-table .actions-heading { width: 270px; }
 .task-table td.row-actions { display: table-cell; max-width: 270px; text-align: right; }
 .task-table td.row-actions > button { margin: .18rem 0 .18rem .38rem; }
-.checkbox-label { display: inline-flex; align-items: center; gap: .5rem; }
+.checkbox-label { display: inline-flex; align-items: center; gap: .5rem; cursor: pointer; }
 .checkbox-label input, .scan-preview input, input[type="checkbox"] { width: auto; }
+.list-filters .checkbox-label input[type="checkbox"] { appearance: auto; flex: 0 0 16px; width: 16px; height: 16px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 3px; outline: 0; box-shadow: none; background: transparent; accent-color: var(--primary); cursor: pointer; }
+.list-filters .checkbox-label input[type="checkbox"]:hover, .list-filters .checkbox-label input[type="checkbox"]:focus { border: 0; box-shadow: none; background: transparent; }
+.list-filters .checkbox-label input[type="checkbox"]:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .row-actions { flex-wrap: wrap; max-width: 350px; }
 .entity-details { border-top: 1px solid var(--border); margin-top: 1.5rem; padding-top: 1rem; }
 .entity-details > * + * { margin-top: .75rem; }
