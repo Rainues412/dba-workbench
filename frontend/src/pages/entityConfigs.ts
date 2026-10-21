@@ -8,7 +8,7 @@ export const scriptsConfig: CrudConfig = {
   columns: [{ name: "title", label: "名称" }, { name: "db_type", label: "数据库" }, { name: "wb_type", label: "类型" }, { name: "updated_at", label: "更新时间" }],
   fields: [
     { name: "title", label: "名称", required: true }, { name: "db_type", label: "数据库", defaultValue: "通用", options: ["Oracle", "MySQL", "PostgreSQL", "SQL Server", "Linux", "Redis", "通用", "其他"] },
-    { name: "wb_type", label: "类型", defaultValue: "其他", options: ["巡检", "备份", "部署", "监控", "性能", "其他"] }, { name: "tags", label: "标签" },
+    { name: "wb_type", label: "类型", type: "select", defaultValue: "其他", options: ["巡检", "备份", "部署", "监控", "性能", "其他"] }, { name: "tags", label: "标签" },
     { name: "file_path", label: "文件路径" }, { name: "description", label: "说明", type: "textarea" },
     { name: "content", label: "脚本正文", type: "textarea" },
   ],
@@ -21,7 +21,7 @@ export const articlesConfig: CrudConfig = {
   columns: [{ name: "title", label: "标题" }, { name: "wb_db", label: "数据库" }, { name: "category", label: "分类" }, { name: "updated_at", label: "更新时间" }],
   fields: [
     { name: "title", label: "标题", required: true }, { name: "wb_db", label: "数据库", defaultValue: "通用", options: ["Oracle", "MySQL", "PostgreSQL", "SQL Server", "Linux", "Redis", "通用", "其他"] },
-    { name: "category", label: "分类", defaultValue: "学习记录", options: ["技术文档", "排障手册", "安装部署", "备份恢复", "架构设计", "性能调优", "安全加固", "迁移方案", "巡检规范", "学习笔记", "学习记录"] }, { name: "tags", label: "标签" },
+    { name: "category", label: "分类", type: "select", defaultValue: "学习记录", options: ["技术文档", "排障手册", "安装部署", "备份恢复", "架构设计", "性能调优", "安全加固", "迁移方案", "巡检规范", "学习笔记", "学习记录"] }, { name: "tags", label: "标签" },
     { name: "file_path", label: "文件路径" }, { name: "summary", label: "摘要", type: "textarea" },
     { name: "content", label: "正文", type: "textarea" },
   ],
