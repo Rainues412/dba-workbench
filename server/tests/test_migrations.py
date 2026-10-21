@@ -76,3 +76,33 @@ def test_failed_migration_is_rolled_back_atomically(tmp_path: Path, monkeypatch:
         assert "must_rollback" not in tables
         assert versions == list(range(1, current_version + 1))
         assert conn.execute("PRAGMA user_version").fetchone()[0] == current_version
+
+
+def test_task_retention_upgrade_preserves_records_and_only_backfills_undated_completions(tmp_path, monkeypatch):
+    path = tmp_path / "pre-retention.db"
+    files = migration_module._migration_files()
+    with monkeypatch.context() as patch:
+        patch.setattr(migration_module, "_migration_files", lambda: files[:5])
+        migrate(path)
+    with sqlite3.connect(path) as conn:
+        conn.executemany("INSERT INTO tasks(title, status, completed_at, created_at, description) VALUES (?, ?, ?, '2000-01-01', '保留正文')", [
+            ("未完成", "待处理", None),
+            ("无完成日期", "已完成", None),
+            ("日期无效", "已完成", "invalid"),
+            ("有完成日期", "已完成", "2020-01-02T03:00:00Z"),
+        ])
+        conn.execute("INSERT INTO scripts(title, content) VALUES ('原脚本', 'select 1')")
+        conn.commit()
+        before = conn.execute("SELECT id, title, description, status, created_at, completed_at, revision FROM tasks ORDER BY id").fetchall()
+    migrate(path)
+    migrate(path)
+    with sqlite3.connect(path) as conn:
+        after = conn.execute("SELECT id, title, description, status, created_at, completed_at, revision FROM tasks ORDER BY id").fetchall()
+        assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        assert conn.execute("SELECT title, content FROM scripts").fetchall() == [("原脚本", "select 1")]
+        for old, new in zip(before, after, strict=True):
+            assert old[:5] == new[:5]
+        assert before[0] == after[0] and before[3] == after[3]
+        for row in after[1:3]:
+            assert row[-2] is not None and row[-1] == 2
+            assert conn.execute("SELECT julianday(?) > julianday('now', '-1 minute')", (row[-2],)).fetchone()[0]

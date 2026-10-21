@@ -14,7 +14,7 @@ def test_archive_import_appends_completed_tasks_and_is_idempotent(client):
     assert result.status_code == 200, result.text
     assert result.json() == {"ok": True, "imported": 1, "skipped": 0}
     assert client.post("/api/tasks/legacy-archive", json=payload).json() == {"ok": True, "imported": 0, "skipped": 1}
-    rows = client.get("/api/tasks/", params={"page_size": 200}).json()["items"]
+    rows = client.get("/api/tasks/", params={"page_size": 200}).json()["items"] + client.get("/api/tasks/", params={"archived": True, "page_size": 200}).json()["items"]
     assert len(rows) == 2
     imported = next(row for row in rows if row["id"] != existing["id"])
     assert imported["title"] == "历史归档任务"
@@ -51,7 +51,7 @@ def test_archive_failed_batch_rolls_back_tasks_and_receipts(client, invalid):
 def test_archive_retry_after_deleting_imported_task_does_not_resurrect_it(client):
     payload = {"items": [archive_entry()]}
     assert client.post("/api/tasks/legacy-archive", json=payload).status_code == 200
-    row = client.get("/api/tasks/").json()["items"][0]
+    row = client.get("/api/tasks/", params={"archived": True}).json()["items"][0]
     assert client.delete(f"/api/tasks/{row['id']}", headers={"If-Match": str(row["revision"])}).status_code == 200
     assert client.post("/api/tasks/legacy-archive", json=payload).json() == {"ok": True, "imported": 0, "skipped": 1}
     assert client.get("/api/tasks/").json()["total"] == 0

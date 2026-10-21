@@ -42,7 +42,7 @@ export const resourcesConfig: CrudConfig = {
 
 export const tasksConfig: CrudConfig = {
   key: "tasks", title: "任务", description: "跟踪优先级、截止日期与完成状态。", path: "/api/tasks/", icon: ListTodo,
-  columns: [{ name: "title", label: "任务" }, { name: "priority", label: "优先级" }, { name: "status", label: "状态" }, { name: "due_date", label: "截止日期" }],
+  columns: [{ name: "title", label: "任务" }, { name: "priority", label: "优先级" }, { name: "status", label: "状态" }, { name: "due_date", label: "截止日期" }, { name: "created_at", label: "创建时间" }],
   fields: [
     { name: "title", label: "任务", required: true }, { name: "priority", label: "优先级", type: "select", defaultValue: "中", options: ["高", "中", "低"] },
     { name: "status", label: "状态", type: "select", defaultValue: "待处理", options: ["待处理", "进行中", "已完成"] },

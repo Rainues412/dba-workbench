@@ -30,7 +30,7 @@ export function LegacyTaskArchive({ onImported }: { onImported: () => Promise<vo
         const response = await api<{ imported: number; skipped: number }>("/api/tasks/legacy-archive", { method: "POST", body: jsonBody({ items: entries.slice(index, index + 200) }) });
         imported += response.imported; skipped += response.skipped;
       }
-      setMessage(`已导入 ${imported} 条，跳过已迁移 ${skipped} 条。原归档保留；在任务状态“已完成”下查看或恢复。`);
+      setMessage(`已导入 ${imported} 条，跳过已迁移 ${skipped} 条。原归档保留；在任务状态“已完成”或“已归档”下查看或恢复。`);
     } catch (error) { setMessage(`本次已导入 ${imported} 条，后续失败：${error instanceof Error ? error.message : "请求失败"}。可安全重试，原归档未清理。`); }
     finally { setBusy(false); await onImported(); }
   }

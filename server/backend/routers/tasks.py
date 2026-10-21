@@ -62,7 +62,7 @@ def import_legacy_archive(payload: LegacyArchiveImport):
             if priority is None:
                 raise HTTPException(422, "旧归档优先级无效，未导入任何记录")
             row = conn.execute(
-                "INSERT INTO tasks(title, description, priority, due_date, status, completed_at) VALUES (?, ?, ?, ?, '已完成', ?)",
+                "INSERT INTO tasks(title, description, priority, due_date, status, completed_at) VALUES (?, ?, ?, ?, '已完成', COALESCE(?, CURRENT_TIMESTAMP))",
                 (entry.title, entry.notes, priority, due, completed),
             )
             conn.execute("INSERT INTO legacy_task_imports(source_key, task_id) VALUES (?, ?)", (key, row.lastrowid))
@@ -71,10 +71,12 @@ def import_legacy_archive(payload: LegacyArchiveImport):
     return {"ok": True, "imported": imported, "skipped": skipped}
 
 
-_TASK_SELECT = """
+_ARCHIVED = "CASE WHEN t.status = '已完成' AND julianday(t.completed_at) <= julianday('now', '-15 days') THEN 1 ELSE 0 END"
+
+_TASK_SELECT = f"""
     SELECT t.id, t.title, t.description, t.status, t.priority, t.due_date,
            t.customer_id, t.created_at, t.updated_at, t.completed_at, t.revision,
-           c.name AS customer_name,
+           c.name AS customer_name, {_ARCHIVED} AS is_archived,
            CASE WHEN t.status != '已完成' AND t.due_date IS NOT NULL AND t.due_date < date('now', 'localtime')
            THEN 1 ELSE 0 END AS is_overdue
     FROM tasks t LEFT JOIN customers c ON t.customer_id = c.id
@@ -89,11 +91,12 @@ def list_tasks(
     keyword: str = "",
     page: int = 1,
     page_size: int = 50,
+    archived: bool = False,
 ):
     """List tasks with filtering and pagination."""
     with get_db_ctx() as conn:
-        conditions = []
-        params = []
+        conditions = [f"({_ARCHIVED}) = ?"]
+        params = [int(archived)]
 
         if status:
             conditions.append("t.status = ?")
@@ -118,8 +121,9 @@ def list_tasks(
                 CASE WHEN t.status != '已完成' AND t.due_date IS NOT NULL AND t.due_date < date('now', 'localtime')
                      THEN 0 ELSE 1 END,
                 CASE t.status WHEN '进行中' THEN 0 WHEN '待处理' THEN 1 WHEN '已完成' THEN 2 END,
-                CASE t.priority WHEN '高' THEN 1 WHEN '中' THEN 2 WHEN '低' THEN 3 END,
-                t.due_date ASC NULLS LAST, t.id DESC
+                CASE WHEN t.status = '已完成' THEN julianday(t.created_at) END DESC,
+                CASE WHEN t.status != '已完成' THEN CASE t.priority WHEN '高' THEN 1 WHEN '中' THEN 2 WHEN '低' THEN 3 END END,
+                CASE WHEN t.status != '已完成' THEN t.due_date END ASC NULLS LAST, t.id DESC
             LIMIT ? OFFSET ?""",
             params + [ps, offset],
         ).fetchall()
@@ -135,8 +139,8 @@ def create_task(data: TaskCreate):
             if not conn.execute("SELECT id FROM customers WHERE id = ?", (data.customer_id,)).fetchone():
                 raise HTTPException(400, f"客户不存在: {data.customer_id}")
         c = conn.execute(
-            "INSERT INTO tasks (title, description, priority, due_date, customer_id, status) VALUES (?, ?, ?, ?, ?, ?)",
-            (data.title, data.description, data.priority, data.due_date, data.customer_id, data.status),
+            "INSERT INTO tasks (title, description, priority, due_date, customer_id, status, completed_at) VALUES (?, ?, ?, ?, ?, ?, CASE WHEN ? = '已完成' THEN CURRENT_TIMESTAMP END)",
+            (data.title, data.description, data.priority, data.due_date, data.customer_id, data.status, data.status),
         )
         conn.commit()
         task_id = c.lastrowid
@@ -174,7 +178,7 @@ def update_task(task_id: int, data: TaskUpdate, if_match: str | None = Header(No
                 params.append(val)
                 # 状态变为已完成时记录 completed_at
                 if field == "status" and val == "已完成":
-                    updates.append("completed_at = datetime('now')")
+                    updates.append("completed_at = CASE WHEN status = '已完成' THEN COALESCE(completed_at, CURRENT_TIMESTAMP) ELSE CURRENT_TIMESTAMP END")
                 # 状态从已完成变为其他时清除 completed_at
                 if field == "status" and val != "已完成":
                     updates.append("completed_at = NULL")

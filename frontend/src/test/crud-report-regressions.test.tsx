@@ -127,4 +127,42 @@ describe("review report CRUD regressions", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "只看收藏" }));
     await waitFor(() => expect(new URL(reads.at(-1)!, "http://localhost").searchParams.get("favorite_only")).toBe("1"));
   });
+
+  it("views and restores archived tasks, resets pagination and clears incompatible overdue filters", async () => {
+    const requests: string[] = [];
+    const writes: RequestInit[] = [];
+    const row = { id: 4, revision: 9, title: "归档任务", status: "已完成", priority: "高", is_archived: 1, created_at: "2020-01-01" };
+    vi.stubGlobal("fetch", vi.fn(async (path: string, init?: RequestInit) => {
+      if (init?.method === "PUT") { writes.push(init); return Response.json({ ...row, status: "待处理", revision: 10 }); }
+      requests.push(path);
+      return listResponse(path, row, 30);
+    }));
+    show(tasksConfig);
+    await screen.findByText("归档任务");
+    expect(screen.getByRole("columnheader", { name: "创建时间" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "第 2 页" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "第 2 页" })).toHaveAttribute("aria-current", "page"));
+    fireEvent.click(screen.getByRole("button", { name: "仅看逾期" }));
+    await waitFor(() => expect(new URL(requests.at(-1)!, "http://localhost").searchParams.get("overdue")).toBe("1"));
+    fireEvent.change(screen.getByLabelText("筛选任务状态"), { target: { value: "已归档" } });
+    await waitFor(() => {
+      const params = new URL(requests.at(-1)!, "http://localhost").searchParams;
+      expect(params.get("archived")).toBe("1");
+      expect(params.get("page")).toBe("1");
+      expect(params.has("status")).toBe(false);
+      expect(params.has("overdue")).toBe(false);
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "恢复" })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "恢复" }));
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(new Headers(writes[0].headers).get("If-Match")).toBe("9");
+    expect(JSON.parse(String(writes[0].body))).toEqual({ status: "待处理" });
+    fireEvent.click(screen.getByRole("button", { name: "仅看逾期" }));
+    await waitFor(() => {
+      const params = new URL(requests.at(-1)!, "http://localhost").searchParams;
+      expect(params.get("overdue")).toBe("1");
+      expect(params.has("archived")).toBe(false);
+    });
+    expect(screen.getByLabelText("筛选任务状态")).toHaveValue("");
+  });
 });

@@ -114,6 +114,8 @@ def import_data(payload: ImportData):
                             raise ValueError("记录没有可导入字段")
                         marks = ", ".join("?" for _ in cols)
                         cur = conn.execute(f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({marks})", values)
+                        if table == "tasks":
+                            conn.execute("UPDATE tasks SET completed_at = CURRENT_TIMESTAMP WHERE id = ? AND status = '已完成' AND (completed_at IS NULL OR julianday(completed_at) IS NULL)", (cur.lastrowid,))
                         if old_id is not None:
                             id_maps[table][str(old_id)] = cur.lastrowid
                         counts[table] += 1

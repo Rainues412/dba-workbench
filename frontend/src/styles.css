@@ -511,6 +511,7 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .task-due-cell small { color: var(--muted); font-size: .66rem; font-weight: 650; }
 .task-due-cell.overdue > span, .task-due-cell.overdue small { color: var(--danger); }
 .task-table .actions-heading { width: 270px; }
+.task-retention-note { flex-basis: 100%; font-size: .75rem; line-height: 1.6; }
 .task-table td.row-actions { display: table-cell; max-width: 270px; text-align: right; }
 .task-table td.row-actions > button { margin: .18rem 0 .18rem .38rem; }
 .checkbox-label { display: inline-flex; align-items: center; gap: .5rem; cursor: pointer; }

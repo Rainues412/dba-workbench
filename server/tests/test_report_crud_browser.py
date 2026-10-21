@@ -73,6 +73,7 @@ def test_tasks_filters_complete_restore_and_legacy_archive(live_server):
             dialog.get_by_role("button", name="追加导入已完成任务", exact=True).click()
             dialog.get_by_text(re.compile("已导入 0 条，跳过已迁移 1 条")).wait_for()
             dialog.get_by_role("button", name="关闭归档").click()
+            page.get_by_label("筛选任务状态").select_option("已归档")
             page.get_by_text("旧归档任务", exact=True).wait_for()
         finally:
             browser.close()
