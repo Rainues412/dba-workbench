@@ -24,10 +24,16 @@ from backend.auth import (
     record_failed_attempt,
     require_recent_reauth,
     retry_after,
+    validate_password,
     verify_password,
 )
 from backend.database import get_db_ctx, page_response, validate_page
-from backend.vault_recovery import public_key_payload
+from backend.observability import record_audit
+from backend.vault_recovery import (
+    decrypt_recovery_envelope,
+    public_key_payload,
+    wrap_dek_for_master_password,
+)
 
 
 router = APIRouter()
@@ -52,13 +58,8 @@ class VaultProfileCreate(BaseModel):
     recovery_key_id: Annotated[str, Field(min_length=8, max_length=128)]
 
 
-class VaultProfileRewrap(BaseModel):
-    kdf_salt: ENCODED
-    kdf_memory_kib: int = 65536
-    kdf_iterations: int = 3
-    kdf_parallelism: int = 1
-    wrapped_dek: ENCODED
-    wrapped_dek_nonce: ENCODED
+class VaultProfileRecover(BaseModel):
+    new_master_password: Annotated[str, Field(min_length=MIN_PASSWORD_LENGTH, max_length=256)]
     login_password: Annotated[str, Field(min_length=MIN_PASSWORD_LENGTH, max_length=256)]
     captcha_id: Annotated[str, Field(min_length=32, max_length=64)]
     captcha_code: Annotated[str, Field(min_length=5, max_length=5)]
@@ -118,8 +119,8 @@ def _consume_captcha(request: Request, challenge_id: str, supplied: str) -> bool
     return secrets.compare_digest(actual, expected)
 
 
-def _verify_rewrap(request: Request, data: VaultProfileRewrap) -> None:
-    identifier = attempt_identifier(request, f"vault-rewrap:{request.state.session['username']}")
+def _verify_recovery_authorization(request: Request, data: VaultProfileRecover) -> None:
+    identifier = attempt_identifier(request, f"vault-recover:{request.state.session['username']}")
     delay = retry_after(identifier)
     if delay:
         raise HTTPException(429, f"Too many verification attempts; retry in {delay} seconds")
@@ -136,7 +137,7 @@ def _verify_rewrap(request: Request, data: VaultProfileRewrap) -> None:
     clear_attempts(identifier)
 
 
-def _validate_profile(data: VaultProfileCreate | VaultProfileRewrap) -> None:
+def _validate_profile(data: VaultProfileCreate) -> None:
     if getattr(data, "envelope_version", 1) != 1:
         raise HTTPException(422, "Unsupported vault envelope version")
     if getattr(data, "kdf_name", "argon2id") != "argon2id":
@@ -239,24 +240,38 @@ def create_profile(
     return dict(row)
 
 
-@router.put("/profile/rewrap")
-def rewrap_profile(
-    data: VaultProfileRewrap,
-    request: Request,
-):
-    _verify_rewrap(request, data)
-    _validate_profile(data)
+@router.put("/profile/recover")
+def recover_profile(data: VaultProfileRecover, request: Request):
+    validate_password(data.new_master_password)
+    _verify_recovery_authorization(request, data)
     user_id = _user(request)
     with get_db_ctx() as conn:
+        current = _profile_row(conn, user_id)
+        if not current:
+            raise HTTPException(404, "Vault is not initialized")
+        try:
+            dek = decrypt_recovery_envelope(current["recovery_wrapped_dek"])
+            wrapped = wrap_dek_for_master_password(
+                dek,
+                data.new_master_password,
+                user_id,
+                memory_kib=int(current["kdf_memory_kib"]),
+                iterations=int(current["kdf_iterations"]),
+                parallelism=int(current["kdf_parallelism"]),
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise HTTPException(409, "Vault recovery key is unavailable or invalid") from exc
         cursor = conn.execute(
             """UPDATE vault_profiles SET
                    kdf_salt = ?, kdf_memory_kib = ?, kdf_iterations = ?,
                    kdf_parallelism = ?, wrapped_dek = ?, wrapped_dek_nonce = ?,
+                   recovery_confirmed_at = NULL,
                    updated_at = CURRENT_TIMESTAMP
                WHERE user_id = ?""",
             (
-                data.kdf_salt, data.kdf_memory_kib, data.kdf_iterations,
-                data.kdf_parallelism, data.wrapped_dek, data.wrapped_dek_nonce,
+                wrapped["kdf_salt"], wrapped["kdf_memory_kib"],
+                wrapped["kdf_iterations"], wrapped["kdf_parallelism"],
+                wrapped["wrapped_dek"], wrapped["wrapped_dek_nonce"],
                 user_id,
             ),
         )
@@ -264,6 +279,14 @@ def rewrap_profile(
             raise HTTPException(404, "Vault is not initialized")
         conn.commit()
         row = _profile_row(conn, user_id)
+    record_audit(
+        action="recover-vault-master-password",
+        object_type="vault",
+        object_id=str(user_id),
+        result="success",
+        source="authenticated-local-recovery",
+        actor=request.state.session["username"],
+    )
     return dict(row)
 
 

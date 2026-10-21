@@ -155,39 +155,42 @@ def test_versioned_envelope_tamper_nonce_and_recovery(
     assert "test-secret-value" not in db_dump
 
 
-def test_master_password_change_only_rewraps_dek(client: TestClient, monkeypatch) -> None:
+def test_forgot_master_password_recovers_without_reencrypting_items(client: TestClient, monkeypatch) -> None:
     dek, _ = initialize_vault(client)
     item = encrypted_item(dek, "test-item-key-0001", bytes(range(12)), "test-value")
     created = client.post("/api/vault/items", json=item).json()
-    new_salt = bytes(range(16, 32))
-    new_nonce = bytes(range(12, 24))
-    new_kek = hash_secret_raw(
-        b"test-only-new-vault-passphrase", new_salt, time_cost=3,
-        memory_cost=65536, parallelism=1, hash_len=32, type=Type.ID,
-    )
-    wrapped = AESGCM(new_kek).encrypt(
-        new_nonce, dek, b"dba-vault:profile:1:v1"
-    )
     monkeypatch.setattr(vault_router.secrets, "choice", lambda _: "A")
     challenge = client.get("/api/vault/captcha").json()
     payload = {
-        "kdf_salt": b64(new_salt), "kdf_memory_kib": 65536,
-        "kdf_iterations": 3, "kdf_parallelism": 1,
-        "wrapped_dek": b64(wrapped), "wrapped_dek_nonce": b64(new_nonce),
-        "login_password": LOGIN_PASSWORD,
-        "captcha_id": challenge["challenge_id"], "captcha_code": "WRONG",
+        "new_master_password": "test-only-new-vault-passphrase",
+        "login_password": "wrong-login-password",
+        "captcha_id": challenge["challenge_id"], "captcha_code": "AAAAA",
     }
-    assert client.put("/api/vault/profile/rewrap", json=payload).status_code == 401
-    payload["captcha_code"] = "AAAAA"
-    assert client.put("/api/vault/profile/rewrap", json=payload).status_code == 401
+    assert client.put("/api/vault/profile/recover", json=payload).status_code == 401
+
+    challenge = client.get("/api/vault/captcha").json()
+    payload.update(login_password=LOGIN_PASSWORD, captcha_id=challenge["challenge_id"], captcha_code="WRONG")
+    assert client.put("/api/vault/profile/recover", json=payload).status_code == 401
 
     challenge = client.get("/api/vault/captcha").json()
     payload.update(captcha_id=challenge["challenge_id"], captcha_code="AAAAA")
     changed = client.put(
-        "/api/vault/profile/rewrap",
+        "/api/vault/profile/recover",
         json=payload,
     )
     assert changed.status_code == 200
+    profile = changed.json()
+    new_kek = hash_secret_raw(
+        payload["new_master_password"].encode(), unb64(profile["kdf_salt"]), time_cost=3,
+        memory_cost=65536, parallelism=1, hash_len=32, type=Type.ID,
+    )
+    recovered = AESGCM(new_kek).decrypt(
+        unb64(profile["wrapped_dek_nonce"]),
+        unb64(profile["wrapped_dek"]),
+        b"dba-vault:profile:1:v1",
+    )
+    assert recovered == dek
+    assert profile["recovery_confirmed_at"] is None
     listed = client.get("/api/vault/items").json()["items"][0]
     assert listed["ciphertext"] == created["ciphertext"]
 

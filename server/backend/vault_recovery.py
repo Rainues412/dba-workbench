@@ -1,15 +1,19 @@
-"""Administrator recovery key lifecycle.
+"""Administrator recovery key lifecycle and data-key rewrapping helpers.
 
-The application only serves the public key. The private key is consumed by the
-offline admin command and is never returned by an HTTP endpoint.
+The private key never leaves the backend. It is consumed by the offline admin
+command or by the authenticated local recovery endpoint and is never returned
+through HTTP.
 """
 from __future__ import annotations
 
 import base64
 import hashlib
 import os
+import secrets
 from pathlib import Path
 
+from argon2.low_level import Type, hash_secret_raw
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
@@ -81,3 +85,38 @@ def decrypt_recovery_envelope(ciphertext_b64: str) -> bytes:
             label=b"dba-vault-recovery-v1",
         ),
     )
+
+
+def wrap_dek_for_master_password(
+    dek: bytes,
+    master_password: str,
+    user_id: int,
+    *,
+    memory_kib: int = 65536,
+    iterations: int = 3,
+    parallelism: int = 1,
+) -> dict[str, str | int]:
+    if len(dek) != 32:
+        raise ValueError("recovery envelope is invalid")
+    salt = secrets.token_bytes(16)
+    nonce = secrets.token_bytes(12)
+    kek = hash_secret_raw(
+        secret=master_password.encode("utf-8"),
+        salt=salt,
+        time_cost=iterations,
+        memory_cost=memory_kib,
+        parallelism=parallelism,
+        hash_len=32,
+        type=Type.ID,
+    )
+    aad = f"dba-vault:profile:{user_id}:v1".encode("utf-8")
+    wrapped = AESGCM(kek).encrypt(nonce, dek, aad)
+    encode = lambda value: base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
+    return {
+        "kdf_salt": encode(salt),
+        "kdf_memory_kib": memory_kib,
+        "kdf_iterations": iterations,
+        "kdf_parallelism": parallelism,
+        "wrapped_dek": encode(wrapped),
+        "wrapped_dek_nonce": encode(nonce),
+    }

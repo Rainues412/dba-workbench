@@ -7,7 +7,7 @@ import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { Pagination } from "../components/Pagination";
 import { EdgePasswordImport } from "../components/EdgePasswordImport";
 import {
-  createVaultProfile, decryptSecret, encryptSecret, RecoveryPublicKey, rewrapVaultProfile,
+  createVaultProfile, decryptSecret, encryptSecret, RecoveryPublicKey,
   unlockVault, VaultCipherItem, VaultProfile, VaultSecret,
 } from "../vault/crypto";
 import { startVaultAutoLock } from "../vault/autoLock";
@@ -44,7 +44,7 @@ export function Vault() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [editing, setEditing] = useState<Decrypted | "new" | null>(null);
-  const [changingPassword, setChangingPassword] = useState(false);
+  const [recoveringPassword, setRecoveringPassword] = useState(false);
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
@@ -307,11 +307,11 @@ export function Vault() {
     {(notice || error) && <div className={`alert ${error ? "error" : ""}`} role={error ? "alert" : "status"}><span>{!error && <CheckCircle2 size={17} />}{error || notice}</span><button className="icon-button" onClick={() => { setError(""); setNotice(""); }} aria-label="关闭"><X size={17} /></button></div>}
     <section className="panel reauth-panel"><span className="reauth-icon"><ShieldCheck size={23} /></span><div><h2>敏感操作验证</h2><p className="muted">查看、复制、修改、删除、迁移和备份前，需要重新验证登录密码。</p></div><form onSubmit={verifyLogin}><input name="login_password" type="password" minLength={9} autoComplete="current-password" placeholder="登录密码" required /><button className="button">验证 {reauthMinutes} 分钟</button></form><span className={`badge ${reauthenticated ? "success" : "danger"}`}>{reauthenticated ? "已验证" : "未验证"}</span></section>
     {!profile.data!.initialized ? <section className="panel vault-gate"><span className="vault-gate-icon"><ShieldCheck size={30} /></span><h2>创建新保险箱</h2><p className="muted">保险箱主密码与登录密码分离。忘记后只能由本机管理员恢复。</p><form className="stack compact" onSubmit={initialize}><label>保险箱主密码<input name="master_password" type="password" minLength={9} autoComplete="new-password" required /></label><label>确认主密码<input name="confirm_master" type="password" minLength={9} autoComplete="new-password" required /></label><button className="button primary" disabled={!reauthenticated}><ShieldCheck size={17} />创建保险箱</button></form></section>
-      : !dek ? <section className="panel vault-gate"><span className="vault-gate-icon"><LockKeyhole size={30} /></span><h2>保险箱已锁定</h2><p className="muted">刷新页面或离开页面后会保持锁定；闲置 5 分钟自动锁定。</p><form className="stack compact" onSubmit={unlock}><label>保险箱主密码<input name="master_password" type="password" minLength={9} autoComplete="current-password" required autoFocus /></label><button className="button primary" disabled={!reauthenticated}><LockKeyhole size={17} />解锁</button></form></section>
+      : !dek ? <section className="panel vault-gate"><span className="vault-gate-icon"><LockKeyhole size={30} /></span><h2>保险箱已锁定</h2><p className="muted">刷新页面或离开页面后会保持锁定；闲置 5 分钟自动锁定。</p><form className="stack compact vault-unlock-form" onSubmit={unlock}><label>保险箱主密码<input name="master_password" type="password" minLength={9} autoComplete="current-password" required autoFocus /></label><button type="button" className="vault-forgot-link" onClick={() => setRecoveringPassword(true)}>忘记密码</button><button className="button primary" disabled={!reauthenticated}><LockKeyhole size={17} />解锁</button></form></section>
       : <>
         <div className="button-row"><EdgePasswordImport dek={dek} userId={session!.user!.id} canImport={() => dekRef.current === dek && Boolean(session?.reauthenticated_until && new Date(session.reauthenticated_until).getTime() > Date.now())} loadExisting={async () => { const key = dekRef.current; if (!key) throw new Error("保险箱已锁定"); return Promise.all((await loadAllItems()).map((item) => decryptSecret(key, item))); }} onImported={async () => { await items.refetch(); }} /></div>
         {!profile.data!.profile?.recovery_confirmed_at && <section className="panel recovery-callout"><span className="callout-icon"><Download size={22} /></span><div><h2>请备份管理员恢复密钥</h2><p className="muted">在 server 目录运行 <code>python -m backend.admin backup-recovery-key --output &lt;绝对备份目录&gt;</code>，并将副本与数据库分开保存。</p></div><button className="button" onClick={async () => { await api("/api/vault/recovery/confirm", { method: "POST" }); await profile.refetch(); }}>我已完成备份</button></section>}
-        <section className="panel data-panel" ref={panelRef}><div className="toolbar"><label className="search-field"><Search size={17} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="按名称搜索已解锁条目" aria-label="按名称搜索保险箱" /></label><button className={`button vault-filter-toggle${favoritesOnly ? " is-active" : ""}`} aria-pressed={favoritesOnly} onClick={() => { setFavoritesOnly((current) => !current); setPage(1); }}><Star size={16} fill={favoritesOnly ? "currentColor" : "none"} />仅看收藏</button><div className="button-row"><button className="button" onClick={() => setChangingPassword(true)}><KeyRound size={16} />修改主密码</button><button className="button" onClick={() => void downloadBackup()}><Download size={16} />加密备份</button><label className="button file-button"><Upload size={16} />恢复加密备份<input className="sr-only" type="file" accept="application/json,.json" onChange={(event) => void restoreBackup(event)} /></label><button className="button primary" onClick={() => reauthenticated ? setEditing("new") : setError("新增前请重新验证登录密码")}><Plus size={17} />新增条目</button></div></div>
+        <section className="panel data-panel" ref={panelRef}><div className="toolbar"><label className="search-field"><Search size={17} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="按名称搜索已解锁条目" aria-label="按名称搜索保险箱" /></label><button className={`button vault-filter-toggle${favoritesOnly ? " is-active" : ""}`} aria-pressed={favoritesOnly} onClick={() => { setFavoritesOnly((current) => !current); setPage(1); }}><Star size={16} fill={favoritesOnly ? "currentColor" : "none"} />仅看收藏</button><div className="button-row"><button className="button" onClick={() => void downloadBackup()}><Download size={16} />加密备份</button><label className="button file-button"><Upload size={16} />恢复加密备份<input className="sr-only" type="file" accept="application/json,.json" onChange={(event) => void restoreBackup(event)} /></label><button className="button primary" onClick={() => reauthenticated ? setEditing("new") : setError("新增前请重新验证登录密码")}><Plus size={17} />新增条目</button></div></div>
           {(legacyLocal.length > 0 || (legacyStatus.data?.backend_entries ?? 0) > 0) && <div className="migration-banner"><span>检测到 {legacyLocal.length} 条浏览器旧数据和 {legacyStatus.data?.backend_entries ?? 0} 条后端旧数据。</span><button className="button" onClick={() => void migrateLegacy()}>迁移并校验</button></div>}
           {!items.isLoading && !items.error && secrets.length > 0 && <div className="vault-category-groups" role="group" aria-label="保险箱分类分组">
             <span className="vault-category-title"><Tags size={15} />分类分组</span>
@@ -346,11 +346,11 @@ export function Vault() {
         </section>
       </>}
     {editing && <SecretEditor current={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} onSave={saveSecret} />}
-    {changingPassword && dek && <MasterPasswordEditor dek={dek} userId={session!.user!.id} onClose={() => setChangingPassword(false)} onChanged={async () => { await profile.refetch(); setNotice("保险箱主密码已修改"); setChangingPassword(false); }} />}
+    {recoveringPassword && !dek && <ForgotMasterPasswordEditor onClose={() => setRecoveringPassword(false)} onChanged={async () => { await profile.refetch(); setNotice("保险箱主密码已重置，请使用新密码解锁"); setRecoveringPassword(false); }} />}
   </VaultPage>;
 }
 
-function MasterPasswordEditor({ dek, userId, onClose, onChanged }: { dek: Uint8Array<ArrayBuffer>; userId: number; onClose: () => void; onChanged: () => Promise<void> }) {
+function ForgotMasterPasswordEditor({ onClose, onChanged }: { onClose: () => void; onChanged: () => Promise<void> }) {
   const [captcha, setCaptcha] = useState<CaptchaChallenge | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -367,20 +367,19 @@ function MasterPasswordEditor({ dek, userId, onClose, onChanged }: { dek: Uint8A
     if (!captcha) { setError("请先获取验证码"); return; }
     setBusy(true); setError("");
     try {
-      const wrapped = await rewrapVaultProfile(dek, next, userId);
-      await api("/api/vault/profile/rewrap", { method: "PUT", body: jsonBody({
-        ...wrapped,
+      await api("/api/vault/profile/recover", { method: "PUT", body: jsonBody({
+        new_master_password: next,
         login_password: String(form.get("login_password") ?? ""),
         captcha_id: captcha.challenge_id,
         captcha_code: String(form.get("captcha_code") ?? ""),
       }) });
       await onChanged();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "主密码修改失败");
+      setError(reason instanceof Error ? reason.message : "主密码重置失败");
       await refreshCaptcha();
     } finally { setBusy(false); }
   }
-  return <div className="modal-backdrop"><section className="modal vault-password-modal" role="dialog" aria-modal="true" aria-labelledby="vault-password-title"><div className="modal-header"><div><p className="eyebrow">SECURITY</p><h2 id="vault-password-title">修改保险箱主密码</h2></div><button className="icon-button modal-close" onClick={onClose} aria-label="关闭"><X size={19} /></button></div><p className="muted">修改只会重新保护保险箱数据密钥，不会逐条解密或重写密码记录。</p><form className="form-grid" onSubmit={submit}><label className="full">登录密码<input name="login_password" type="password" minLength={9} autoComplete="current-password" required autoFocus /></label><label>新保险箱主密码<input name="new_master_password" type="password" minLength={9} autoComplete="new-password" required /></label><label>确认新主密码<input name="confirm_master_password" type="password" minLength={9} autoComplete="new-password" required /></label><label className="full">验证码<div className="captcha-row">{captcha ? <img src={captcha.image} alt="本机验证码" /> : <span className="captcha-placeholder">正在生成…</span>}<input name="captcha_code" minLength={5} maxLength={5} autoComplete="off" placeholder="输入 5 位验证码" required /><button type="button" className="icon-button" onClick={() => void refreshCaptcha()} aria-label="刷新验证码" title="刷新验证码"><RefreshCw size={17} /></button></div></label>{error && <div className="alert error full" role="alert">{error}</div>}<div className="modal-actions full"><button type="button" className="button" onClick={onClose}>取消</button><button className="button primary" disabled={busy || !captcha}><KeyRound size={17} />{busy ? "正在修改…" : "确认修改"}</button></div></form></section></div>;
+  return <div className="modal-backdrop"><section className="modal vault-password-modal" role="dialog" aria-modal="true" aria-labelledby="vault-password-title"><div className="modal-header"><div><p className="eyebrow">RECOVERY</p><h2 id="vault-password-title">重置保险箱主密码</h2></div><button className="icon-button modal-close" onClick={onClose} aria-label="关闭"><X size={19} /></button></div><p className="muted">验证登录密码与本机验证码后，系统会使用管理员恢复密钥重新保护数据密钥；密码条目不会被逐条解密或重写。</p><form className="form-grid" onSubmit={submit}><label className="full">登录密码<input name="login_password" type="password" minLength={9} autoComplete="current-password" required autoFocus /></label><label>新保险箱主密码<input name="new_master_password" type="password" minLength={9} autoComplete="new-password" required /></label><label>确认新主密码<input name="confirm_master_password" type="password" minLength={9} autoComplete="new-password" required /></label><label className="full">验证码<div className="captcha-row">{captcha ? <img src={captcha.image} alt="本机验证码" /> : <span className="captcha-placeholder">正在生成…</span>}<input name="captcha_code" minLength={5} maxLength={5} autoComplete="off" placeholder="输入 5 位验证码" required /><button type="button" className="icon-button" onClick={() => void refreshCaptcha()} aria-label="刷新验证码" title="刷新验证码"><RefreshCw size={17} /></button></div></label>{error && <div className="alert error full" role="alert">{error}</div>}<div className="modal-actions full"><button type="button" className="button" onClick={onClose}>取消</button><button className="button primary" disabled={busy || !captcha}><KeyRound size={17} />{busy ? "正在重置…" : "确认重置"}</button></div></form></section></div>;
 }
 
 function SecretEditor({ current, onClose, onSave }: { current?: Decrypted; onClose: () => void; onSave: (secret: VaultSecret, current?: Decrypted) => Promise<void> }) {

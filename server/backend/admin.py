@@ -2,24 +2,19 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import getpass
-import secrets
 import shutil
 from pathlib import Path
-
-from argon2.low_level import Type, hash_secret_raw
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from backend import database
 from backend.auth import hash_password, validate_password
 from backend.database import get_db_ctx, run_startup_migrations
 from backend.observability import record_audit
-from backend.vault_recovery import decrypt_recovery_envelope, ensure_recovery_key
-
-
-def _b64(value: bytes) -> str:
-    return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
+from backend.vault_recovery import (
+    decrypt_recovery_envelope,
+    ensure_recovery_key,
+    wrap_dek_for_master_password,
+)
 
 
 def _prompt_new_secret(label: str) -> str:
@@ -65,26 +60,27 @@ def recover_vault(username: str) -> None:
         if not row:
             raise SystemExit("Vault profile not found")
         dek = decrypt_recovery_envelope(row["recovery_wrapped_dek"])
-        if len(dek) != 32:
-            raise SystemExit("Recovery envelope is invalid")
-        salt = secrets.token_bytes(16)
-        nonce = secrets.token_bytes(12)
-        kek = hash_secret_raw(
-            secret=master_password.encode("utf-8"),
-            salt=salt,
-            time_cost=int(row["kdf_iterations"]),
-            memory_cost=int(row["kdf_memory_kib"]),
-            parallelism=int(row["kdf_parallelism"]),
-            hash_len=32,
-            type=Type.ID,
-        )
-        aad = f"dba-vault:profile:{row['user_id']}:v1".encode("utf-8")
-        wrapped = AESGCM(kek).encrypt(nonce, dek, aad)
+        try:
+            wrapped = wrap_dek_for_master_password(
+                dek,
+                master_password,
+                int(row["user_id"]),
+                memory_kib=int(row["kdf_memory_kib"]),
+                iterations=int(row["kdf_iterations"]),
+                parallelism=int(row["kdf_parallelism"]),
+            )
+        except ValueError as exc:
+            raise SystemExit("Recovery envelope is invalid") from exc
         conn.execute(
-            """UPDATE vault_profiles SET kdf_salt = ?, wrapped_dek = ?,
+            """UPDATE vault_profiles SET kdf_salt = ?, kdf_memory_kib = ?,
+                   kdf_iterations = ?, kdf_parallelism = ?, wrapped_dek = ?,
                    wrapped_dek_nonce = ?, recovery_confirmed_at = NULL,
                    updated_at = CURRENT_TIMESTAMP WHERE user_id = ?""",
-            (_b64(salt), _b64(wrapped), _b64(nonce), row["user_id"]),
+            (
+                wrapped["kdf_salt"], wrapped["kdf_memory_kib"],
+                wrapped["kdf_iterations"], wrapped["kdf_parallelism"],
+                wrapped["wrapped_dek"], wrapped["wrapped_dek_nonce"], row["user_id"],
+            ),
         )
         conn.execute("DELETE FROM sessions WHERE user_id = ?", (row["user_id"],))
         conn.commit()

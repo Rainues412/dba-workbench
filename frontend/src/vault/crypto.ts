@@ -131,23 +131,6 @@ export async function unlockVault(masterPassword: string, userId: number, profil
   }
 }
 
-export async function rewrapVaultProfile(dek: Uint8Array<ArrayBuffer>, masterPassword: string, userId: number) {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const nonce = crypto.getRandomValues(new Uint8Array(12));
-  const parameters = { kdf_salt: encodeBase64(salt), kdf_memory_kib: 65536, kdf_iterations: 3, kdf_parallelism: 1 };
-  const kek = await deriveKek(masterPassword, parameters);
-  try {
-    const wrapped = await crypto.subtle.encrypt(
-      { name: "AES-GCM", iv: nonce, additionalData: profileAad(userId), tagLength: 128 },
-      await importAesKey(kek),
-      dek,
-    );
-    return { ...parameters, wrapped_dek: encodeBase64(new Uint8Array(wrapped)), wrapped_dek_nonce: encodeBase64(nonce) };
-  } finally {
-    kek.fill(0);
-  }
-}
-
 export async function encryptSecret(dek: Uint8Array<ArrayBuffer>, userId: number, secret: VaultSecret, itemKey = crypto.randomUUID().replaceAll("-", "")) {
   const nonce = crypto.getRandomValues(new Uint8Array(12));
   const aad = `dba-vault:item:${userId}:${itemKey}:v1`;

@@ -398,6 +398,9 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .reauth-icon { width: 44px; height: 44px; border-radius: 13px; }
 .vault-gate { padding-block: 2.7rem; text-align: center; }
 .vault-gate-icon { width: 62px; height: 62px; margin: 0 auto 1rem; border-radius: 19px; }
+.vault-forgot-link { justify-self: start; width: fit-content; margin-top: -.3rem; padding: 0; border: 0; color: var(--primary); background: transparent; font-size: .74rem; font-weight: 650; cursor: pointer; }
+.vault-forgot-link:hover { text-decoration: underline; }
+.vault-forgot-link:focus-visible { outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent); outline-offset: 3px; border-radius: 3px; }
 .recovery-callout { justify-content: flex-start; background: var(--warning-soft); border-color: color-mix(in srgb, var(--warning) 22%, var(--border)); }
 .recovery-callout > div { flex: 1; }
 .recovery-callout h2, .recovery-callout p { margin-bottom: .2rem; }
