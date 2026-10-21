@@ -72,7 +72,9 @@ def list_customers(keyword: str = "", status: str = "", page: int = 1, page_size
                        (SELECT COUNT(*) FROM contacts ct WHERE ct.customer_id = c.id) AS contact_count,
                        (SELECT COUNT(*) FROM tasks t WHERE t.customer_id = c.id AND t.status != '已完成') AS open_task_count
                 FROM customers c {where}
-                ORDER BY c.updated_at DESC, c.id DESC
+                ORDER BY CASE c.status WHEN '活跃' THEN 0 WHEN '进行中' THEN 1
+                         WHEN '已暂停' THEN 2 WHEN '已结束' THEN 3 ELSE 4 END,
+                         c.name COLLATE NOCASE ASC, c.id DESC
                 LIMIT ? OFFSET ?""",
             params + [ps, offset],
         ).fetchall()
