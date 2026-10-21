@@ -533,7 +533,12 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .global-search-result-module { flex: 0 0 auto; padding: .2rem .42rem; border-radius: 999px; color: var(--muted); background: var(--surface); font-size: .66rem; }
 .global-search-state { min-height: 64px; display: grid; place-items: center; padding: 1rem; color: var(--muted); font-size: .78rem; text-align: center; }
 .scan-preview { max-height: 340px; overflow: auto; margin: 1rem 0; }
+.scan-select-all { display: inline-flex; align-items: center; gap: .45rem; min-height: 30px; color: var(--text); font-size: .78rem; font-weight: 650; cursor: pointer; }
+.scan-preview input[type="checkbox"] { appearance: auto; flex: 0 0 15px; width: 15px; height: 15px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 3px; box-shadow: none; accent-color: var(--primary); cursor: pointer; }
+.scan-preview input[type="checkbox"]:focus-visible { outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent); outline-offset: 2px; box-shadow: none; }
+.scan-preview input[type="checkbox"]:disabled { cursor: not-allowed; opacity: .55; }
 .scan-preview-item { display: flex; align-items: flex-start; gap: .6rem; padding: .7rem 0; border-bottom: 1px solid var(--border); }
+.scan-preview-item > input[type="checkbox"] { margin-top: .12rem; }
 .scan-preview-item span { min-width: 0; }
 .scan-preview-item small { display: block; overflow-wrap: anywhere; }
 

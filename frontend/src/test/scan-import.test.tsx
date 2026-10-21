@@ -29,6 +29,9 @@ describe("directory import", () => {
     vi.stubGlobal("fetch", fetch); setCsrfToken("scan-csrf"); const onImported = vi.fn();
     render(<ScanImport module="scripts" onImported={onImported} />); open(); scan();
     await screen.findByRole("checkbox", { name: "导入：巡检一" });
+    const selectAll = screen.getByRole("checkbox", { name: "全选导入文件" });
+    expect(selectAll.closest("label")).toHaveClass("scan-select-all");
+    expect(selectAll.nextElementSibling).toHaveTextContent("全选（已选 2 / 2）");
     expect(screen.queryByText("其他模块文档")).not.toBeInTheDocument();
     expect(JSON.parse(String(fetch.mock.calls[0][1].body))).toEqual({ paths: ["D:\\Database"] });
     fireEvent.click(screen.getByRole("checkbox", { name: "导入：巡检二" }));
