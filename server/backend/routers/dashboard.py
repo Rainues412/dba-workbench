@@ -52,12 +52,13 @@ def get_database_distribution():
                     ('SQL Server', 4),
                     ('Linux', 5),
                     ('Redis', 6),
-                    ('其他', 7)
+                    ('MongoDB', 7),
+                    ('其他', 8)
             ),
             database_counts AS (
                 SELECT
                     CASE
-                        WHEN db_type IN ('Oracle', 'MySQL', 'PostgreSQL', 'SQL Server', 'Linux', 'Redis')
+                        WHEN db_type IN ('Oracle', 'MySQL', 'PostgreSQL', 'SQL Server', 'Linux', 'Redis', 'MongoDB')
                         THEN db_type ELSE '其他'
                     END AS name,
                     COUNT(*) AS item_count
@@ -66,7 +67,7 @@ def get_database_distribution():
                 UNION ALL
                 SELECT
                     CASE
-                        WHEN wb_db IN ('Oracle', 'MySQL', 'PostgreSQL', 'SQL Server', 'Linux', 'Redis')
+                        WHEN wb_db IN ('Oracle', 'MySQL', 'PostgreSQL', 'SQL Server', 'Linux', 'Redis', 'MongoDB')
                         THEN wb_db ELSE '其他'
                     END AS name,
                     COUNT(*) AS item_count

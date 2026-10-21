@@ -7,6 +7,20 @@ import { Dashboard } from "../pages/Dashboard";
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("dashboard task queue", () => {
+  it("renders MongoDB as its own database distribution item", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+      if (path === "/api/dashboard/stats") return Response.json({ script_count: 1, article_count: 1, task_total: 0, task_pending: 0, task_overdue: 0, customer_count: 0, resource_count: 0, password_count: 0 });
+      if (path === "/api/dashboard/recent-tasks") return Response.json([]);
+      if (path === "/api/dashboard/database-distribution") return Response.json([{ name: "MongoDB", count: 2 }]);
+      throw new Error(`Unexpected request: ${path}`);
+    }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    render(<MemoryRouter><QueryClientProvider client={client}><Dashboard /></QueryClientProvider></MemoryRouter>);
+
+    expect(await screen.findByText("MongoDB")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+  });
+
   it("shows overdue tasks and supports quick completion", async () => {
     let completed = false;
     const writes: Array<{ path: string; init?: RequestInit }> = [];

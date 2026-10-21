@@ -12,7 +12,7 @@ import { DatabaseLabel, databaseMeta } from "../components/DatabaseLabel";
 type Stats = Record<"script_count" | "article_count" | "task_total" | "task_pending" | "task_overdue" | "customer_count" | "resource_count" | "password_count", number>;
 type Task = { id: number; revision: number; title: string; priority: string; status: string; due_date?: string; is_overdue: number };
 type DatabaseDistribution = { name: DatabaseName; count: number }[];
-type DatabaseName = "Oracle" | "MySQL" | "PostgreSQL" | "SQL Server" | "Linux" | "Redis" | "其他";
+type DatabaseName = "Oracle" | "MySQL" | "PostgreSQL" | "SQL Server" | "Linux" | "Redis" | "MongoDB" | "其他";
 
 const numberFormat = new Intl.NumberFormat("zh-CN");
 

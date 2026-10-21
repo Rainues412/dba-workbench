@@ -37,6 +37,7 @@ def test_home_and_empty_dashboard(client: TestClient) -> None:
         {"name": "SQL Server", "count": 0},
         {"name": "Linux", "count": 0},
         {"name": "Redis", "count": 0},
+        {"name": "MongoDB", "count": 0},
         {"name": "其他", "count": 0},
     ]
 
@@ -82,7 +83,9 @@ def test_dashboard_recent_tasks_computes_overdue_and_exposes_revision(client: Te
 def test_database_distribution_combines_scripts_and_articles(client: TestClient) -> None:
     assert client.post("/api/scripts/", json={"title": "Oracle script", "db_type": "Oracle"}).status_code == 200
     assert client.post("/api/scripts/", json={"title": "Redis script", "db_type": "Redis"}).status_code == 200
+    assert client.post("/api/scripts/", json={"title": "MongoDB script", "db_type": "MongoDB"}).status_code == 200
     assert client.post("/api/articles/", json={"title": "Oracle note", "wb_db": "Oracle"}).status_code == 200
+    assert client.post("/api/articles/", json={"title": "MongoDB note", "wb_db": "MongoDB"}).status_code == 200
     assert client.post("/api/articles/", json={"title": "Unknown note", "wb_db": "DB2"}).status_code == 200
 
     response = client.get("/api/dashboard/database-distribution")
@@ -94,6 +97,7 @@ def test_database_distribution_combines_scripts_and_articles(client: TestClient)
         "SQL Server": 0,
         "Linux": 0,
         "Redis": 1,
+        "MongoDB": 2,
         "其他": 1,
     }
 
