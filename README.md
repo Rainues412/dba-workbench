@@ -67,11 +67,13 @@ py -3.12 -m venv .runtime\.venv
 .\.runtime\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.runtime\.venv\Scripts\python.exe -m pip install -r server\requirements.txt
 
-# 3. 启动
-.\.runtime\.venv\Scripts\python.exe server\main.py
+# 3. 以桌面模式启动（包含系统托盘图标与完整退出菜单）
+.\.runtime\.venv\Scripts\pythonw.exe tools\windows\launch_dba_workbench.py
 ```
 
-访问 `http://127.0.0.1:8686/`。首次启动没有默认账号或密码，需要在页面创建第一个 Owner。数据库和保险箱恢复密钥会在首次使用相应功能时创建，均不会提交到 Git。
+启动后会自动打开 `http://127.0.0.1:8686/`，并在 Windows 隐藏图标区域显示 DBA 工作台图标。关闭浏览器不会停止服务；右键托盘图标选择“退出”才会结束完整进程。首次启动没有默认账号或密码，需要在页面创建第一个 Owner。数据库和保险箱恢复密钥会在首次使用相应功能时创建，均不会提交到 Git。
+
+`python server\main.py` 仅用于前台调试，不创建系统托盘图标。
 
 ### 生成 Windows 安装程序
 

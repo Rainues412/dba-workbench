@@ -87,15 +87,19 @@ def start_server() -> bool:
             "DBA_HOST": HOST,
             "DBA_PORT": str(PORT),
             "DBA_OPEN_BROWSER": "false",
+            "DBA_DATA_DIR": str(SERVER_DIR),
+            "DBA_LOG_DIR": str(LOG_DIR),
         }
     )
+    if EDGE_PATH is not None and EDGE_PATH.is_file():
+        env["DBA_BROWSER_PATH"] = str(EDGE_PATH)
 
     with LOG_PATH.open("ab", buffering=0) as log_file:
         log_file.write(
             f"\n[{datetime.now().isoformat(timespec='seconds')}] starting DBA Workbench\n".encode()
         )
         subprocess.Popen(
-            [str(VENV_PYTHON) if VENV_PYTHON.is_file() else sys.executable, "main.py"],
+            [str(VENV_PYTHON) if VENV_PYTHON.is_file() else sys.executable, "desktop.py"],
             cwd=SERVER_DIR,
             env=env,
             stdin=subprocess.DEVNULL,
@@ -123,8 +127,10 @@ def main() -> None:
     state = probe_service()
     if state == "other":
         raise SystemExit(f"端口 {PORT} 已被其他程序占用。")
-    if state == "down" and not start_server():
-        raise SystemExit(f"DBA 工作台启动失败，请查看日志：{LOG_PATH}")
+    if state == "down":
+        if not start_server():
+            raise SystemExit(f"DBA 工作台启动失败，请查看日志：{LOG_PATH}")
+        return
 
     if os.name == "nt" and EDGE_PATH is not None and EDGE_PATH.is_file():
         subprocess.Popen(

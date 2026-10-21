@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import json
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -53,9 +54,14 @@ def _configure_local_capabilities(data_dir: Path) -> None:
         pass
 
 
+def _log_directory(data_dir: Path) -> Path:
+    configured_log_dir = os.environ.get("DBA_LOG_DIR", "").strip()
+    return Path(configured_log_dir).expanduser().resolve() if configured_log_dir else data_dir.parent / "logs"
+
+
 def _configure_runtime() -> Path:
     data_dir = _data_directory()
-    log_dir = data_dir.parent / "logs"
+    log_dir = _log_directory(data_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
     log_dir.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("DBA_DATA_DIR", str(data_dir))
@@ -84,10 +90,24 @@ def _probe_service() -> str:
             return "down"
 
 
+def _open_workbench() -> None:
+    browser_path = os.environ.get("DBA_BROWSER_PATH", "").strip().strip('"')
+    if browser_path and Path(browser_path).is_file():
+        subprocess.Popen(
+            [browser_path, "--new-window", URL],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
+        return
+    webbrowser.open(URL, new=1)
+
+
 def _open_browser_when_ready() -> None:
     for _ in range(80):
         if _probe_service() == "dba":
-            webbrowser.open(URL, new=1)
+            _open_workbench()
             return
         time.sleep(0.25)
 
@@ -127,7 +147,7 @@ def _run_tray(server) -> None:
         Image.open(_tray_icon_path()),
         APP_TITLE,
         pystray.Menu(
-            pystray.MenuItem("打开工作台", lambda *_: webbrowser.open(URL, new=1), default=True),
+            pystray.MenuItem("打开工作台", lambda *_: _open_workbench(), default=True),
             pystray.MenuItem("退出", lambda tray, _: _exit_from_tray(server, tray)),
         ),
     )
@@ -144,7 +164,7 @@ def main() -> None:
     log_dir = _configure_runtime()
     state = _probe_service()
     if state == "dba":
-        webbrowser.open(URL, new=1)
+        _open_workbench()
         return
     if state == "other":
         raise RuntimeError(f"端口 {PORT} 已被其他程序占用。")

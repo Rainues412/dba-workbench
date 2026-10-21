@@ -55,3 +55,23 @@ def test_tray_exit_stops_server_and_icon() -> None:
 
     assert server.should_exit is True
     assert icon.stopped is True
+
+
+def test_configured_browser_is_used_for_source_launcher(monkeypatch, tmp_path: Path) -> None:
+    browser = tmp_path / "msedge.exe"
+    browser.touch()
+    calls = []
+    monkeypatch.setenv("DBA_BROWSER_PATH", str(browser))
+    monkeypatch.setattr(desktop.subprocess, "Popen", lambda command, **kwargs: calls.append((command, kwargs)))
+
+    desktop._open_workbench()
+
+    assert calls[0][0] == [str(browser), "--new-window", desktop.URL]
+
+
+def test_runtime_honors_source_log_directory(monkeypatch, tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    log_dir = tmp_path / "source-logs"
+    monkeypatch.setenv("DBA_LOG_DIR", str(log_dir))
+
+    assert desktop._log_directory(data_dir) == log_dir.resolve()

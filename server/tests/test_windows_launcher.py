@@ -32,10 +32,12 @@ def test_server_uses_checkout_environment(launcher, tmp_path, monkeypatch, has_v
 
     assert launcher.start_server()
     command, options = calls[0]
-    assert command == [str(venv_python) if has_venv else launcher.sys.executable, "main.py"]
+    assert command == [str(venv_python) if has_venv else launcher.sys.executable, "desktop.py"]
     assert options["cwd"] == launcher.SERVER_DIR
     assert options["env"]["DBA_HOST"] == "127.0.0.1"
     assert options["env"]["DBA_OPEN_BROWSER"] == "false"
+    assert options["env"]["DBA_DATA_DIR"] == str(launcher.SERVER_DIR)
+    assert options["env"]["DBA_LOG_DIR"] == str(launcher.LOG_DIR)
     assert launcher.LOG_PATH.is_file()
 
 
@@ -104,6 +106,15 @@ def test_running_service_is_reused_and_opened_in_edge(launcher, tmp_path, monkey
 
     launcher.main()
     assert calls == [[str(edge), "--new-window", launcher.URL]]
+
+
+def test_new_server_owns_browser_and_tray_lifecycle(launcher, monkeypatch):
+    monkeypatch.setattr(launcher, "probe_service", lambda: "down")
+    monkeypatch.setattr(launcher, "start_server", lambda: True)
+    monkeypatch.setattr(launcher.subprocess, "Popen", lambda *args, **kwargs: pytest.fail("launcher must not open a second browser"))
+    monkeypatch.setattr(launcher.webbrowser, "open", lambda *args, **kwargs: pytest.fail("launcher must not open a second browser"))
+
+    launcher.main()
 
 
 def test_server_waits_for_http_readiness_after_port_opens(launcher, tmp_path, monkeypatch):
