@@ -38,7 +38,14 @@ def _release(pointer: ctypes.c_void_p) -> None:
     ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)(table[2])(pointer)
 
 
-def _pick_folder_sta(title: str, initial_dir: str) -> str:
+def _foreground_window() -> int:
+    user32 = ctypes.windll.user32
+    user32.GetForegroundWindow.argtypes = []
+    user32.GetForegroundWindow.restype = ctypes.wintypes.HWND
+    return int(user32.GetForegroundWindow() or 0)
+
+
+def _pick_folder_sta(title: str, initial_dir: str, owner_hwnd: int = 0) -> str:
     del initial_dir  # Windows remembers the last folder used by its common dialog.
     ole32 = ctypes.windll.ole32
     ole32.CoInitializeEx.argtypes = [ctypes.c_void_p, ctypes.c_uint]
@@ -90,7 +97,13 @@ def _pick_folder_sta(title: str, initial_dir: str) -> str:
         show = ctypes.WINFUNCTYPE(
             ctypes.HRESULT, ctypes.c_void_p, ctypes.wintypes.HWND
         )(table[3])
-        if show(dialog, None) != 0:
+        if owner_hwnd:
+            user32 = ctypes.windll.user32
+            user32.SetForegroundWindow.argtypes = [ctypes.wintypes.HWND]
+            user32.SetForegroundWindow.restype = ctypes.wintypes.BOOL
+            user32.SetForegroundWindow(ctypes.wintypes.HWND(owner_hwnd))
+        owner = ctypes.wintypes.HWND(owner_hwnd) if owner_hwnd else None
+        if show(dialog, owner) != 0:
             return ""
 
         get_result = ctypes.WINFUNCTYPE(
@@ -125,10 +138,11 @@ def pick_folder(title: str, initial_dir: str = "") -> str:
     if os.name != "nt":
         raise OSError("The native folder picker is only available on Windows")
     result: queue.Queue[tuple[str, object]] = queue.Queue(maxsize=1)
+    owner_hwnd = _foreground_window()
 
     def run() -> None:
         try:
-            result.put(("ok", _pick_folder_sta(title, initial_dir)))
+            result.put(("ok", _pick_folder_sta(title, initial_dir, owner_hwnd)))
         except Exception as error:
             result.put(("error", error))
 
