@@ -33,7 +33,7 @@
 - “创建桌面快捷方式”默认勾选，也可取消。
 - 完成后可直接启动，目标机不需要安装 Python 或 Node.js。
 - 运行期间会在 Windows 隐藏图标区域显示 DBA 工作台图标；关闭浏览器不会停止本机服务，需要右键托盘图标选择“退出”才能完整结束进程。
-- 首次运行会在 `%LOCALAPPDATA%\DBA Workbench\data` 创建数据库和保险箱恢复密钥，日志位于同级 `logs` 目录；升级和卸载程序不会自动删除这些业务数据。
+- 首次运行会在 `%LOCALAPPDATA%\DBA Workbench\data` 创建数据库和保险箱恢复密钥，日志位于同级 `logs` 目录。卸载 EXE 会询问是否同时删除全部应用数据，默认保留；只有明确选择“是”才会删除数据库、恢复密钥、日志和目录授权配置。
 - 忘记保险箱主密码时，可在锁定页主密码框下点击“忘记密码”，使用登录密码和一次性本机验证码验证后重置。该流程依赖本机管理员恢复私钥；验证码用于限制自动化尝试，不等同于第二身份因素。
 - 安装版使用“目录批量导入”时，点击“选择目录”会仅授权所选目录及其子目录；授权保存在同级 `local-capabilities.json`，重启后继续有效，不会开放整块磁盘或脚本执行权限。
 
@@ -80,7 +80,7 @@ py -3.12 -m venv .runtime\.venv
 构建机需要 Windows 10/11 x64、Python 3.12 x64 和网络连接。构建脚本固定使用 Nuitka 4.3.1，并从 Inno Setup 官方 GitHub Release 下载、校验和安装 Inno Setup 7.1.0 到源码目录之外。目标机不需要这些构建工具。
 
 ```powershell
-.\packaging\windows\build-installer.ps1 -Version "1.0.4"
+.\packaging\windows\build-installer.ps1 -Version "1.0.5"
 ```
 
 默认输出到仓库同级的 `DBA工作台-发布\installer`，最终只需分发其中的安装程序和同名 `.sha256` 文件；`.build` 是可删除的构建缓存。构建脚本拒绝把输出写进 Git 源码目录，并在打包前运行后端测试、扫描发行目录中的源码和业务数据。也可以通过 `-OutputDirectory` 指定其他源码目录之外的位置。

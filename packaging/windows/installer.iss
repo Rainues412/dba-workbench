@@ -45,3 +45,24 @@ Name: "{autodesktop}\DBA 工作台"; Filename: "{app}\DBA工作台.exe"; Working
 
 [Run]
 Filename: "{app}\DBA工作台.exe"; Description: "启动 DBA 工作台"; Flags: nowait postinstall skipifsilent
+
+[Code]
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  DataDirectory: String;
+begin
+  if CurUninstallStep <> usUninstall then
+    Exit;
+
+  DataDirectory := ExpandConstant('{localappdata}\DBA Workbench');
+  if DirExists(DataDirectory) and
+     (SuppressibleMsgBox(
+       '是否同时删除 DBA 工作台的全部应用数据？' + #13#10 + #13#10 +
+       '选择“是”将永久删除数据库、密码保险箱恢复密钥、日志和目录授权配置。' + #13#10 +
+       '选择“否”将保留数据，以便重新安装后继续使用。',
+       mbConfirmation, MB_YESNO or MB_DEFBUTTON2, IDNO) = IDYES) then
+  begin
+    if not DelTree(DataDirectory, True, True, True) then
+      MsgBox('应用数据未能完全删除，请手动检查：' + DataDirectory, mbError, MB_OK);
+  end;
+end;
