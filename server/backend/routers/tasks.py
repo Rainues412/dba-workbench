@@ -32,7 +32,7 @@ _TASK_SELECT = f"""
     SELECT t.id, t.title, t.description, t.status, t.priority, t.due_date,
            t.customer_id, t.created_at, t.updated_at, t.completed_at, t.revision,
            c.name AS customer_name, {_ARCHIVED} AS is_archived,
-           CASE WHEN t.status != '已完成' AND t.due_date IS NOT NULL AND t.due_date < date('now', 'localtime')
+           CASE WHEN t.status != '已完成' AND date(t.due_date) < date('now', 'localtime')
            THEN 1 ELSE 0 END AS is_overdue
     FROM tasks t LEFT JOIN customers c ON t.customer_id = c.id
 """
@@ -60,7 +60,7 @@ def list_tasks(
             conditions.append("t.priority = ?")
             params.append(priority)
         if overdue:
-            conditions.append("t.status != '已完成' AND t.due_date IS NOT NULL AND t.due_date < date('now', 'localtime')")
+            conditions.append("t.status != '已完成' AND date(t.due_date) < date('now', 'localtime')")
         if keyword.strip():
             conditions.append("title_matches(t.title, ?) = 1")
             params.append(keyword.strip())
@@ -73,7 +73,7 @@ def list_tasks(
             f"""{_TASK_SELECT}
             {where}
             ORDER BY
-                CASE WHEN t.status != '已完成' AND t.due_date IS NOT NULL AND t.due_date < date('now', 'localtime')
+                CASE WHEN t.status != '已完成' AND date(t.due_date) < date('now', 'localtime')
                      THEN 0 ELSE 1 END,
                 CASE t.status WHEN '进行中' THEN 0 WHEN '待处理' THEN 1 WHEN '已完成' THEN 2 END,
                 CASE WHEN t.status = '已完成' THEN julianday(t.created_at) END DESC,

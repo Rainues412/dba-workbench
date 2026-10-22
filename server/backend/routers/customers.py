@@ -105,7 +105,7 @@ def get_customer(cid: int):
             "SELECT * FROM communications WHERE customer_id = ? ORDER BY date DESC, id DESC LIMIT 50", (cid,)).fetchall()]
         tasks = [dict(r) for r in conn.execute(
             """SELECT id, title, status, priority, due_date,
-                      CASE WHEN status != '已完成' AND due_date IS NOT NULL AND due_date < date('now')
+                      CASE WHEN status != '已完成' AND date(due_date) < date('now', 'localtime')
                       THEN 1 ELSE 0 END AS is_overdue
                FROM tasks WHERE customer_id = ? ORDER BY status != '已完成' DESC, due_date ASC""",
             (cid,)).fetchall()]

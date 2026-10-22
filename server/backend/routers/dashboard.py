@@ -15,7 +15,7 @@ def get_stats():
                 (SELECT COUNT(*) FROM articles) AS article_count,
                 (SELECT COUNT(*) FROM tasks) AS task_total,
                 (SELECT COUNT(*) FROM tasks WHERE status != '已完成') AS task_pending,
-                (SELECT COUNT(*) FROM tasks WHERE status != '已完成' AND due_date IS NOT NULL AND due_date < date('now', 'localtime')) AS task_overdue,
+                (SELECT COUNT(*) FROM tasks WHERE status != '已完成' AND date(due_date) < date('now', 'localtime')) AS task_overdue,
                 (SELECT COUNT(*) FROM customers) AS customer_count,
                 (SELECT COUNT(*) FROM resources) AS resource_count,
                 (SELECT COUNT(*) FROM vault_items) AS password_count
@@ -29,7 +29,7 @@ def get_recent_tasks():
     with get_db_ctx() as conn:
         rows = conn.execute("""
             SELECT id, title, priority, status, due_date, revision,
-                   CASE WHEN status != '已完成' AND due_date IS NOT NULL AND due_date < date('now', 'localtime')
+                   CASE WHEN status != '已完成' AND date(due_date) < date('now', 'localtime')
                       THEN 1 ELSE 0 END AS is_overdue
             FROM tasks WHERE status != '已完成'
             ORDER BY is_overdue DESC,
