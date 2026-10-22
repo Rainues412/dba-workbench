@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import Optional
 from backend.database import get_db_ctx, page_response, validate_page
 from backend.concurrency import expected_revision, raise_write_conflict
+from backend.file_preview import preview_linked_file
 
 router = APIRouter()
 
@@ -115,6 +116,11 @@ def get_script(script_id: int):
         result = dict(row)
         result["versions"] = [dict(v) for v in versions]
         return result
+
+
+@router.get("/{script_id}/file-preview")
+def preview_script_file(script_id: int):
+    return preview_linked_file("scripts", script_id)
 
 
 @router.put("/{script_id}")

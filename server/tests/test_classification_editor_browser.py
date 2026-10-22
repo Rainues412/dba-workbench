@@ -28,7 +28,7 @@ def test_editor_lists_all_categories_in_production(live_server, tmp_path, module
             page.set_default_timeout(10_000)
             _login(page, live_server)
             page.get_by_role("navigation", name="主导航").get_by_role("link", name="知识库" if module == "articles" else "脚本库", exact=True).click()
-            page.get_by_role("group", name="数据库分类").get_by_role("button", name="Oracle 1", exact=True).click()
+            page.get_by_role("combobox", name="筛选数据库").select_option("Oracle")
             expect(page.get_by_role("button", name="查看/编辑")).to_have_count(1)
             page.get_by_role("button", name="查看/编辑").click()
             select = page.get_by_role("dialog").get_by_role("combobox", name=label, exact=True)

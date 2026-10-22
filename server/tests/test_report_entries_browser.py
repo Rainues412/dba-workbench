@@ -134,7 +134,7 @@ def test_allowed_directory_preview_imports_only_checked_current_module_files(
                 assert committed.value.status == 200
                 expect(dialog.get_by_role("status")).to_have_text("已导入 1 条，跳过重复 0 条。")
                 dialog.get_by_role("button", name="关闭", exact=True).click()
-                expect(page.locator("tbody")).to_contain_text(included.stem)
+                expect(page.locator(".library-record-list")).to_contain_text(included.stem)
                 assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1")
                 stored = client.get(f"/api/{module}/").json()
                 assert stored["total"] == 1

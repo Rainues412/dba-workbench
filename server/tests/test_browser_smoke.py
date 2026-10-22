@@ -243,7 +243,8 @@ def test_user_content_is_rendered_as_text_in_react_ui(live_server: str) -> None:
             page.add_init_script("window.__xssFired = 0")
             _login(page, live_server)
             page.get_by_role("navigation", name="主导航").get_by_role("link", name="脚本库").click()
-            page.get_by_text(payload, exact=True).wait_for()
+            page.get_by_role("button", name=f"预览：{payload}", exact=True).wait_for()
+            assert page.locator(".library-record-description").inner_text() == payload
             assert page.locator('img[src="x"]').count() == 0
             assert page.evaluate("window.__xssFired") == 0
         finally:
@@ -344,11 +345,11 @@ def test_classification_filters_and_page_jump(
             page.get_by_role("navigation", name="主导航").get_by_role("link", name=nav_label).click()
             page.get_by_role("combobox", name="每页条数").select_option("20")
             databases = page.get_by_role("group", name="数据库分类")
-            oracle = databases.get_by_role("button", name=re.compile(r"^Oracle"))
+            oracle = databases.get_by_role("combobox", name="筛选数据库")
             oracle.wait_for()
-            assert oracle.inner_text().splitlines()[-1] == "45"
-            assert databases.get_by_role("button", name=re.compile(r"^达梦")).is_visible()
-            oracle.click()
+            assert oracle.locator('option[value="Oracle"]').inner_text() == "Oracle（45）"
+            assert oracle.locator('option[value="达梦"]').count() == 1
+            oracle.select_option("Oracle")
             if category_label:
                 categories = page.get_by_role("group", name=category_label, exact=True)
                 categories.get_by_role("button", name=re.compile("^" + category)).click()
@@ -357,7 +358,7 @@ def test_classification_filters_and_page_jump(
             page.get_by_text("第 3 / 3 页", exact=True).wait_for(state="attached")
             page.get_by_role("combobox", name="每页条数").select_option("10")
             page.get_by_text("第 1 / 5 页", exact=True).wait_for(state="attached")
-            assert oracle.get_attribute("aria-pressed") == "true"
+            assert oracle.input_value() == "Oracle"
             if category_label:
                 assert categories.get_by_role("button", name=re.compile("^" + category)).get_attribute("aria-pressed") == "true"
             page.get_by_role("combobox", name="每页条数").select_option("20")
@@ -371,13 +372,13 @@ def test_classification_filters_and_page_jump(
                 assert dialog.get_by_label(label, exact=True).input_value() == category
             dialog.get_by_role("button", name="取消", exact=True).click()
 
-            page.get_by_placeholder("按标题搜索" + ("资源与快捷入口" if module == "resources" else nav_label)).fill("classification-target-040")
+            page.get_by_placeholder("按标题搜索" + ("资源中心" if module == "resources" else nav_label)).fill("classification-target-040")
             page.get_by_text("第 1 / 1 页", exact=True).wait_for(state="attached")
             page.get_by_text("classification-target-040", exact=True).wait_for()
-            assert oracle.get_attribute("aria-pressed") == "true"
-            page.get_by_placeholder("按标题搜索" + ("资源与快捷入口" if module == "resources" else nav_label)).fill("")
+            assert oracle.input_value() == "Oracle"
+            page.get_by_placeholder("按标题搜索" + ("资源中心" if module == "resources" else nav_label)).fill("")
             page.get_by_text("第 1 / 3 页", exact=True).wait_for(state="attached")
-            databases.get_by_role("button", name=re.compile(r"^MySQL")).click()
+            oracle.select_option("MySQL")
             page.get_by_text("mysql-record-0", exact=True).wait_for()
             assert page.get_by_role("button", name="下一页").is_disabled()
             if category_label:
@@ -421,7 +422,7 @@ def test_pagination_stays_visible_during_loading_and_cached_page_changes(live_se
                 during_loading.append(page.evaluate("""() => {
                     const pager = document.querySelector('.pagination');
                     const rect = pager?.getBoundingClientRect();
-                    return { rows: document.querySelectorAll('tbody tr').length,
+                    return { rows: document.querySelectorAll('tbody tr, .library-record-list > li').length,
                         visible: !!rect && rect.top >= 0 && rect.bottom <= innerHeight + 2 };
                 }"""))
                 route.fulfill(response=response)

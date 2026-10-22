@@ -47,7 +47,7 @@ def test_favorite_checkbox_style_and_keyboard_filter(live_server, tmp_path, modu
                 checkbox.scroll_into_view_if_needed()
                 page.screenshot(path=str(tmp_path / f"{module}-{theme}-{width}.png"))
                 # Tab reaches the filter from the title search; Space still toggles it.
-                page.get_by_role("textbox", name=f"按标题搜索{'资源与快捷入口' if module == 'resources' else name}").focus()
+                page.get_by_role("textbox", name=f"按标题搜索{'资源中心' if module == 'resources' else name}").focus()
                 page.keyboard.press("Tab")
                 expect(checkbox).to_be_focused()
                 assert checkbox.evaluate("element => getComputedStyle(element).outlineWidth") == "2px"
@@ -57,7 +57,7 @@ def test_favorite_checkbox_style_and_keyboard_filter(live_server, tmp_path, modu
             updated.raise_for_status()
             page.reload(wait_until="networkidle")
             checkbox.check()
-            expect(page.get_by_text(f"没有{'资源与快捷入口' if module == 'resources' else name}数据", exact=True)).to_be_visible()
+            expect(page.get_by_text(f"没有{'资源中心' if module == 'resources' else name}数据", exact=True)).to_be_visible()
             assert checkbox.bounding_box()["height"] == 16
         finally:
             browser.close()

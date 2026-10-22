@@ -9,12 +9,14 @@ export type FileLinksConfig = {
   urlField?: string;
 };
 
-export function LocalFileLinks({ row, label, config, disabled, onNotice }: {
+export function LocalFileLinks({ row, label, config, disabled, onNotice, actionLabel, compact = false }: {
   row: Entity;
   label: string;
   config: FileLinksConfig;
   disabled: boolean;
   onNotice: (message: string) => void;
+  actionLabel?: string;
+  compact?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const path = String(row[config.pathField] ?? "").trim();
@@ -46,12 +48,12 @@ export function LocalFileLinks({ row, label, config, disabled, onNotice }: {
     }
   }
 
-  return <span className="record-links">
-    {href ? <a className="record-title-link" href={href} target="_blank" rel="noopener noreferrer" aria-label={`打开网址：${label}`}><span>{label}</span><ExternalLink size={14} /></a>
-      : path ? <button className="record-title-link" type="button" disabled={disabled || busy} onClick={() => void open(config.openMode)} aria-label={`${config.openLabel}：${label}`}><span>{label}</span><FileCode2 size={14} /></button>
-      : <span>{label}</span>}
+  return <span className={`record-links${compact ? " compact-file-links" : ""}`}>
+    {href ? <a className="record-title-link" href={href} target="_blank" rel="noopener noreferrer" title={label} aria-label={`打开网址：${label}`}><span>{actionLabel ? "打开网址" : label}</span><ExternalLink size={14} /></a>
+      : path ? <button className="record-title-link" type="button" title={label} disabled={disabled || busy} onClick={() => void open(config.openMode)} aria-label={`${config.openLabel}：${label}`}><span>{actionLabel || label}</span><FileCode2 size={14} /></button>
+      : !actionLabel && <span>{label}</span>}
     {path && <span className="record-path-line">
-      <button className="record-path-link" type="button" title={path} aria-label={`打开所在文件夹：${label}`} disabled={disabled || busy} onClick={() => void open("folder")}><FolderOpen size={13} /><span>{path}</span></button>
+      <button className="record-path-link" type="button" title={path} aria-label={`打开所在文件夹：${label}`} disabled={disabled || busy} onClick={() => void open("folder")}><FolderOpen size={13} /><span>{compact ? "所在文件夹" : path}</span></button>
       <button className="record-copy-path" type="button" aria-label={`复制路径：${label}`} title="复制路径" disabled={disabled} onClick={() => void copyPath()}><Copy size={12} />复制</button>
     </span>}
     {url && !href && <small className="muted">网址无效，仅支持 http/https</small>}

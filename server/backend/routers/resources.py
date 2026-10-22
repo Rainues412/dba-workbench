@@ -87,7 +87,7 @@ def list_resources(
 def resource_facets():
     with get_db_ctx() as conn:
         rows = conn.execute(
-            "SELECT wb_db, COUNT(*) AS count FROM resources GROUP BY wb_db"
+            "SELECT wb_db, kind, COUNT(*) AS count FROM resources GROUP BY wb_db, kind"
         ).fetchall()
         return {
             "total": sum(row["count"] for row in rows),

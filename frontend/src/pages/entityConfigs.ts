@@ -28,8 +28,8 @@ export const articlesConfig: CrudConfig = {
 };
 
 export const resourcesConfig: CrudConfig = {
-  key: "resources", title: "资源与快捷入口", description: "安装包、工具、本地路径和网址统一索引。", path: "/api/resources/", icon: PackageOpen,
-  classification: { databaseField: "wb_db" },
+  key: "resources", title: "资源中心", description: "安装包、工具、本地路径和网址统一索引。", path: "/api/resources/", icon: PackageOpen,
+  classification: { databaseField: "wb_db", categoryField: "kind", categoryLabel: "资源类型" },
   fileLinks: { pathField: "path", urlField: "url", openMode: "open", openLabel: "打开资源" },
   columns: [{ name: "name", label: "名称" }, { name: "kind", label: "类型" }, { name: "wb_db", label: "数据库" }, { name: "version", label: "版本" }],
   fields: [

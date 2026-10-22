@@ -4,13 +4,13 @@ import { Link } from "react-router-dom";
 import { api, Entity, entityApi, jsonBody } from "../api/client";
 import { ErrorState, LoadingState } from "./States";
 
-export function EntityDetails({ module, item, onRefresh }: { module: string; item: Entity; onRefresh: () => Promise<void> }) {
-  if (module === "scripts") return <ScriptHistory item={item} onRefresh={onRefresh} />;
+export function EntityDetails({ module, item, onRefresh, readOnly = false }: { module: string; item: Entity; onRefresh: () => Promise<void>; readOnly?: boolean }) {
+  if (module === "scripts") return <ScriptHistory item={item} onRefresh={onRefresh} readOnly={readOnly} />;
   if (module === "customers") return <CustomerRelations item={item} onRefresh={onRefresh} />;
   return null;
 }
 
-function ScriptHistory({ item, onRefresh }: { item: Entity; onRefresh: () => Promise<void> }) {
+function ScriptHistory({ item, onRefresh, readOnly }: { item: Entity; onRefresh: () => Promise<void>; readOnly: boolean }) {
   const versions = (item.versions ?? []) as { version: number; created_at: string }[];
   const [version, setVersion] = useState("");
   const [busy, setBusy] = useState(false);
@@ -23,7 +23,7 @@ function ScriptHistory({ item, onRefresh }: { item: Entity; onRefresh: () => Pro
     catch (error) { setMessage(error instanceof Error ? error.message : "恢复失败"); }
     finally { setBusy(false); }
   }
-  return <section className="entity-details"><h3>脚本历史版本</h3><p className="muted">当前版本 {String(item.version ?? 1)}。正文变更时自动保存历史；不会执行脚本。</p>{!versions.length ? <p className="muted">暂无历史版本</p> : <><label>查看历史版本<select value={version} onChange={(event) => setVersion(event.target.value)}><option value="">请选择版本</option>{versions.map((row) => <option key={row.version} value={row.version}>版本 {row.version} · {row.created_at}</option>)}</select></label>{version && (history.isLoading ? <LoadingState /> : history.error ? <ErrorState message="历史版本加载失败" retry={() => void history.refetch()} /> : <><label>历史正文<textarea readOnly value={history.data?.content ?? ""} rows={8} /></label><button className="button" type="button" disabled={busy || !history.data} onClick={() => void restore()}>恢复此版本为当前正文</button></>)}</>}{message && <p className="alert error" role="alert">{message}</p>}</section>;
+  return <section className="entity-details"><h3>脚本历史版本</h3><p className="muted">当前版本 {String(item.version ?? 1)}。正文变更时自动保存历史；不会执行脚本。</p>{!versions.length ? <p className="muted">暂无历史版本</p> : <><label>查看历史版本<select value={version} onChange={(event) => setVersion(event.target.value)}><option value="">请选择版本</option>{versions.map((row) => <option key={row.version} value={row.version}>版本 {row.version} · {row.created_at}</option>)}</select></label>{version && (history.isLoading ? <LoadingState /> : history.error ? <ErrorState message="历史版本加载失败" retry={() => void history.refetch()} /> : <><label>历史正文<textarea readOnly value={history.data?.content ?? ""} rows={8} /></label>{!readOnly && <button className="button" type="button" disabled={busy || !history.data} onClick={() => void restore()}>恢复此版本为当前正文</button>}</>)}</>}{message && <p className="alert error" role="alert">{message}</p>}</section>;
 }
 
 function CustomerRelations({ item, onRefresh }: { item: Entity; onRefresh: () => Promise<void> }) {
