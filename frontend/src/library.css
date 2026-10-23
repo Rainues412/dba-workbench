@@ -13,7 +13,25 @@
 .library-categories { position: sticky; top: 78px; padding: 1rem .65rem; max-height: calc(100dvh - 92px); overflow-y: auto; }
 .library-categories h2 { display: flex; align-items: center; gap: .45rem; margin: 0 0 1rem; color: var(--muted); font-size: .75rem; }
 .library-database-select { display: grid; gap: .45rem; color: var(--muted); font-size: .74rem; }
-.library-database-select select { min-width: 0; width: 100%; margin-bottom: .55rem; font-size: .76rem; }
+.database-filter-trigger { display: flex; align-items: center; gap: .35rem; min-width: 0; width: 100%; min-height: 42px; padding: .6rem .55rem; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--text); cursor: pointer; text-align: left; }
+.database-filter-trigger:hover, .database-filter-trigger[aria-expanded="true"] { border-color: var(--primary); }
+.database-filter-trigger:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.database-filter-trigger > svg { flex-shrink: 0; }
+.database-filter-trigger .database-label, .database-filter-option .database-label { min-width: 0; max-width: none; flex: 1; padding: 0; background: transparent !important; font-size: .76rem; }
+.database-filter-trigger .database-label strong, .database-filter-option .database-label strong, .database-filter-all strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.database-filter-trigger .database-logo, .database-filter-option .database-logo { width: 17px; height: 17px; flex-shrink: 0; }
+.database-filter-trigger .database-logo img, .database-filter-trigger .database-logo svg, .database-filter-option .database-logo img, .database-filter-option .database-logo svg { width: 17px; height: 17px; }
+.database-filter-all { display: flex; align-items: center; gap: .4rem; min-width: 0; flex: 1; font-size: .76rem; }
+.database-filter-all svg { flex-shrink: 0; }
+.database-filter-count { flex-shrink: 0; color: var(--muted); font-size: .7rem; font-variant-numeric: tabular-nums; }
+.database-filter-popup { z-index: 90; overflow-y: auto; overscroll-behavior: contain; padding: .3rem; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); box-shadow: var(--shadow-lg); }
+.database-filter-option { display: flex; align-items: center; gap: .5rem; min-height: 38px; padding: .55rem .6rem; border-radius: 6px; cursor: pointer; }
+.database-filter-option.active { background: var(--surface-soft); }
+.database-filter-option[aria-selected="true"] { background: var(--primary-soft); }
+.database-filter-option.active[aria-selected="true"] { outline: 1px solid var(--primary); outline-offset: -1px; }
+.database-filter-check { display: flex; width: 14px; flex-shrink: 0; color: var(--primary); }
+[data-theme="dark"] .database-filter-trigger .database-label strong, [data-theme="dark"] .database-filter-option .database-label strong { color: var(--text); }
+[data-theme="dark"] .database-filter-trigger .database-logo, [data-theme="dark"] .database-filter-option .database-logo { background: #f8fafc; border-radius: 4px; }
 .library-categories .database-label { max-width: 100%; font-size: .7rem; }
 .library-categories .database-label strong { overflow: hidden; text-overflow: ellipsis; }
 .library-categories .category-filter-row { margin-top: .9rem; padding-top: .85rem; }
@@ -106,7 +124,6 @@
   .library-categories { position: static; max-height: none; padding: .8rem; }
   .library-categories h2, .library-categories > [role="group"] > .database-label { display: none; }
   .library-database-select { grid-template-columns: auto minmax(0, 1fr); align-items: center; }
-  .library-database-select select { margin: 0; }
   .library-categories .category-filter-row { margin-top: .6rem; padding-top: .6rem; gap: .45rem; }
   .library-categories .category-filter-options { flex-direction: row; overflow-x: auto; padding: .15rem 0 .35rem; }
   .library-categories .category-filter { flex: 0 0 auto; width: auto; max-width: 200px; }

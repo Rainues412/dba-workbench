@@ -34,6 +34,11 @@ def _edge(playwright):
         pytest.skip(f"Microsoft Edge is unavailable: {error}")
 
 
+def _select_database(page: Page, name: str) -> None:
+    page.get_by_role("combobox", name="筛选数据库").click()
+    page.get_by_role("option", name=re.compile(r"^" + re.escape(name) + "（")).click()
+
+
 @pytest.mark.browser
 def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
     with sync_playwright() as playwright:
@@ -347,9 +352,10 @@ def test_classification_filters_and_page_jump(
             databases = page.get_by_role("group", name="数据库分类")
             oracle = databases.get_by_role("combobox", name="筛选数据库")
             oracle.wait_for()
-            assert oracle.locator('option[value="Oracle"]').inner_text() == "Oracle（45）"
-            assert oracle.locator('option[value="达梦"]').count() == 1
-            oracle.select_option("Oracle")
+            oracle.click()
+            assert page.get_by_role("option", name="Oracle（45）", exact=True).is_visible()
+            assert page.get_by_role("option", name="达梦（1）", exact=True).count() == 1
+            page.get_by_role("option", name="Oracle（45）", exact=True).click()
             if category_label:
                 categories = page.get_by_role("group", name=category_label, exact=True)
                 categories.get_by_role("button", name=re.compile("^" + category)).click()
@@ -358,7 +364,7 @@ def test_classification_filters_and_page_jump(
             page.get_by_text("第 3 / 3 页", exact=True).wait_for(state="attached")
             page.get_by_role("combobox", name="每页条数").select_option("10")
             page.get_by_text("第 1 / 5 页", exact=True).wait_for(state="attached")
-            assert oracle.input_value() == "Oracle"
+            assert oracle.get_attribute("title") == "Oracle（45）"
             if category_label:
                 assert categories.get_by_role("button", name=re.compile("^" + category)).get_attribute("aria-pressed") == "true"
             page.get_by_role("combobox", name="每页条数").select_option("20")
@@ -375,10 +381,10 @@ def test_classification_filters_and_page_jump(
             page.get_by_placeholder("按标题搜索" + ("资源中心" if module == "resources" else nav_label)).fill("classification-target-040")
             page.get_by_text("第 1 / 1 页", exact=True).wait_for(state="attached")
             page.get_by_text("classification-target-040", exact=True).wait_for()
-            assert oracle.input_value() == "Oracle"
+            assert oracle.get_attribute("title") == "Oracle（45）"
             page.get_by_placeholder("按标题搜索" + ("资源中心" if module == "resources" else nav_label)).fill("")
             page.get_by_text("第 1 / 3 页", exact=True).wait_for(state="attached")
-            oracle.select_option("MySQL")
+            _select_database(page, "MySQL")
             page.get_by_text("mysql-record-0", exact=True).wait_for()
             assert page.get_by_role("button", name="下一页").is_disabled()
             if category_label:

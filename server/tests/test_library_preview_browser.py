@@ -54,8 +54,9 @@ def test_classification_list_preview_and_shortcuts(live_server, tmp_path, monkey
             if module == "resources":
                 expect(page.get_by_role("link", name="打开网址：网站快捷入口", exact=True)).to_have_attribute("href", "https://example.test/db-docs")
             database = page.get_by_role("combobox", name="筛选数据库")
-            expect(database.locator('option[value="达梦"]')).to_have_count(1)
-            database.select_option("Oracle")
+            database.click()
+            expect(page.get_by_role("option", name="达梦（1）", exact=True)).to_have_count(1)
+            page.get_by_role("option", name="Oracle（1）", exact=True).click()
             expect(page.get_by_role("button", name="预览：其他数据库记录")).to_have_count(0)
             if module == "resources":
                 expect(page.get_by_role("button", name="预览", exact=True)).to_have_count(0)

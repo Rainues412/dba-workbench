@@ -1,7 +1,7 @@
 import pytest
 from playwright.sync_api import expect, sync_playwright
 
-from test_browser_smoke import _api_client, _edge, _login
+from test_browser_smoke import _api_client, _edge, _login, _select_database
 
 
 @pytest.mark.browser
@@ -28,7 +28,7 @@ def test_editor_lists_all_categories_in_production(live_server, tmp_path, module
             page.set_default_timeout(10_000)
             _login(page, live_server)
             page.get_by_role("navigation", name="主导航").get_by_role("link", name="知识库" if module == "articles" else "脚本库", exact=True).click()
-            page.get_by_role("combobox", name="筛选数据库").select_option("Oracle")
+            _select_database(page, "Oracle")
             expect(page.get_by_role("button", name="查看/编辑")).to_have_count(1)
             page.get_by_role("button", name="查看/编辑").click()
             select = page.get_by_role("dialog").get_by_role("combobox", name=label, exact=True)

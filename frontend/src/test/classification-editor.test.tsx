@@ -28,7 +28,10 @@ describe("classification editor", () => {
       const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
       render(<MemoryRouter><QueryClientProvider client={client}><CrudPage config={config} /></QueryClientProvider></MemoryRouter>);
       // Active list filters must not narrow the choices available to the editor.
-      if (!facetsFail) fireEvent.change(await screen.findByRole("combobox", { name: "筛选数据库" }), { target: { value: "Oracle" } });
+      if (!facetsFail) {
+        fireEvent.click(await screen.findByRole("combobox", { name: "筛选数据库" }));
+        fireEvent.click(await screen.findByRole("option", { name: "Oracle（10）" }));
+      }
       await waitFor(() => expect(screen.getByRole("button", { name: "查看/编辑" })).not.toBeDisabled());
       fireEvent.click(await screen.findByRole("button", { name: "查看/编辑" }));
       const select = await screen.findByRole("combobox", { name: field.label });

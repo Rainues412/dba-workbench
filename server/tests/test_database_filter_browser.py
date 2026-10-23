@@ -1,0 +1,79 @@
+import pytest
+from playwright.sync_api import expect, sync_playwright
+
+from test_browser_smoke import _api_client, _edge, _login, _select_database
+
+
+@pytest.mark.browser
+@pytest.mark.parametrize("module,label", [("articles", "知识库"), ("scripts", "脚本库"), ("resources", "资源中心")])
+def test_database_icons_and_keyboard_filter(live_server, tmp_path, module, label):
+    client, csrf = _api_client(live_server)
+    headers = {"X-CSRF-Token": csrf}
+    db_field = "db_type" if module == "scripts" else "wb_db"
+    title_field = "name" if module == "resources" else "title"
+    custom = "自定义数据库-" + "长名称" * 18
+    for database in ["Oracle", "MySQL", "MongoDB", "其他", custom]:
+        client.post(f"/api/{module}/", json={title_field: f"{database}记录", db_field: database}, headers=headers).raise_for_status()
+    with sync_playwright() as playwright:
+        browser = _edge(playwright)
+        try:
+            page = browser.new_page(viewport={"width": 1440, "height": 1000})
+            _login(page, live_server)
+            page.get_by_role("navigation", name="主导航").get_by_role("link", name=label, exact=True).click()
+            combo = page.get_by_role("combobox", name="筛选数据库")
+            _select_database(page, "Oracle")
+            group = page.get_by_role("group", name="数据库分类")
+            expect(group.get_by_text("Oracle", exact=True)).to_have_count(1)
+            expect(group.locator(".database-label")).to_have_count(1)
+            for theme, width in [("light", 1440), ("dark", 1440), ("light", 390), ("dark", 390)]:
+                page.set_viewport_size({"width": width, "height": 1000})
+                page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
+                combo.click()
+                popup = page.get_by_role("listbox", name="数据库", exact=True)
+                for database in ["Oracle", "MySQL", "PostgreSQL", "SQL Server", "Linux", "Redis", "MongoDB", "其他", custom]:
+                    count = 1 if database in ["Oracle", "MySQL", "MongoDB", "其他", custom] else 0
+                    option = popup.get_by_role("option", name=f"{database}（{count}）", exact=True)
+                    expect(option.locator(".database-logo")).to_have_count(1)
+                    assert option.locator(".database-logo img, .database-logo svg").count() == 1
+                mysql = popup.get_by_role("option", name="MySQL（1）", exact=True)
+                expect(mysql.locator("img")).to_have_js_property("complete", True)
+                assert mysql.locator("img").evaluate("image => image.naturalWidth > 0")
+                if theme == "dark":
+                    sql_server = popup.get_by_role("option", name="SQL Server（0）", exact=True)
+                    assert sql_server.locator("strong").evaluate("element => getComputedStyle(element).color") == popup.evaluate("element => getComputedStyle(element).color")
+                bounds = popup.bounding_box()
+                assert bounds["x"] >= 0 and bounds["x"] + bounds["width"] <= width
+                assert bounds["y"] >= 0 and bounds["y"] + bounds["height"] <= 1001
+                assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+                page.screenshot(animations="disabled", path=str(tmp_path / f"{module}-database-icons-{theme}-{width}.png"))
+                combo.press("Escape")
+                expect(popup).to_have_count(0)
+                expect(combo).to_have_attribute("title", "Oracle（1）")
+            combo.press("ArrowDown")
+            combo.press("ArrowDown")
+            combo.press("Enter")
+            expect(combo).to_have_attribute("title", "MySQL（1）")
+            expect(page.locator(".library-record-list")).to_contain_text("MySQL记录")
+            expect(page.locator(".library-record-list")).not_to_contain_text("Oracle记录")
+            expect(combo).to_be_focused()
+            combo.press("Home")
+            combo.press("Enter")
+            expect(combo).to_have_attribute("title", "全部数据库（5）")
+            combo.click()
+            popup = page.get_by_role("listbox", name="数据库", exact=True)
+            popup.get_by_role("option", name=f"{custom}（1）", exact=True).click()
+            expect(combo).to_have_attribute("title", f"{custom}（1）")
+            expect(page.locator(".library-record-list")).to_contain_text(custom + "记录")
+            combo.click()
+            page.get_by_role("heading", name=label, exact=True).click()
+            expect(page.get_by_role("listbox")).to_have_count(0)
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+            page.set_viewport_size({"width": 1440, "height": 360})
+            combo.click()
+            popup = page.get_by_role("listbox", name="数据库", exact=True)
+            bounds = popup.bounding_box()
+            assert bounds["y"] >= 0 and bounds["y"] + bounds["height"] <= 361
+            combo.press("Escape")
+        finally:
+            browser.close()
+            client.close()

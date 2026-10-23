@@ -156,9 +156,11 @@ describe("library classification and read-only preview", () => {
       return list([{ id: 1, revision: 1, name: "资源" }], 31);
     }));
     show(resourcesConfig);
-    fireEvent.change(await screen.findByRole("combobox", { name: "筛选数据库" }), { target: { value: "Oracle" } });
-    const options = within(screen.getByRole("combobox", { name: "筛选数据库" })).getAllByRole("option");
-    expect(options.some((option) => option.getAttribute("value") === "达梦")).toBe(true);
+    fireEvent.click(await screen.findByRole("combobox", { name: "筛选数据库" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Oracle（20）" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "筛选数据库" }));
+    expect(screen.getByRole("option", { name: "达梦（11）" })).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "筛选数据库" }), { key: "Escape" });
     const categories = screen.getByRole("group", { name: "资源类型" });
     expect(within(categories).getByRole("button", { name: /自定义类型/ })).toBeInTheDocument();
     fireEvent.click(within(categories).getByRole("button", { name: /^安装包/ }));

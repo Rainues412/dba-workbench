@@ -1,5 +1,6 @@
 import { FolderOpen, Layers3 } from "lucide-react";
-import { DatabaseLabel, databaseMeta } from "./DatabaseLabel";
+import { databaseMeta } from "./DatabaseLabel";
+import { DatabaseFilter } from "./DatabaseFilter";
 import { ErrorState, LoadingState } from "./States";
 
 export type Classification = {
@@ -33,17 +34,13 @@ export function CategoryNavigation({ classification, data, loading, error, retry
       if (name) categoryCounts.set(name, (categoryCounts.get(name) ?? 0) + count);
     }
   }
-  const databaseNames = [...new Set([...Object.keys(databaseMeta), ...databaseCounts.keys()])];
+  const databaseNames = [...new Set([...Object.keys(databaseMeta), ...databaseCounts.keys(), database].filter(Boolean))];
   const categoryTotal = database ? databaseCounts.get(database) ?? 0 : data?.total ?? 0;
   const categories = [...new Set([...categoryOptions, ...(categoryField ? (data?.items ?? []).map((row) => String(row[categoryField] ?? "")) : []), category].filter(Boolean))];
   return <section className="panel library-categories" aria-label="分类浏览">
     <h2><Layers3 size={16} />分类浏览</h2>
     <div role="group" aria-label="数据库分类">
-      <label className="library-database-select">数据库<select aria-label="筛选数据库" value={database} onChange={(event) => onChange(event.target.value, "")}>
-        <option value="">全部数据库（{data?.total ?? 0}）</option>
-        {databaseNames.map((name) => <option key={name} value={name}>{name}（{databaseCounts.get(name) ?? 0}）</option>)}
-      </select></label>
-      {database && <DatabaseLabel name={database} />}
+      <DatabaseFilter value={database} names={databaseNames} counts={databaseCounts} total={data?.total ?? 0} onChange={(value) => onChange(value, "")} />
     </div>
     {loading && <LoadingState label="正在读取分类" />}
     {error && <ErrorState message="分类加载失败" retry={retry} />}
