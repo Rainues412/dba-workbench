@@ -11,9 +11,13 @@ def test_database_icons_and_keyboard_filter(live_server, tmp_path, module, label
     headers = {"X-CSRF-Token": csrf}
     db_field = "db_type" if module == "scripts" else "wb_db"
     title_field = "name" if module == "resources" else "title"
+    category_field = "wb_type" if module == "scripts" else "kind" if module == "resources" else "category"
+    category_label = "脚本类型" if module == "scripts" else "资源类型" if module == "resources" else "文档分类"
+    category = "巡检" if module == "scripts" else "安装包" if module == "resources" else "安装部署"
     custom = "自定义数据库-" + "长名称" * 18
+    custom_category = "自定义分类-" + "长类别" * 18
     for database in ["Oracle", "MySQL", "MongoDB", "其他", custom]:
-        client.post(f"/api/{module}/", json={title_field: f"{database}记录", db_field: database}, headers=headers).raise_for_status()
+        client.post(f"/api/{module}/", json={title_field: f"{database}记录", db_field: database, category_field: custom_category if database == custom else category}, headers=headers).raise_for_status()
     with sync_playwright() as playwright:
         browser = _edge(playwright)
         try:
@@ -25,6 +29,13 @@ def test_database_icons_and_keyboard_filter(live_server, tmp_path, module, label
             group = page.get_by_role("group", name="数据库分类")
             expect(group.get_by_text("Oracle", exact=True)).to_have_count(1)
             expect(group.locator(".database-label")).to_have_count(1)
+            categories = page.get_by_role("group", name=category_label, exact=True)
+            categories.get_by_role("button", name=category + " 1", exact=True).click()
+            active = page.get_by_role("group", name="当前分类筛选", exact=True)
+            expect(active.locator(".database-label")).to_have_text("Oracle")
+            expect(active.locator(".active-classification-category")).to_have_text(category)
+            expect(active.locator("img")).to_have_js_property("complete", True)
+            assert active.locator("img").evaluate("image => image.naturalWidth > 0")
             for theme, width in [("light", 1440), ("dark", 1440), ("light", 390), ("dark", 390)]:
                 page.set_viewport_size({"width": width, "height": 1000})
                 page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
@@ -49,12 +60,15 @@ def test_database_icons_and_keyboard_filter(live_server, tmp_path, module, label
                 combo.press("Escape")
                 expect(popup).to_have_count(0)
                 expect(combo).to_have_attribute("title", "Oracle（1）")
+                active.get_by_role("button", name="清除分类", exact=True).hover()
+                page.screenshot(animations="disabled", path=str(tmp_path / f"{module}-active-filters-{theme}-{width}.png"))
             combo.press("ArrowDown")
             combo.press("ArrowDown")
             combo.press("Enter")
             expect(combo).to_have_attribute("title", "MySQL（1）")
             expect(page.locator(".library-record-list")).to_contain_text("MySQL记录")
             expect(page.locator(".library-record-list")).not_to_contain_text("Oracle记录")
+            expect(active.locator(".active-classification-category")).to_have_count(0)
             expect(combo).to_be_focused()
             combo.press("Home")
             combo.press("Enter")
@@ -64,10 +78,30 @@ def test_database_icons_and_keyboard_filter(live_server, tmp_path, module, label
             popup.get_by_role("option", name=f"{custom}（1）", exact=True).click()
             expect(combo).to_have_attribute("title", f"{custom}（1）")
             expect(page.locator(".library-record-list")).to_contain_text(custom + "记录")
+            categories.get_by_role("button", name=custom_category + " 1", exact=True).click()
+            expect(active.locator(".active-classification-category")).to_have_attribute("title", custom_category)
+            expect(active.locator(".active-classification-database")).to_have_attribute("title", custom)
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             combo.click()
             page.get_by_role("heading", name=label, exact=True).click()
             expect(page.get_by_role("listbox")).to_have_count(0)
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+            active.get_by_role("button", name="清除分类", exact=True).click()
+            expect(active).to_have_count(0)
+            expect(combo).to_have_attribute("title", "全部数据库（5）")
+            expect(page.locator(".library-record")).to_have_count(5)
+            categories.get_by_role("button", name=category + " 4", exact=True).click()
+            expect(active.locator(".database-label")).to_have_count(0)
+            expect(active.locator(".active-classification-category")).to_have_text(category)
+            clear = active.get_by_role("button", name="清除分类", exact=True)
+            clear.focus()
+            clear.press("Shift+Tab")
+            page.keyboard.press("Tab")
+            expect(clear).to_be_focused()
+            assert clear.evaluate("button => button.matches(':focus-visible')")
+            page.screenshot(animations="disabled", path=str(tmp_path / f"{module}-clear-keyboard-focus.png"))
+            clear.press("Enter")
+            expect(active).to_have_count(0)
             page.set_viewport_size({"width": 1440, "height": 360})
             combo.click()
             popup = page.get_by_role("listbox", name="数据库", exact=True)

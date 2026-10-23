@@ -42,6 +42,17 @@
 .library-categories .category-filter span { flex: 0 0 auto; min-width: 20px; text-align: center; }
 .library-categories .state { padding-inline: .2rem; }
 .library-page .data-panel { border-left: 1px solid var(--border); }
+.library-page .active-classification { padding: .65rem 1rem; border-bottom: 1px solid var(--border); }
+.active-classification-tags { display: flex; flex: 1 1 160px; flex-wrap: wrap; align-items: center; min-width: 0; max-width: 100%; gap: .4rem; }
+.active-classification-database { display: flex; min-width: 0; max-width: 100%; }
+.active-classification .database-label { min-width: 0; padding: .3rem .5rem; gap: .35rem; border: 1px solid color-mix(in srgb, currentColor 15%, transparent); font-size: .74rem; }
+.active-classification .database-logo, .active-classification .database-logo img, .active-classification .database-logo svg { width: 17px; height: 17px; }
+.active-classification-category { display: inline-flex; align-items: center; gap: .35rem; min-width: 0; max-width: 100%; padding: .3rem .5rem; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--surface-soft); font-size: .74rem; }
+.active-classification-category > svg { flex-shrink: 0; }
+.active-classification-category > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.library-page .active-classification > .classification-clear { display: inline-flex; align-items: center; flex: 0 0 auto; gap: .35rem; margin-left: auto; padding: .35rem .6rem; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); background: var(--surface); font: inherit; font-size: .74rem; white-space: nowrap; }
+.library-page .classification-clear:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+.library-page .classification-clear:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .library-page .data-panel > .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; padding: .85rem 1rem; }
 .library-page .toolbar .search-field { flex: 1 1 180px; min-width: 0; }
 .library-page .toolbar .list-filters { padding: 0; margin: 0; flex: 0 0 auto; }

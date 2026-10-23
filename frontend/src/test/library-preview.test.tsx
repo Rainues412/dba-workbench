@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CrudPage, type CrudConfig } from "../components/CrudPage";
 import { articlesConfig, resourcesConfig, scriptsConfig } from "../pages/entityConfigs";
+import { databaseMeta } from "../components/DatabaseLabel";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
@@ -158,6 +159,9 @@ describe("library classification and read-only preview", () => {
     show(resourcesConfig);
     fireEvent.click(await screen.findByRole("combobox", { name: "筛选数据库" }));
     fireEvent.click(await screen.findByRole("option", { name: "Oracle（20）" }));
+    const active = screen.getByRole("group", { name: "当前分类筛选" });
+    expect(active.querySelector("img")).toHaveAttribute("src", databaseMeta.Oracle.icon);
+    expect(active.querySelector(".active-classification-category")).toBeNull();
     fireEvent.click(screen.getByRole("combobox", { name: "筛选数据库" }));
     expect(screen.getByRole("option", { name: "达梦（11）" })).toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole("combobox", { name: "筛选数据库" }), { key: "Escape" });
@@ -170,6 +174,18 @@ describe("library classification and read-only preview", () => {
       expect(params.get("wb_db")).toBe("Oracle");
       expect(params.get("page")).toBe("1");
     });
+    expect(within(active).getByText("安装包")).toBeInTheDocument();
+    fireEvent.click(within(active).getByRole("button", { name: "清除分类" }));
+    await waitFor(() => {
+      const params = new URL(requests.at(-1)!, "http://localhost").searchParams;
+      expect(params.has("wb_db")).toBe(false);
+      expect(params.has("kind")).toBe(false);
+    });
+    expect(screen.queryByRole("group", { name: "当前分类筛选" })).not.toBeInTheDocument();
+    fireEvent.click(within(categories).getByRole("button", { name: /^自定义类型/ }));
+    const categoryOnly = screen.getByRole("group", { name: "当前分类筛选" });
+    expect(categoryOnly.querySelector(".database-label")).toBeNull();
+    expect(within(categoryOnly).getByText("自定义类型")).toBeInTheDocument();
   });
 
   it("editing from preview saves the full body with its revision, and HTML stays text", async () => {
