@@ -73,8 +73,12 @@ def test_classification_list_preview_and_shortcuts(live_server, tmp_path, monkey
                 else:
                     trigger.click()
                     preview = page.locator(".library-preview")
-                    expect(preview).to_contain_text(body)
-                expect(preview.locator(".library-article-body img, .library-code img")).to_have_count(0)
+                    if module == "articles":
+                        expect(preview.get_by_role("region", name="正文预览", exact=True)).to_have_count(0)
+                        expect(preview).not_to_contain_text(body)
+                    else:
+                        expect(preview).to_contain_text(body)
+                expect(preview.locator(".library-code img")).to_have_count(0)
                 assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
                 if module == "resources":
                     expect(page.locator(".library-preview")).to_have_count(0)
@@ -139,12 +143,13 @@ def test_classification_list_preview_and_shortcuts(live_server, tmp_path, monkey
 @pytest.mark.browser
 @pytest.mark.parametrize("module,label,suffix,encoding", [
     ("scripts", "脚本库", ".sql", "gb18030"),
-    ("articles", "知识库", ".md", "utf-8"),
+    ("articles", "知识库", ".pdf", "utf-8"),
 ])
-def test_path_only_records_preview_real_file(live_server, tmp_path, monkeypatch, module, label, suffix, encoding):
-    from backend import local_capabilities
+def test_path_only_records_preview_real_file_when_viewer_unavailable(live_server, tmp_path, monkeypatch, module, label, suffix, encoding):
+    from backend import file_visual_preview, local_capabilities
     from backend.config import Settings
 
+    monkeypatch.setattr(file_visual_preview, "_viewer_available", lambda: False)
     monkeypatch.setattr(local_capabilities, "_enrolled_roots", set())
     monkeypatch.setattr(local_capabilities, "settings", Settings.from_env({
         "DBA_LOCAL_CAPABILITIES": "true", "DBA_ALLOWED_ROOTS": str(tmp_path),
@@ -164,21 +169,30 @@ def test_path_only_records_preview_real_file(live_server, tmp_path, monkeypatch,
             page.get_by_role("navigation", name="主导航").get_by_role("link", name=label, exact=True).click()
             page.get_by_role("button", name="预览：仅路径记录", exact=True).click()
             preview = page.locator(".library-preview")
-            expect(preview).to_contain_text(body)
-            expect(preview).to_contain_text("预览来源：关联文件")
-            expect(preview.locator(".library-code img, .library-article-body img")).to_have_count(0)
+            changed_body = body
             if module == "scripts":
+                expect(preview).to_contain_text(body)
+                expect(preview).to_contain_text("预览来源：关联文件")
+                expect(preview.locator(".library-code img")).to_have_count(0)
                 preview.get_by_role("button", name="复制正文", exact=True).click()
                 assert page.evaluate("window.__copied") == body
+            else:
+                expect(preview).to_contain_text("原文件预览失败：内置文件预览服务正在启动或不可用，请稍后重试")
+                expect(preview.get_by_role("region", name="正文预览", exact=True)).to_have_count(0)
+                expect(preview).not_to_contain_text(body)
             page.screenshot(animations="disabled", path=str(tmp_path / f"{module}-linked-file-light-1600.png"))
             # Reading again reflects the linked file without changing its database record.
-            changed_body = body + "\n-- 原文件更新后重新读取"
-            target.write_bytes(changed_body.encode(encoding))
-            preview.get_by_role("button", name="重新读取", exact=True).click()
-            expect(preview).to_contain_text(changed_body)
+            if module == "scripts":
+                changed_body = body + "\n-- 原文件更新后重新读取"
+                target.write_bytes(changed_body.encode(encoding))
+                preview.get_by_role("button", name="重新读取", exact=True).click()
+                expect(preview).to_contain_text(changed_body)
             page.set_viewport_size({"width": 390, "height": 900})
             page.evaluate("document.documentElement.dataset.theme = 'dark'")
-            expect(preview).to_contain_text(changed_body)
+            if module == "scripts":
+                expect(preview).to_contain_text(changed_body)
+            else:
+                expect(preview.get_by_role("region", name="正文预览", exact=True)).to_have_count(0)
             assert preview.evaluate("element => element.matches(':modal')")
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             page.screenshot(animations="disabled", path=str(tmp_path / f"{module}-linked-file-dark-390.png"))

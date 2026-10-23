@@ -30,13 +30,15 @@ def test_record_icons_tags_and_actions_stay_inside_rows(live_server, tmp_path, m
             page.get_by_role("navigation", name="主导航").get_by_role("link", name=label, exact=True).click()
             records = page.locator(".library-record")
             expect(records).to_have_count(9)
+            if module != "resources":
+                expect(records.first.locator(".library-record-path")).to_have_attribute("title", str(tmp_path / ("长文件路径" * 15 + ".sql")))
             for theme, width in [("light", 1440), ("dark", 1440), ("light", 1024), ("light", 390), ("dark", 390), ("light", 320)]:
                 page.set_viewport_size({"width": width, "height": 1000})
                 page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
                 assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
                 errors = records.evaluate_all("""rows => rows.flatMap(row => {
                     const errors = [], bounds = row.getBoundingClientRect();
-                    for (const element of row.querySelectorAll('.database-label, .badge, .library-tag, .library-record-actions, .record-title-link, .record-path-link, .record-copy-path, .library-resource-links .compact-file-links > span:not(.record-path-line)')) {
+                    for (const element of row.querySelectorAll('.database-label, .badge, .library-tag, .library-record-actions, .library-record-path, .record-title-link, .record-path-link, .record-copy-path, .library-resource-links .compact-file-links > span:not(.record-path-line)')) {
                         const rect = element.getBoundingClientRect();
                         if (rect.left < bounds.left - 1 || rect.right > bounds.right + 1) errors.push('element overflows row');
                     }

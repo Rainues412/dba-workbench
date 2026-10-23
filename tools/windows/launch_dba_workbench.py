@@ -89,6 +89,7 @@ def start_server() -> bool:
             "DBA_OPEN_BROWSER": "false",
             "DBA_DATA_DIR": str(SERVER_DIR),
             "DBA_LOG_DIR": str(LOG_DIR),
+            "DBA_FILE_VIEWER_DATA_DIR": str(REPO_DIR / ".runtime" / "file-viewer-data"),
         }
     )
     if EDGE_PATH is not None and EDGE_PATH.is_file():

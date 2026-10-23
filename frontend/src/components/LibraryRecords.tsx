@@ -1,12 +1,14 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Copy, FileText, MoreHorizontal, Pencil, Pin, Star, Trash2, X } from "lucide-react";
+import { Copy, FileText, FolderOpen, MoreHorizontal, Pencil, Pin, Star, Trash2, X } from "lucide-react";
 import { api, Entity } from "../api/client";
 import type { CrudConfig } from "./CrudPage";
 import { DatabaseLabel } from "./DatabaseLabel";
 import { EntityDetails } from "./EntityDetails";
 import { LocalFileLinks } from "./LocalFileLinks";
 import { EmptyState, ErrorState, LoadingState } from "./States";
+
+const MarkdownFilePreview = lazy(() => import("./MarkdownFilePreview").then((module) => ({ default: module.MarkdownFilePreview })));
 
 function recordTitle(config: CrudConfig, row: Entity) {
   return String(row[config.columns[0].name] || "未命名记录");
@@ -42,6 +44,7 @@ export function LibraryRecords({ config, rows, selectedId, disabled, onPreview, 
   return <ul className="library-record-list" aria-label={`${config.title}记录`}>
     {rows.map((row) => {
       const title = recordTitle(config, row);
+      const filePath = config.key !== "resources" && config.fileLinks ? String(row[config.fileLinks.pathField] || "").trim() : "";
       const description = String(row.summary || row.description || (config.key === "resources" ? row.path || row.url : "") || "");
       return <li key={row.id} className={`library-record${selectedId === row.id ? " selected" : ""}`}>
         <span className={`library-record-icon ${config.key}`} aria-hidden="true"><Icon size={20} /></span>
@@ -49,7 +52,8 @@ export function LibraryRecords({ config, rows, selectedId, disabled, onPreview, 
           <div className="library-record-heading">
             <div className="library-record-summary">
               {config.key === "resources" && config.fileLinks ? <div className="library-resource-links" title={title}><LocalFileLinks row={row} label={title} config={config.fileLinks} disabled={disabled} onNotice={onNotice} compact /></div> : <button type="button" className="library-record-title" title={title} aria-label={`预览：${title}`} aria-pressed={selectedId === row.id} disabled={disabled} onClick={() => onPreview(row.id)}>{title}</button>}
-              {description && <p className="library-record-description" title={description}>{description}</p>}
+              {filePath ? <p className="library-record-path" title={filePath}><FolderOpen size={13} aria-hidden="true" /><span>{filePath}</span></p>
+                : description && <p className="library-record-description" title={description}>{description}</p>}
             </div>
             <div className="library-record-actions">
               <button type="button" className={`icon-button${row.is_favorite ? " is-favorite" : ""}`} aria-label={row.is_favorite ? "取消收藏" : "收藏"} title={row.is_favorite ? "取消收藏" : "收藏"} disabled={disabled} onClick={() => void onUpdate(row, { is_favorite: row.is_favorite ? 0 : 1 })}><Star size={16} fill={row.is_favorite ? "currentColor" : "none"} /></button>
@@ -91,7 +95,17 @@ export function LibraryPreview({ config, id, onClose, onEdit, onNotice, onRefres
   const row = detail.data;
   const savedContent = String(row?.content || "");
   const linkedPath = String(row?.file_path || "");
-  const needsFile = Boolean(row && !savedContent.trim() && linkedPath.trim());
+  const hasLinkedFile = Boolean(row && linkedPath.trim());
+  const summary = String(row?.summary || row?.description || "").trim();
+  const showSummary = summary && !(hasLinkedFile && /^来自\s/.test(summary));
+  const visual = useQuery({
+    queryKey: [config.key, "visual-preview", id, linkedPath, row?.updated_at],
+    queryFn: ({ signal }) => api<{ filename: string; viewer: string; viewer_version?: string; viewer_url: string; asset_url?: string }>(`${config.path}${id}/visual-preview`, { signal }),
+    enabled: id !== null && hasLinkedFile,
+    retry: false,
+    gcTime: 0,
+  });
+  const needsFile = Boolean(config.key === "scripts" && row && !savedContent.trim() && linkedPath.trim() && visual.isError);
   const file = useQuery({
     queryKey: [config.key, "file-preview", id, linkedPath, row?.updated_at],
     queryFn: ({ signal }) => api<{ filename: string; content: string; truncated: boolean }>(`${config.path}${id}/file-preview`, { signal }),
@@ -142,18 +156,29 @@ export function LibraryPreview({ config, id, onClose, onEdit, onNotice, onRefres
         : detail.isLoading ? <LoadingState label="正在读取完整记录" />
         : detail.error || !row ? <ErrorState message="预览加载失败，请重试" retry={() => void detail.refetch()} />
         : <>
-          <RecordMeta config={config} row={row} />
-          <dl className="library-preview-meta">
-            {Boolean(row.updated_at) && <><dt>更新时间</dt><dd>{String(row.updated_at).replace("T", " ").slice(0, 19)}</dd></>}
-          </dl>
-          {config.fileLinks && <section className="library-preview-section" aria-label="快捷访问">
-            <LocalFileLinks row={row} label={title} config={config.fileLinks} disabled={false} onNotice={notify} actionLabel={config.fileLinks.openLabel} />
+          <div className="library-preview-overview">
+            <RecordMeta config={config} row={row} />
+            {Boolean(row.updated_at) && <dl className="library-preview-meta"><dt>更新于</dt><dd title={String(row.updated_at)}>{String(row.updated_at).replace("T", " ").slice(0, 16)}</dd></dl>}
+          </div>
+          {config.fileLinks && <section className="library-preview-section library-preview-actions" aria-label="快捷访问">
+            <LocalFileLinks row={row} label={title} config={config.fileLinks} disabled={false} onNotice={notify} actionLabel={config.fileLinks.openLabel} compact />
             {!row[config.fileLinks.pathField] && !(config.fileLinks.urlField && row[config.fileLinks.urlField]) && <p className="muted">未关联本地文件或网址</p>}
           </section>}
           <>
-              {Boolean(row.summary || row.description) && <p className="library-preview-summary">{String(row.summary || row.description)}</p>}
-              <section className="library-preview-section"><div className="library-content-heading"><h3>{config.key === "scripts" ? "脚本正文（只读）" : "文章正文"}</h3>
-                {config.key === "scripts" && <button type="button" className="button small" disabled={!body || (needsFile && (file.isFetching || !!file.error))} onClick={() => void copyContent()}><Copy size={14} />{needsFile && file.data?.truncated ? "复制预览" : "复制正文"}</button>}
+              {showSummary && <p className="library-preview-summary">{summary}</p>}
+              {hasLinkedFile && <section className="library-preview-section library-visual-preview" aria-label="原文件预览">
+                <div className="library-content-heading"><h3>原文件预览</h3>
+                  <span className="muted" title={visual.data?.filename}>{visual.data?.filename || "内置查看器"}</span>
+                </div>
+                {visual.isLoading ? <LoadingState label="正在准备原文件预览" />
+                  : visual.error ? <ErrorState message={`原文件预览失败：${visual.error.message}`} retry={() => void visual.refetch()} />
+                  : visual.data?.viewer === "markdown" ? <Suspense fallback={<LoadingState label="正在加载 Markdown 查看器" />}><MarkdownFilePreview filename={visual.data.filename} sourceUrl={visual.data.viewer_url} assetUrl={visual.data.asset_url!} /></Suspense>
+                  : visual.data ? <iframe className="library-visual-frame" title={`原文件预览：${visual.data.filename}`} src={visual.data.viewer_url} sandbox="allow-downloads allow-forms allow-popups allow-same-origin allow-scripts" referrerPolicy="no-referrer" />
+                  : null}
+              </section>}
+              {config.key === "articles" && !hasLinkedFile && <EmptyState title="尚未关联源文件" description="请编辑记录，填写源文件路径后预览。" />}
+              {config.key === "scripts" && (savedContent || needsFile || !hasLinkedFile) && <section className="library-preview-section" aria-label="正文预览"><div className="library-content-heading"><h3>脚本正文（只读）</h3>
+                <button type="button" className="button small" disabled={!body || (needsFile && (file.isFetching || !!file.error))} onClick={() => void copyContent()}><Copy size={14} />{needsFile && file.data?.truncated ? "复制预览" : "复制正文"}</button>
               </div>
                 {needsFile && <p className="library-file-source muted">预览来源：关联文件{file.data ? ` · ${file.data.filename}` : ""}
                   <button type="button" className="button small" disabled={file.isFetching} onClick={() => void file.refetch()}>重新读取</button>
@@ -162,10 +187,10 @@ export function LibraryPreview({ config, id, onClose, onEdit, onNotice, onRefres
                   : needsFile && file.error ? <ErrorState message={`关联文件预览失败：${file.error.message}`} retry={() => void file.refetch()} />
                   : <>
                     {needsFile && file.data?.truncated && <p className="library-inline-notice" role="status">文件较大，仅显示前 512 KB 预览；请快捷打开查看完整内容。</p>}
-                    {body ? config.key === "scripts" ? <pre className="library-code"><code>{body}</code></pre> : <div className="library-article-body">{body}</div>
-                      : <p className="muted">{needsFile ? "关联文件为空。" : "尚未填写正文，也未关联可预览的本地文件。"}</p>}
+                    {body ? <pre className="library-code"><code>{body}</code></pre>
+                      : <p className="muted">{needsFile ? "关联文件为空。" : "尚未填写正文，也未关联本地文件。"}</p>}
                   </>}
-              </section>
+              </section>}
               {config.key === "scripts" && <details className="library-history"><summary><FileText size={15} />历史版本</summary><EntityDetails module={config.key} item={row} onRefresh={onRefresh} readOnly /></details>}
           </>
         </>}

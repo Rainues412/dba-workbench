@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import json
+import secrets
 import socket
 import subprocess
 import sys
@@ -69,6 +70,11 @@ def _configure_runtime() -> Path:
     os.environ.setdefault("DBA_HOST", HOST)
     os.environ.setdefault("DBA_PORT", str(PORT))
     os.environ.setdefault("DBA_OPEN_BROWSER", "false")
+    viewer_port = int(os.environ.get("DBA_FILE_VIEWER_PORT", "8012"))
+    if not 1 <= viewer_port <= 65535:
+        raise RuntimeError("DBA_FILE_VIEWER_PORT 必须是 1 到 65535 之间的端口。")
+    os.environ["DBA_FILE_VIEWER_URL"] = f"http://127.0.0.1:{viewer_port}"
+    os.environ["DBA_FILE_VIEWER_KEY"] = secrets.token_urlsafe(32)
     _configure_local_capabilities(data_dir)
 
     log = (log_dir / "server.log").open("a", encoding="utf-8", buffering=1)
@@ -170,8 +176,10 @@ def main() -> None:
         raise RuntimeError(f"端口 {PORT} 已被其他程序占用。")
 
     import uvicorn
+    from file_viewer_runtime import start_file_viewer, stop_file_viewer
     from main import app
 
+    viewer = start_file_viewer(_data_directory(), log_dir)
     threading.Thread(target=_open_browser_when_ready, daemon=True).start()
     config = uvicorn.Config(
         app,
@@ -188,6 +196,8 @@ def main() -> None:
         server.run()
     except Exception as error:
         raise RuntimeError(f"启动失败，请查看日志：{log_dir / 'server.log'}") from error
+    finally:
+        stop_file_viewer(viewer)
 
 
 if __name__ == "__main__":

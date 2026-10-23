@@ -36,6 +36,35 @@ describe("library classification and read-only preview", () => {
     expect(within(record).getByRole("button", { name: `${config.fileLinks!.openLabel}：条目布局` })).toBeEnabled();
     expect(within(record).getByRole("button", { name: "打开所在文件夹：条目布局" })).toBeEnabled();
     expect(within(record).getByRole("button", { name: "复制路径：条目布局" })).toBeEnabled();
+    if (config.key !== "resources") {
+      expect(record.querySelector(".library-record-path")).toHaveAttribute("title", "D:/docs/record.sql");
+      expect(record.querySelector(".library-record-path")).toHaveTextContent("D:/docs/record.sql");
+    }
+  });
+
+  it("keeps file preview controls compact and hides duplicate import descriptions", async () => {
+    const row = { id: 19, revision: 1, title: "路径与预览布局", file_path: "D:/docs/完整文档路径.pdf", summary: "来自 其他/完整文档路径.pdf", wb_db: "MySQL", category: "技术文档", updated_at: "2026-10-23T20:30:45" };
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+      if (path.endsWith("facets")) return Response.json({ total: 1, items: [] });
+      if (path.endsWith("visual-preview")) return Response.json({ filename: "完整文档路径.pdf", viewer_url: "http://127.0.0.1:8012/onlinePreview?url=signed" });
+      if (path === "/api/articles/19") return Response.json(row);
+      return list([row]);
+    }));
+    show(articlesConfig);
+    const record = await screen.findByRole("listitem");
+    expect(record.querySelector(".library-record-path")).toHaveTextContent(row.file_path);
+    expect(within(record).queryByText(row.summary)).not.toBeInTheDocument();
+    fireEvent.click(within(record).getByRole("button", { name: "预览：路径与预览布局" }));
+    const preview = screen.getByRole("complementary", { name: "记录预览" });
+    await within(preview).findByTitle("原文件预览：完整文档路径.pdf");
+    expect(preview.querySelector(".library-preview-overview .library-record-meta")).toHaveTextContent("MySQL");
+    expect(preview.querySelector(".library-preview-overview .library-preview-meta")).toHaveTextContent("2026-10-23 20:30");
+    const actions = within(preview).getByRole("region", { name: "快捷访问" });
+    expect(within(actions).getByRole("button", { name: "打开文档：路径与预览布局" })).toBeEnabled();
+    expect(within(actions).getByRole("button", { name: "打开所在文件夹：路径与预览布局" })).toHaveAttribute("title", row.file_path);
+    expect(within(actions).getByRole("button", { name: "复制路径：路径与预览布局" })).toBeEnabled();
+    expect(within(preview).queryByText(row.file_path)).not.toBeInTheDocument();
+    expect(within(preview).queryByText(row.summary)).not.toBeInTheDocument();
   });
 
   it.each([articlesConfig, scriptsConfig, resourcesConfig])("$key restores classification from the URL and clears it without removing unrelated parameters", async (config) => {
@@ -72,13 +101,14 @@ describe("library classification and read-only preview", () => {
     expect(screen.queryByRole("group", { name: "当前分类筛选" })).not.toBeInTheDocument();
   });
 
-  it.each([articlesConfig, scriptsConfig])("$key previews linked files when the database body is empty without copying them into the editor", async (config) => {
+  it.each([scriptsConfig])("$key previews linked files when the database body is empty without copying them into the editor", async (config) => {
     const row = { id: 12, revision: 2, title: "仅关联文件", content: "", file_path: "D:/docs/old.sql" };
     const reads: string[] = [];
     const fileBody = "SELECT '<img src=x onerror=alert(1)>'; -- 中文";
     vi.stubGlobal("fetch", vi.fn(async (path: string) => {
       reads.push(path);
       if (path.endsWith("facets")) return Response.json({ total: 1, items: [] });
+      if (path.endsWith("visual-preview")) return Response.json({ detail: "内置查看器暂不可用" }, { status: 503 });
       if (path.endsWith("file-preview")) return Response.json({ filename: "old.sql", content: fileBody, truncated: false });
       if (path === `${config.path}12`) return Response.json(row);
       return list([row]);
@@ -95,11 +125,54 @@ describe("library classification and read-only preview", () => {
     expect(within(editor).getByLabelText(config.key === "scripts" ? "脚本正文" : "正文", { exact: true })).toHaveValue("");
   });
 
+  it.each(["D:/docs/layout.pdf", ""])("articles show only source-file preview and preserve saved content when path is %s", async (filePath) => {
+    const row = { id: 18, revision: 3, title: "仅源文件预览", content: "保留的历史文章正文", file_path: filePath };
+    const reads: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+      reads.push(path);
+      if (path.endsWith("facets")) return Response.json({ total: 1, items: [] });
+      if (path.endsWith("visual-preview")) return Response.json({ detail: "内置查看器暂不可用" }, { status: 503 });
+      if (path === "/api/articles/18") return Response.json(row);
+      return list([row]);
+    }));
+    show(articlesConfig);
+    fireEvent.click(await screen.findByRole("button", { name: "预览：仅源文件预览" }));
+    const preview = screen.getByRole("complementary", { name: "记录预览" });
+    await within(preview).findByText(filePath ? "原文件预览失败：内置查看器暂不可用" : "尚未关联源文件");
+    expect(within(preview).queryByRole("region", { name: "正文预览" })).not.toBeInTheDocument();
+    expect(within(preview).queryByText(row.content)).not.toBeInTheDocument();
+    expect(reads).not.toContain("/api/articles/18/file-preview");
+    fireEvent.click(within(preview).getByRole("button", { name: "编辑" }));
+    expect(await within(screen.getByRole("dialog")).findByLabelText("正文", { exact: true })).toHaveValue(row.content);
+  });
+
+  it.each([articlesConfig, scriptsConfig])("$key embeds kkFileView for the original linked file without flattening its layout", async (config) => {
+    const row = { id: 16, revision: 1, title: "原样预览", content: config.key === "articles" ? "不再展示的文章正文" : "", file_path: "D:/docs/layout.pdf" };
+    const reads: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+      reads.push(path);
+      if (path.endsWith("facets")) return Response.json({ total: 1, items: [] });
+      if (path.endsWith("visual-preview")) return Response.json({ filename: "layout.pdf", viewer: "kkFileView", viewer_version: "5.0.3", viewer_url: "http://127.0.0.1:8012/onlinePreview?url=signed" });
+      if (path === `${config.path}16`) return Response.json(row);
+      return list([row]);
+    }));
+    show(config);
+    fireEvent.click(await screen.findByRole("button", { name: "预览：原样预览" }));
+    const preview = screen.getByRole("complementary", { name: "记录预览" });
+    const frame = await within(preview).findByTitle("原文件预览：layout.pdf");
+    expect(frame).toHaveAttribute("src", "http://127.0.0.1:8012/onlinePreview?url=signed");
+    expect(frame).toHaveAttribute("sandbox", expect.stringContaining("allow-scripts"));
+    expect(within(preview).getByText("layout.pdf")).toHaveAttribute("title", "layout.pdf");
+    expect(reads).not.toContain(`${config.path}16/file-preview`);
+    if (config.key === "articles") expect(within(preview).queryByRole("region", { name: "正文预览" })).not.toBeInTheDocument();
+  });
+
   it("shows file permission failures and retries without disabling file shortcuts", async () => {
     let denied = true;
     const row = { id: 13, revision: 1, title: "读取失败", content: "", file_path: "D:/docs/file.sql" };
     vi.stubGlobal("fetch", vi.fn(async (path: string) => {
       if (path.endsWith("facets")) return Response.json({ total: 1, items: [] });
+      if (path.endsWith("visual-preview")) return Response.json({ detail: "内置查看器暂不可用" }, { status: 503 });
       if (path.endsWith("file-preview")) return denied ? Response.json({ detail: "路径超出允许目录" }, { status: 403 }) : Response.json({ filename: "file.sql", content: "已恢复读取", truncated: true });
       if (path === "/api/scripts/13") return Response.json(row);
       return list([row]);
@@ -111,7 +184,7 @@ describe("library classification and read-only preview", () => {
     expect(within(preview).getByRole("button", { name: "打开脚本：读取失败" })).toBeEnabled();
     expect(within(preview).getByRole("button", { name: "复制正文" })).toBeDisabled();
     denied = false;
-    fireEvent.click(within(preview).getByRole("button", { name: "重试" }));
+    fireEvent.click(within(within(preview).getByRole("region", { name: "正文预览" })).getByRole("button", { name: "重试" }));
     await within(preview).findByText("已恢复读取");
     expect(within(preview).getByRole("button", { name: "复制预览" })).toBeEnabled();
   });
@@ -146,7 +219,9 @@ describe("library classification and read-only preview", () => {
     expect(requests.some(({ path }) => path === `${config.path}7`)).toBe(false);
     fireEvent.click(previewButton);
     const preview = screen.getByRole("complementary", { name: "记录预览" });
-    await within(preview).findByText(config.key === "resources" ? "完整资源说明" : "完整正文，不能被摘要覆盖");
+    await waitFor(() => expect(within(preview).getByRole("button", { name: "编辑" })).toBeEnabled());
+    if (config.key === "scripts") expect(within(preview).getByText("完整正文，不能被摘要覆盖")).toBeInTheDocument();
+    else expect(within(preview).queryByText("完整正文，不能被摘要覆盖")).not.toBeInTheDocument();
     expect(preview.querySelector("form")).toBeNull();
     expect(requests.some(({ init }) => init?.method)).toBe(false);
     fireEvent.click(within(preview).getByRole("button", { name: `打开所在文件夹：快速访问测试` }));
@@ -241,7 +316,7 @@ describe("library classification and read-only preview", () => {
     expect(within(categoryOnly).getByText("自定义类型")).toBeInTheDocument();
   });
 
-  it("editing from preview saves the full body with its revision, and HTML stays text", async () => {
+  it("editing from source-only article preview preserves the full body and its revision", async () => {
     const row = { id: 9, revision: 6, title: "完整记录", summary: "列表摘要" };
     const content = '<img src=x onerror="window.hacked=1">完整正文';
     const writes: RequestInit[] = [];
@@ -254,8 +329,9 @@ describe("library classification and read-only preview", () => {
     show(articlesConfig);
     fireEvent.click(await screen.findByRole("button", { name: "预览：完整记录" }));
     const preview = screen.getByRole("complementary", { name: "记录预览" });
-    await within(preview).findByText(content);
-    expect(preview.querySelector(".library-article-body img")).toBeNull();
+    await within(preview).findByText("尚未关联源文件");
+    expect(within(preview).queryByText(content)).not.toBeInTheDocument();
+    expect(within(preview).queryByRole("region", { name: "正文预览" })).not.toBeInTheDocument();
     fireEvent.click(within(preview).getByRole("button", { name: "编辑" }));
     const dialog = await screen.findByRole("dialog");
     expect(await within(dialog).findByLabelText("正文", { exact: true })).toHaveValue(content);

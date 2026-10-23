@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import socket
+import os
 import sys
 import threading
 import time
@@ -32,6 +33,10 @@ def isolated_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # Import after redirecting DB_PATH. Routers resolve database and recovery
     # key paths from the patched value at call time.
     import main
+    from backend import file_visual_preview
+
+    if not os.environ.get("DBA_TEST_PREVIEW_SAMPLES"):
+        monkeypatch.setattr(file_visual_preview, "_viewer_available", lambda: False)
     assert Path(database.DB_PATH).resolve() == test_db
     yield main.app, test_db
 

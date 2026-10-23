@@ -18,6 +18,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from backend.config import settings
 from backend.database import run_startup_migrations
+from backend.file_visual_preview import VIEWER_ORIGIN, router as preview_file_router
 from backend.auth import PUBLIC_API_PATHS, load_session, verify_csrf
 from backend.errors import (error_response, http_exception_handler, unhandled_exception_handler,
                             validation_exception_handler)
@@ -60,16 +61,17 @@ app.add_exception_handler(Exception, unhandled_exception_handler)
 @app.middleware("http")
 async def add_security_headers(request, call_next):
     response = await call_next(request)
-    response.headers["Content-Security-Policy"] = (
+    response.headers.setdefault("Content-Security-Policy", (
         "default-src 'self'; "
         "base-uri 'none'; "
         "connect-src 'self'; "
         "frame-ancestors 'none'; "
         "form-action 'self'; "
         "img-src 'self' data:; "
+        f"frame-src {VIEWER_ORIGIN}; "
         "object-src 'none'; "
         "script-src 'self' 'wasm-unsafe-eval'; style-src 'self'"
-    )
+    ))
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response
@@ -178,6 +180,7 @@ app.include_router(resources.router, prefix="/api/resources", tags=["resources"]
 app.include_router(vault.router, prefix="/api/vault", tags=["vault"])
 app.include_router(launcher.router, prefix="/api/launcher", tags=["launcher"])
 app.include_router(scan.router, prefix="/api/scan", tags=["scan"])
+app.include_router(preview_file_router, prefix="/preview-file", tags=["file-preview"])
 
 
 @app.get("/")
