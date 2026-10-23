@@ -15,11 +15,13 @@ function recordTitle(config: CrudConfig, row: Entity) {
 function RecordMeta({ config, row }: { config: CrudConfig; row: Entity }) {
   const database = String(row[config.classification?.databaseField || (config.key === "scripts" ? "db_type" : "wb_db")] || "");
   const category = String(row[config.classification?.categoryField || "category"] || "");
-  const tags = String(row.tags || "").split(/[,，]/).map((tag) => tag.trim()).filter(Boolean);
+  const context = new Set([database, category, row.version ? `v${row.version}` : ""].map((value) => value.toLowerCase()));
+  const tags = [...new Set(String(row.tags || "").split(/[,，]/).map((tag) => tag.trim()).filter(Boolean))].filter((tag) => !context.has(tag.toLowerCase()));
+  if (!database && !category && !row.version && !tags.length) return null;
   return <div className="library-record-meta">
     {database && <DatabaseLabel name={database} />}
     {category && <span className="badge" title={category}>{category}</span>}
-    {Boolean(row.version) && <span className="badge">v{String(row.version)}</span>}
+    {Boolean(row.version) && <span className="badge" title={`v${row.version}`}>v{String(row.version)}</span>}
     {tags.slice(0, 3).map((tag, index) => <span className="library-tag" key={`${tag}-${index}`} title={tag}>{tag}</span>)}
     {tags.length > 3 && <span className="library-tag" title={tags.join("、")}>+{tags.length - 3}</span>}
   </div>;
@@ -44,19 +46,25 @@ export function LibraryRecords({ config, rows, selectedId, disabled, onPreview, 
       return <li key={row.id} className={`library-record${selectedId === row.id ? " selected" : ""}`}>
         <span className={`library-record-icon ${config.key}`} aria-hidden="true"><Icon size={20} /></span>
         <div className="library-record-copy">
-          {config.key === "resources" && config.fileLinks ? <div className="library-resource-links" title={title}><LocalFileLinks row={row} label={title} config={config.fileLinks} disabled={disabled} onNotice={onNotice} compact /></div> : <button type="button" className="library-record-title" title={title} aria-label={`预览：${title}`} aria-pressed={selectedId === row.id} disabled={disabled} onClick={() => onPreview(row.id)}>{title}</button>}
-          {description && <p className="library-record-description" title={description}>{description}</p>}
+          <div className="library-record-heading">
+            <div className="library-record-summary">
+              {config.key === "resources" && config.fileLinks ? <div className="library-resource-links" title={title}><LocalFileLinks row={row} label={title} config={config.fileLinks} disabled={disabled} onNotice={onNotice} compact /></div> : <button type="button" className="library-record-title" title={title} aria-label={`预览：${title}`} aria-pressed={selectedId === row.id} disabled={disabled} onClick={() => onPreview(row.id)}>{title}</button>}
+              {description && <p className="library-record-description" title={description}>{description}</p>}
+            </div>
+            <div className="library-record-actions">
+              <button type="button" className={`icon-button${row.is_favorite ? " is-favorite" : ""}`} aria-label={row.is_favorite ? "取消收藏" : "收藏"} title={row.is_favorite ? "取消收藏" : "收藏"} disabled={disabled} onClick={() => void onUpdate(row, { is_favorite: row.is_favorite ? 0 : 1 })}><Star size={16} fill={row.is_favorite ? "currentColor" : "none"} /></button>
+              {config.key === "articles" && <button type="button" className={`icon-button${row.is_pinned ? " is-pinned" : ""}`} aria-label={row.is_pinned ? "取消置顶" : "置顶"} title={row.is_pinned ? "取消置顶" : "置顶"} disabled={disabled} onClick={() => void onUpdate(row, { is_pinned: row.is_pinned ? 0 : 1 })}><Pin size={15} fill={row.is_pinned ? "currentColor" : "none"} /></button>}
+              <button type="button" className="icon-button" aria-label="查看/编辑" title={`编辑：${title}`} disabled={disabled} onClick={() => onEdit(row.id)}><Pencil size={15} /></button>
+              <details className="library-more"><summary aria-label={`更多操作：${title}`} title="更多操作"><MoreHorizontal size={17} /></summary><div>
+                <button type="button" className="button small danger" disabled={disabled} onClick={() => void onRemove(row)}><Trash2 size={14} />删除记录</button>
+              </div></details>
+            </div>
+          </div>
           <RecordMeta config={config} row={row} />
-          {config.fileLinks && config.key !== "resources" && <LocalFileLinks row={row} label={title} config={config.fileLinks} disabled={disabled} onNotice={onNotice} actionLabel={config.fileLinks.openLabel} compact />}
-          {Boolean(row.updated_at) && <small className="library-updated" title={String(row.updated_at)}>更新于 {String(row.updated_at).replace("T", " ").slice(0, 16)}</small>}
-        </div>
-        <div className="library-record-actions">
-          <button type="button" className={`icon-button${row.is_favorite ? " is-favorite" : ""}`} aria-label={row.is_favorite ? "取消收藏" : "收藏"} title={row.is_favorite ? "取消收藏" : "收藏"} disabled={disabled} onClick={() => void onUpdate(row, { is_favorite: row.is_favorite ? 0 : 1 })}><Star size={16} fill={row.is_favorite ? "currentColor" : "none"} /></button>
-          {config.key === "articles" && <button type="button" className={`icon-button${row.is_pinned ? " is-pinned" : ""}`} aria-label={row.is_pinned ? "取消置顶" : "置顶"} title={row.is_pinned ? "取消置顶" : "置顶"} disabled={disabled} onClick={() => void onUpdate(row, { is_pinned: row.is_pinned ? 0 : 1 })}><Pin size={15} fill={row.is_pinned ? "currentColor" : "none"} /></button>}
-          <button type="button" className="icon-button" aria-label="查看/编辑" title={`编辑：${title}`} disabled={disabled} onClick={() => onEdit(row.id)}><Pencil size={15} /></button>
-          <details className="library-more"><summary aria-label={`更多操作：${title}`} title="更多操作"><MoreHorizontal size={17} /></summary><div>
-            <button type="button" className="button small danger" disabled={disabled} onClick={() => void onRemove(row)}><Trash2 size={14} />删除记录</button>
-          </div></details>
+          <div className="library-record-footer">
+            {config.fileLinks && config.key !== "resources" && <LocalFileLinks row={row} label={title} config={config.fileLinks} disabled={disabled} onNotice={onNotice} actionLabel={config.fileLinks.openLabel} compact />}
+            {Boolean(row.updated_at) && <small className="library-updated" title={String(row.updated_at)}>更新于 {String(row.updated_at).replace("T", " ").slice(0, 16)}</small>}
+          </div>
         </div>
       </li>;
     })}

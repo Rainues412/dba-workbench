@@ -24,6 +24,20 @@ function list(items: object[], total = items.length) {
 }
 
 describe("library classification and read-only preview", () => {
+  it.each([articlesConfig, scriptsConfig, resourcesConfig])("$key keeps record metadata concise and preserves its file actions", async (config) => {
+    const row = { id: 1, revision: 1, [config.columns[0].name]: "条目布局", [config.classification!.databaseField]: "Oracle", [config.classification!.categoryField!]: "安装部署", [config.fileLinks!.pathField]: "D:/docs/record.sql", version: 1, tags: "Oracle,ORACLE,安装部署,v1,RAC,RAC,ASM,备份,恢复" };
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => path.endsWith("facets") ? Response.json({ total: 1, items: [] }) : list([row])));
+    show(config);
+    await screen.findByText("条目布局", { exact: true });
+    const record = within(screen.getByRole("list", { name: `${config.title}记录` })).getByRole("listitem");
+    expect(record.querySelector(".database-label")).toHaveAttribute("title", "Oracle");
+    expect([...record.querySelectorAll(".library-tag")].map((tag) => tag.textContent)).toEqual(["RAC", "ASM", "备份", "+1"]);
+    expect(record.querySelector(".library-tag:last-child")).toHaveAttribute("title", "RAC、ASM、备份、恢复");
+    expect(within(record).getByRole("button", { name: `${config.fileLinks!.openLabel}：条目布局` })).toBeEnabled();
+    expect(within(record).getByRole("button", { name: "打开所在文件夹：条目布局" })).toBeEnabled();
+    expect(within(record).getByRole("button", { name: "复制路径：条目布局" })).toBeEnabled();
+  });
+
   it.each([articlesConfig, scriptsConfig, resourcesConfig])("$key restores classification from the URL and clears it without removing unrelated parameters", async (config) => {
     const classification = config.classification!;
     const category = "自定义分类 / 恢复&核验";

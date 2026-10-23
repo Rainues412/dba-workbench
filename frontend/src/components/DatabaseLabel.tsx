@@ -19,7 +19,7 @@ export const databaseMeta: Record<string, { color: string; tint: string; icon?: 
 
 export function DatabaseLabel({ name }: { name: string }) {
   const meta = databaseMeta[name] ?? databaseMeta["其他"];
-  return <span className="database-label" style={{ color: meta.color, background: meta.tint }}>
+  return <span className="database-label" title={name} style={{ color: meta.color, background: meta.tint }}>
     <span className="database-logo" aria-hidden="true">
       {meta.icon ? <img src={meta.icon} alt="" /> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <path d="m12 4 8 4-8 4-8-4 8-4Z" />
