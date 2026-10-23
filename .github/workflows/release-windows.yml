@@ -11,11 +11,13 @@ permissions:
 jobs:
   build-and-release:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
 
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v7
@@ -41,11 +43,20 @@ jobs:
           Push-Location frontend
           try {
             npm ci
+            if ($LASTEXITCODE -ne 0) { throw "Frontend dependency installation failed." }
             npm test -- --run
+            if ($LASTEXITCODE -ne 0) { throw "Frontend tests failed." }
             npm run build
+            if ($LASTEXITCODE -ne 0) { throw "Frontend build failed." }
           } finally {
             Pop-Location
           }
+
+      - name: Require versioned release notes
+        shell: pwsh
+        run: |
+          python tools/release_notes.py --version $env:GITHUB_REF_NAME --repository $env:GITHUB_REPOSITORY --output (Join-Path $env:RUNNER_TEMP "release-notes.md")
+          if ($LASTEXITCODE -ne 0) { throw "Add this version to CHANGELOG.md before publishing." }
 
       - name: Build Windows installer outside the source tree
         shell: pwsh
@@ -78,15 +89,14 @@ jobs:
           Copy-Item -LiteralPath $installer -Destination $releaseInstaller
           $hash = (Get-FileHash -LiteralPath $releaseInstaller -Algorithm SHA256).Hash
           Set-Content -LiteralPath $releaseChecksum -Value "$hash *$(Split-Path -Leaf $releaseInstaller)" -Encoding ascii
-          $notes = @"
-          Windows 10/11 x64 安装程序。目标电脑不需要预装 Python 或 Node.js。
-
-          安装时可以选择安装目录，并可创建桌面快捷方式。卸载时可选择保留或删除本机应用数据，默认保留。请同时下载 `.sha256` 文件核对完整性。
-          "@
+          $notes = Join-Path $env:RUNNER_TEMP "release-notes.md"
+          python tools/release_notes.py --version $env:GITHUB_REF_NAME --repository $env:GITHUB_REPOSITORY --output $notes --sha256 $hash
+          if ($LASTEXITCODE -ne 0) { throw "Could not generate release notes." }
           gh release create $env:GITHUB_REF_NAME `
             $releaseInstaller `
             $releaseChecksum `
             --repo $env:GITHUB_REPOSITORY `
-            --title "DBA 工作台 $version" `
-            --notes $notes `
+            --title "DBA 工作台 v$version" `
+            --notes-file $notes `
+            --verify-tag `
             --latest
