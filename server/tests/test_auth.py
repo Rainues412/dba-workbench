@@ -101,7 +101,11 @@ def test_repeated_status_requests_keep_the_session_csrf_token_valid(
     assert response.status_code == 200
 
 
-def test_login_rate_limit_uses_backoff(raw_client: TestClient) -> None:
+def test_login_rate_limit_uses_backoff(raw_client: TestClient, monkeypatch) -> None:
+    from backend import auth
+
+    now = auth.utcnow()
+    monkeypatch.setattr(auth, "utcnow", lambda: now)
     raw_client.post("/api/auth/setup", json=OWNER)
     raw_client.cookies.clear()
     for _ in range(4):
@@ -116,9 +120,15 @@ def test_login_rate_limit_uses_backoff(raw_client: TestClient) -> None:
     assert fifth.status_code == 401
     blocked = raw_client.post("/api/auth/login", json=OWNER)
     assert blocked.status_code == 429
+    now += timedelta(seconds=1)
+    assert raw_client.post("/api/auth/login", json=OWNER).status_code == 200
 
 
-def test_reauthentication_is_rate_limited(raw_client: TestClient) -> None:
+def test_reauthentication_is_rate_limited(raw_client: TestClient, monkeypatch) -> None:
+    from backend import auth
+
+    now = auth.utcnow()
+    monkeypatch.setattr(auth, "utcnow", lambda: now)
     setup = raw_client.post("/api/auth/setup", json=OWNER)
     csrf = setup.json()["csrf_token"]
     headers = {"X-CSRF-Token": csrf}
@@ -136,3 +146,5 @@ def test_reauthentication_is_rate_limited(raw_client: TestClient) -> None:
     )
     assert blocked.status_code == 429
     assert blocked.json()["error"]["code"] == "RATE_LIMITED"
+    now += timedelta(seconds=1)
+    assert raw_client.post("/api/auth/reauthenticate", json={"password": OWNER["password"]}, headers=headers).status_code == 200
