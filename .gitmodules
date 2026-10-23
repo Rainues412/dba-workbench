@@ -1,0 +1,3 @@
+[submodule "kkfileview"]
+	url = https://github.com/kekingcn/kkFileView.git
+	path = vendor/kkFileView

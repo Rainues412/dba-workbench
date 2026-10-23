@@ -42,11 +42,16 @@ if (-not (Test-Path $python)) {
 }
 
 & $python -m pip install --disable-pip-version-check -r (Join-Path $repoRoot "server\requirements-build.txt")
+if ($LASTEXITCODE -ne 0) { throw "安装构建依赖失败。" }
 
 if (-not $SkipTests) {
     & $python -m pip install --disable-pip-version-check -r (Join-Path $repoRoot "server\requirements-dev.txt")
+    if ($LASTEXITCODE -ne 0) { throw "安装测试依赖失败。" }
     Push-Location $repoRoot
-    try { & $python -m pytest } finally { Pop-Location }
+    try {
+        & $python -m pytest -q --basetemp (Join-Path $env:TEMP "pytest") -o "cache_dir=$(Join-Path $env:TEMP 'pytest-cache')"
+        if ($LASTEXITCODE -ne 0) { throw "后端测试失败，停止生成安装包。" }
+    } finally { Pop-Location }
 }
 
 if (Test-Path $nuitkaRoot) {
@@ -55,7 +60,8 @@ if (Test-Path $nuitkaRoot) {
     if (-not $resolvedNuitkaRoot.StartsWith($resolvedBuildRoot + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "Nuitka 清理目录超出构建目录。"
     }
-    Get-ChildItem -LiteralPath $nuitkaRoot -Force | Remove-Item -Recurse -Force
+    Remove-Item -LiteralPath $resolvedNuitkaRoot -Recurse
+    New-Item -ItemType Directory -Path $resolvedNuitkaRoot | Out-Null
 }
 
 Push-Location (Join-Path $repoRoot "server")
@@ -85,8 +91,17 @@ $executable = Join-Path $distDir "DBA工作台.exe"
 if (-not (Test-Path $executable)) {
     throw "未找到 Nuitka 输出：$executable"
 }
+$viewerSource = Join-Path $repoRoot "vendor\kkFileView"
+$viewerDestination = Join-Path $distDir "file-viewer"
+& (Join-Path $PSScriptRoot "build-file-viewer.ps1") `
+    -SourceDirectory $viewerSource `
+    -Destination $viewerDestination `
+    -CacheDirectory $toolsRoot
+$resolvedViewerDestination = [System.IO.Path]::GetFullPath($viewerDestination)
 $forbidden = Get-ChildItem -LiteralPath $distDir -Recurse -Force -File | Where-Object {
-    $_.Extension -in ".py", ".pyc", ".ts", ".tsx", ".map" -or $_.Name -eq "workspace.db"
+    -not $_.FullName.StartsWith($resolvedViewerDestination + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase) -and (
+        $_.Extension -in ".py", ".pyc", ".ts", ".tsx", ".map" -or $_.Name -eq "workspace.db"
+    )
 }
 if ($forbidden) {
     throw "发行目录包含不应交付的源码或数据：$($forbidden.FullName -join ', ')"
