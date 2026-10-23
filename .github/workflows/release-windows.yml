@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing version tag to build and publish"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -12,12 +18,16 @@ jobs:
   build-and-release:
     runs-on: windows-latest
     timeout-minutes: 120
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+      PYTHONUTF8: "1"
 
     steps:
       - name: Check out source
         uses: actions/checkout@v7
         with:
           submodules: recursive
+          ref: ${{ inputs.release_tag || github.ref }}
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v7
@@ -55,17 +65,27 @@ jobs:
       - name: Require versioned release notes
         shell: pwsh
         run: |
-          python tools/release_notes.py --version $env:GITHUB_REF_NAME --repository $env:GITHUB_REPOSITORY --output (Join-Path $env:RUNNER_TEMP "release-notes.md")
+          python tools/release_notes.py --version $env:RELEASE_TAG --repository $env:GITHUB_REPOSITORY --output (Join-Path $env:RUNNER_TEMP "release-notes.md")
           if ($LASTEXITCODE -ne 0) { throw "Add this version to CHANGELOG.md before publishing." }
 
       - name: Build Windows installer outside the source tree
         shell: pwsh
         run: |
-          $version = $env:GITHUB_REF_NAME.TrimStart("v")
+          $version = $env:RELEASE_TAG.TrimStart("v")
           if ($version -notmatch '^\d+\.\d+\.\d+$') {
             throw "Release tag must use v<major>.<minor>.<patch>."
           }
-          $outputRoot = Join-Path $env:RUNNER_TEMP "DBA工作台-发布"
+          $outputRoot = Join-Path $env:RUNNER_TEMP "DBA-Workbench-release"
+          $viewerCheck = Join-Path $outputRoot ".build\viewer-preflight"
+          .\packaging\windows\build-file-viewer.ps1 `
+            -SourceDirectory (Join-Path $env:GITHUB_WORKSPACE "vendor\kkFileView") `
+            -Destination $viewerCheck `
+            -CacheDirectory (Join-Path $outputRoot ".build\tools")
+          $resolvedViewerCheck = [System.IO.Path]::GetFullPath($viewerCheck)
+          if (-not $resolvedViewerCheck.StartsWith([System.IO.Path]::GetFullPath($outputRoot) + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Viewer preflight cleanup is outside the build directory."
+          }
+          Remove-Item -LiteralPath $resolvedViewerCheck -Recurse
           $venvRoot = Join-Path $outputRoot ".build\venv"
           python -m venv $venvRoot
           .\packaging\windows\build-installer.ps1 `
@@ -77,8 +97,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $version = $env:GITHUB_REF_NAME.TrimStart("v")
-          $assetRoot = Join-Path $env:RUNNER_TEMP "DBA工作台-发布\installer"
+          $version = $env:RELEASE_TAG.TrimStart("v")
+          $assetRoot = Join-Path $env:RUNNER_TEMP "DBA-Workbench-release\installer"
           $installer = Join-Path $assetRoot "DBA工作台-安装程序-$version-x64.exe"
           $checksum = "$installer.sha256"
           if (-not (Test-Path $installer) -or -not (Test-Path $checksum)) {
@@ -90,9 +110,9 @@ jobs:
           $hash = (Get-FileHash -LiteralPath $releaseInstaller -Algorithm SHA256).Hash
           Set-Content -LiteralPath $releaseChecksum -Value "$hash *$(Split-Path -Leaf $releaseInstaller)" -Encoding ascii
           $notes = Join-Path $env:RUNNER_TEMP "release-notes.md"
-          python tools/release_notes.py --version $env:GITHUB_REF_NAME --repository $env:GITHUB_REPOSITORY --output $notes --sha256 $hash
+          python tools/release_notes.py --version $env:RELEASE_TAG --repository $env:GITHUB_REPOSITORY --output $notes --sha256 $hash
           if ($LASTEXITCODE -ne 0) { throw "Could not generate release notes." }
-          gh release create $env:GITHUB_REF_NAME `
+          gh release create $env:RELEASE_TAG `
             $releaseInstaller `
             $releaseChecksum `
             --repo $env:GITHUB_REPOSITORY `
