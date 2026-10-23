@@ -1,3 +1,5 @@
+from urllib.parse import parse_qs, urlparse
+
 import pytest
 from playwright.sync_api import expect, sync_playwright
 
@@ -31,6 +33,10 @@ def test_database_icons_and_keyboard_filter(live_server, tmp_path, module, label
             expect(group.locator(".database-label")).to_have_count(1)
             categories = page.get_by_role("group", name=category_label, exact=True)
             categories.get_by_role("button", name=category + " 1", exact=True).click()
+            assert parse_qs(urlparse(page.url).query) == {"database": ["Oracle"], "category": [category]}
+            page.reload(wait_until="networkidle")
+            expect(combo).to_have_attribute("title", "Oracle（1）")
+            expect(categories.get_by_role("button", name=category + " 1", exact=True)).to_have_attribute("aria-pressed", "true")
             active = page.get_by_role("group", name="当前分类筛选", exact=True)
             expect(active.locator(".database-label")).to_have_text("Oracle")
             expect(active.locator(".active-classification-category")).to_have_text(category)
@@ -79,6 +85,7 @@ def test_database_icons_and_keyboard_filter(live_server, tmp_path, module, label
             expect(combo).to_have_attribute("title", f"{custom}（1）")
             expect(page.locator(".library-record-list")).to_contain_text(custom + "记录")
             categories.get_by_role("button", name=custom_category + " 1", exact=True).click()
+            page.reload(wait_until="networkidle")
             expect(active.locator(".active-classification-category")).to_have_attribute("title", custom_category)
             expect(active.locator(".active-classification-database")).to_have_attribute("title", custom)
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
@@ -91,6 +98,7 @@ def test_database_icons_and_keyboard_filter(live_server, tmp_path, module, label
             expect(combo).to_have_attribute("title", "全部数据库（5）")
             expect(page.locator(".library-record")).to_have_count(5)
             categories.get_by_role("button", name=category + " 4", exact=True).click()
+            page.reload(wait_until="networkidle")
             expect(active.locator(".database-label")).to_have_count(0)
             expect(active.locator(".active-classification-category")).to_have_text(category)
             clear = active.get_by_role("button", name="清除分类", exact=True)
@@ -102,6 +110,10 @@ def test_database_icons_and_keyboard_filter(live_server, tmp_path, module, label
             page.screenshot(animations="disabled", path=str(tmp_path / f"{module}-clear-keyboard-focus.png"))
             clear.press("Enter")
             expect(active).to_have_count(0)
+            assert not parse_qs(urlparse(page.url).query)
+            page.reload(wait_until="networkidle")
+            expect(active).to_have_count(0)
+            expect(page.locator(".library-record")).to_have_count(5)
             page.set_viewport_size({"width": 1440, "height": 360})
             combo.click()
             popup = page.get_by_role("listbox", name="数据库", exact=True)

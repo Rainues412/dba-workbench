@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CrudPage, type CrudConfig } from "../components/CrudPage";
 import { articlesConfig, resourcesConfig, scriptsConfig } from "../pages/entityConfigs";
@@ -8,10 +8,15 @@ import { databaseMeta } from "../components/DatabaseLabel";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
-function show(config: CrudConfig) {
+function CurrentLocation() {
+  const location = useLocation();
+  return <output aria-label="页面地址">{location.pathname}{location.search}</output>;
+}
+
+function show(config: CrudConfig, entry = "/") {
   vi.spyOn(window, "scrollBy").mockImplementation(() => undefined);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } });
-  render(<MemoryRouter><QueryClientProvider client={client}><CrudPage config={config} /></QueryClientProvider></MemoryRouter>);
+  render(<MemoryRouter initialEntries={[entry]}><QueryClientProvider client={client}><CrudPage config={config} /><CurrentLocation /></QueryClientProvider></MemoryRouter>);
 }
 
 function list(items: object[], total = items.length) {
@@ -19,6 +24,40 @@ function list(items: object[], total = items.length) {
 }
 
 describe("library classification and read-only preview", () => {
+  it.each([articlesConfig, scriptsConfig, resourcesConfig])("$key restores classification from the URL and clears it without removing unrelated parameters", async (config) => {
+    const classification = config.classification!;
+    const category = "自定义分类 / 恢复&核验";
+    const row = { id: 1, revision: 1, [config.columns[0].name]: "筛选记录", [classification.databaseField]: "Oracle", [classification.categoryField!]: category };
+    const requests: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+      if (path.endsWith("facets")) return Response.json({ total: 1, items: [{ ...row, count: 1 }] });
+      requests.push(path);
+      return list([row]);
+    }));
+    const params = new URLSearchParams({ database: "Oracle", category, keep: "1" });
+    show(config, `/${config.key}?${params}`);
+    const active = await screen.findByRole("group", { name: "当前分类筛选" });
+    expect(within(active).getByText("Oracle")).toBeInTheDocument();
+    expect(within(active).getByText(category)).toBeInTheDocument();
+    await waitFor(() => {
+      const first = new URL(requests[0], "http://localhost").searchParams;
+      expect(first.get(classification.databaseField)).toBe("Oracle");
+      expect(first.get(classification.categoryField!)).toBe(category);
+    });
+    fireEvent.click(await screen.findByRole("combobox", { name: "筛选数据库" }));
+    fireEvent.click(await screen.findByRole("option", { name: "MySQL（0）" }));
+    let location = new URL(screen.getByLabelText("页面地址").textContent!, "http://localhost");
+    expect(location.searchParams.get("database")).toBe("MySQL");
+    expect(location.searchParams.has("category")).toBe(false);
+    expect(location.searchParams.get("keep")).toBe("1");
+    fireEvent.click(within(active).getByRole("button", { name: "清除分类" }));
+    location = new URL(screen.getByLabelText("页面地址").textContent!, "http://localhost");
+    expect(location.searchParams.has("database")).toBe(false);
+    expect(location.searchParams.has("category")).toBe(false);
+    expect(location.searchParams.get("keep")).toBe("1");
+    expect(screen.queryByRole("group", { name: "当前分类筛选" })).not.toBeInTheDocument();
+  });
+
   it.each([articlesConfig, scriptsConfig])("$key previews linked files when the database body is empty without copying them into the editor", async (config) => {
     const row = { id: 12, revision: 2, title: "仅关联文件", content: "", file_path: "D:/docs/old.sql" };
     const reads: string[] = [];

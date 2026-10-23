@@ -48,8 +48,8 @@ function CrudContent({ config }: { config: CrudConfig }) {
   const [pageSize, setPageSize] = useState(10);
   const [keyword, setKeyword] = useState("");
   const [debouncedKeyword, setDebouncedKeyword] = useState("");
-  const [database, setDatabase] = useState("");
-  const [category, setCategory] = useState("");
+  const database = config.classification ? searchParams.get("database") ?? "" : "";
+  const category = config.classification?.categoryField ? searchParams.get("category") ?? "" : "";
   const [status, setStatus] = useState("");
   const [taskArchive, setTaskArchive] = useState(false);
   const [priority, setPriority] = useState("");
@@ -132,7 +132,13 @@ function CrudContent({ config }: { config: CrudConfig }) {
 
   function changeClassification(nextDatabase: string, nextCategory: string) {
     paginationTop.current = null;
-    setDatabase(nextDatabase); setCategory(nextCategory); setPage(1);
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      if (nextDatabase) next.set("database", nextDatabase); else next.delete("database");
+      if (nextCategory) next.set("category", nextCategory); else next.delete("category");
+      return next;
+    }, { replace: true });
+    setPage(1);
   }
 
   const editorConfig = {
