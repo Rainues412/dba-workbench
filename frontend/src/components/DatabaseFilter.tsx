@@ -18,7 +18,7 @@ export function DatabaseFilter({ value, names, counts, total, onChange }: {
   const search = useRef({ text: "", time: 0 });
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
-  const [position, setPosition] = useState<CSSProperties>({});
+  const [position, setPosition] = useState<CSSProperties>({ position: "fixed" });
   const options = ["", ...names];
   const selected = Math.max(0, options.indexOf(value));
   const count = (name: string) => name ? counts.get(name) ?? 0 : total;
@@ -30,7 +30,7 @@ export function DatabaseFilter({ value, names, counts, total, onChange }: {
     if (options[index] === undefined) return;
     onChange(options[index]);
     setOpen(false);
-    trigger.current?.focus();
+    trigger.current?.focus({ preventScroll: true });
   }
   function keyDown(event: KeyboardEvent<HTMLButtonElement>) {
     const { key } = event;
@@ -87,8 +87,18 @@ export function DatabaseFilter({ value, names, counts, total, onChange }: {
     return () => { document.removeEventListener("pointerdown", closeOutside); document.removeEventListener("focusin", closeOutside); };
   }, [open]);
   useEffect(() => {
-    if (open) document.getElementById(optionId(active))?.scrollIntoView?.({ block: "nearest" });
-  }, [open, active, listId]);
+    const container = popup.current;
+    const option = document.getElementById(optionId(active));
+    if (!open || !container || !option) return;
+    // Only scroll the menu: scrollIntoView can also move the document, especially
+    // while the portal's initial position is being measured.
+    const bounds = container.getBoundingClientRect();
+    const item = option.getBoundingClientRect();
+    const top = bounds.top + container.clientTop;
+    const bottom = top + container.clientHeight;
+    if (item.top < top) container.scrollTop -= top - item.top;
+    else if (item.bottom > bottom) container.scrollTop += item.bottom - bottom;
+  }, [open, active, listId, position.maxHeight]);
 
   function label(name: string) {
     return name ? <DatabaseLabel name={name} /> : <span className="database-filter-all"><Database size={17} aria-hidden="true" /><strong>全部数据库</strong></span>;

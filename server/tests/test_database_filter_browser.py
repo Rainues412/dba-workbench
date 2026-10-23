@@ -77,3 +77,83 @@ def test_database_icons_and_keyboard_filter(live_server, tmp_path, module, label
         finally:
             browser.close()
             client.close()
+
+
+@pytest.mark.browser
+@pytest.mark.parametrize("module,label", [("articles", "知识库"), ("scripts", "脚本库"), ("resources", "资源中心")])
+def test_database_dropdown_keeps_page_position_on_long_lists(live_server, tmp_path, module, label):
+    client, csrf = _api_client(live_server)
+    headers = {"X-CSRF-Token": csrf}
+    db_field = "db_type" if module == "scripts" else "wb_db"
+    title_field = "name" if module == "resources" else "title"
+    for index in range(35):
+        payload = {title_field: f"长列表滚动验证-{index:03d}", db_field: f"自定义数据库-{index:03d}"}
+        if module == "resources":
+            payload["path"] = str(tmp_path / f"只保留快捷路径-{index}.txt")
+        else:
+            payload["summary" if module == "articles" else "description"] = "保留列表位置的回归验证"
+        client.post(f"/api/{module}/", json=payload, headers=headers).raise_for_status()
+    with sync_playwright() as playwright:
+        browser = _edge(playwright)
+        try:
+            page = browser.new_page(viewport={"width": 1440, "height": 800})
+            _login(page, live_server)
+            page.get_by_role("navigation", name="主导航").get_by_role("link", name=label, exact=True).click()
+            expect(page.locator(".library-record")).to_have_count(10)
+            combo = page.get_by_role("combobox", name="筛选数据库")
+            position = """() => ({ x: scrollX, y: scrollY,
+                sidebar: document.querySelector('.library-categories').scrollTop })"""
+            settle = "() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
+            # A tall record list and many options exercise the portal and nested scrolling.
+            assert page.evaluate("document.documentElement.scrollHeight > innerHeight + 200")
+            for theme, width in [("light", 1440), ("dark", 1440), ("light", 390), ("dark", 390)]:
+                page.set_viewport_size({"width": width, "height": 800})
+                page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
+                combo.scroll_into_view_if_needed()
+                page.evaluate(settle)
+                before = page.evaluate(position)
+                combo.click()
+                popup = page.get_by_role("listbox", name="数据库", exact=True)
+                expect(popup).to_be_visible()
+                page.evaluate(settle)
+                page.screenshot(animations="disabled", path=str(tmp_path / f"{module}-stable-scroll-{theme}-{width}.png"))
+                assert page.evaluate(position) == before, "Opening the database dropdown moved the page"
+                combo.press("End")
+                page.evaluate(settle)
+                assert page.evaluate(position) == before, "Keyboard navigation moved the page"
+                assert popup.evaluate("element => element.scrollTop > 0")
+                active = page.locator("[role='option'].active")
+                assert active.evaluate("element => { const item = element.getBoundingClientRect(); const list = element.parentElement.getBoundingClientRect(); return item.top >= list.top && item.bottom <= list.bottom; }")
+                combo.press("Home")
+                page.evaluate(settle)
+                assert page.evaluate(position) == before
+                assert popup.evaluate("element => element.scrollTop < 10")
+                popup.hover()
+                page.mouse.wheel(0, 120)
+                page.wait_for_function("document.querySelector('.database-filter-popup').scrollTop > 0")
+                assert page.evaluate(position) == before, "Scrolling the dropdown moved the page"
+                combo.press("Escape")
+                expect(popup).to_have_count(0)
+                assert page.evaluate(position) == before
+                expect(combo).to_be_focused()
+                # Confirming the existing selection must not scroll to the trigger.
+                combo.press("Home")
+                combo.press("Enter")
+                page.evaluate(settle)
+                assert page.evaluate(position) == before
+            combo.press("End")
+            combo.press("Enter")
+            expect(combo).to_have_attribute("title", "自定义数据库-034（1）")
+            expect(page.locator(".library-record")).to_have_count(1)
+            combo.scroll_into_view_if_needed()
+            page.evaluate(settle)
+            before = page.evaluate(position)
+            combo.click()
+            page.evaluate(settle)
+            assert page.evaluate(position) == before
+            popup = page.get_by_role("listbox", name="数据库", exact=True)
+            assert popup.evaluate("element => element.scrollTop > 0")
+            assert page.locator("[role='option'].active").evaluate("element => { const item = element.getBoundingClientRect(); const list = element.parentElement.getBoundingClientRect(); return item.top >= list.top && item.bottom <= list.bottom; }")
+        finally:
+            browser.close()
+            client.close()
