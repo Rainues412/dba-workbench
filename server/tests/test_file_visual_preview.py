@@ -147,13 +147,14 @@ def test_word_conversion_failure_returns_actionable_error(client, tmp_path, monk
     assert response.json()["error"]["message"] == "Word 转换失败"
 
 
-def test_markdown_preview_serves_original_source_and_relative_images_without_sidecar(client, raw_client, tmp_path, monkeypatch):
+@pytest.mark.parametrize(("extension", "content_type"), [("png", "image/png"), ("jfif", "image/jpeg"), ("JFIF", "image/jpeg")])
+def test_markdown_preview_serves_original_source_and_relative_images_without_sidecar(client, raw_client, tmp_path, monkeypatch, extension, content_type):
     enable(monkeypatch, tmp_path)
     monkeypatch.setattr(file_visual_preview, "_viewer_available", lambda: False)
     target = tmp_path / "安装.md"
-    source = "![原图](img/中文%20图片.png)\n\n| 数据库 | 版本 |\n| --- | --- |\n| Oracle | 11g |"
+    source = f"![原图](img/中文%20图片.{extension})\n\n| 数据库 | 版本 |\n| --- | --- |\n| Oracle | 11g |"
     target.write_text(source, encoding="utf-8")
-    image = tmp_path / "img" / "中文 图片.png"
+    image = tmp_path / "img" / f"中文 图片.{extension}"
     image.parent.mkdir()
     image.write_bytes(b"original-image-bytes")
     row = record(client, target)
@@ -162,14 +163,14 @@ def test_markdown_preview_serves_original_source_and_relative_images_without_sid
     payload = response.json()
     assert payload["viewer"] == "markdown"
     assert raw_client.get(payload["viewer_url"]).content == target.read_bytes()
-    loaded = raw_client.get(payload["asset_url"], params={"path": "img/中文%20图片.png"})
+    loaded = raw_client.get(payload["asset_url"], params={"path": f"img/中文%20图片.{extension}"})
     assert loaded.status_code == 200
     assert loaded.content == image.read_bytes()
-    assert loaded.headers["Content-Type"] == "image/png"
+    assert loaded.headers["Content-Type"] == content_type
     assert loaded.headers["Content-Security-Policy"] == "default-src 'none'; sandbox"
-    assert raw_client.head(payload["asset_url"], params={"path": "img\\中文 图片.png"}).status_code == 200
+    assert raw_client.head(payload["asset_url"], params={"path": f"img\\中文 图片.{extension}"}).status_code == 200
     enable(monkeypatch, tmp_path, actions="folder")
-    assert raw_client.get(payload["asset_url"], params={"path": "img/中文 图片.png"}).status_code == 403
+    assert raw_client.get(payload["asset_url"], params={"path": f"img/中文 图片.{extension}"}).status_code == 403
 
 
 @pytest.mark.parametrize("reference", ["../outside.png", "..\\outside.png", "%2e%2e/outside.png", "/outside.png", "C:/outside.png", "//server/share.png", "https://example.test/image.png", "notes.txt"])

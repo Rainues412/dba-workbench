@@ -26,7 +26,7 @@ VIEWER_VERSION = "5.0.3"
 VIEWER_KEY = os.environ.get("DBA_FILE_VIEWER_KEY", "false")
 TOKEN_TTL_SECONDS = 30 * 60
 MARKDOWN_EXTENSIONS = {".md", ".markdown"}
-IMAGE_EXTENSIONS = {".png", ".apng", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".avif", ".svg", ".ico"}
+IMAGE_EXTENSIONS = {".png", ".apng", ".jpg", ".jpeg", ".jfif", ".gif", ".webp", ".bmp", ".avif", ".svg", ".ico"}
 router = APIRouter()
 
 
@@ -173,7 +173,8 @@ def serve_markdown_image(token: str, reference: str = Query(alias="path", min_le
         if not target.is_relative_to(document.parent) or target.suffix.lower() not in IMAGE_EXTENSIONS:
             raise HTTPException(403, "只允许文档目录内的图片文件")
         audit_local_action("preview", "image_read", target)
-        return FileResponse(target, media_type=mimetypes.guess_type(target.name)[0], headers={
+        media_type = "image/jpeg" if target.suffix.lower() == ".jfif" else mimetypes.guess_type(target.name)[0]
+        return FileResponse(target, media_type=media_type, headers={
             "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
             "Content-Security-Policy": "default-src 'none'; sandbox",
         })
