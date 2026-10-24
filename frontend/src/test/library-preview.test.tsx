@@ -24,6 +24,37 @@ function list(items: object[], total = items.length) {
 }
 
 describe("library classification and read-only preview", () => {
+  it.each([articlesConfig, scriptsConfig])("$key retains the active preview when filters remove its row from the list", async (config) => {
+    const databaseField = config.classification!.databaseField;
+    const categoryField = config.classification!.categoryField!;
+    const row = { id: 1, revision: 1, title: "正在阅读的记录", content: "SELECT 1;", [databaseField]: "Oracle", [categoryField]: "原分类" };
+    const other = { id: 2, revision: 1, title: "其他筛选结果", [databaseField]: "MySQL", [categoryField]: "其他分类" };
+    let detailReads = 0;
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+      if (path.endsWith("facets")) return Response.json({ total: 2, items: [row, other].map((item) => ({ ...item, count: 1 })) });
+      if (path === `${config.path}1`) { detailReads++; return Response.json(row); }
+      if (path === `${config.path}2`) return Response.json(other);
+      const query = new URL(path, "http://localhost").searchParams;
+      return list(query.has("keyword") || query.has("favorite_only") ? [] : query.has(categoryField) || query.has(databaseField) ? [other] : [row, other]);
+    }));
+    show(config);
+    fireEvent.click(await screen.findByRole("button", { name: "预览：正在阅读的记录" }));
+    const preview = screen.getByRole("complementary", { name: "记录预览" });
+    await within(preview).findByRole("heading", { name: row.title });
+    fireEvent.click(within(screen.getByRole("region", { name: "分类浏览" })).getByTitle("其他分类"));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "预览：正在阅读的记录" })).not.toBeInTheDocument());
+    expect(within(preview).getByRole("heading", { name: row.title })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("combobox", { name: "筛选数据库" }));
+    fireEvent.click(screen.getByRole("option", { name: /^MySQL/ }));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "筛选数据库" })).toHaveTextContent("MySQL"));
+    expect(within(preview).getByRole("heading", { name: row.title })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: "只看收藏" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "预览：其他筛选结果" })).not.toBeInTheDocument());
+    expect(screen.getByRole("complementary", { name: "记录预览" })).toBe(preview);
+    expect(within(preview).getByRole("heading", { name: row.title })).toBeInTheDocument();
+    expect(detailReads).toBe(1);
+  });
+
   it.each([articlesConfig, scriptsConfig])("$key toggles the same title closed and switches or reopens records during the closing transition", async (config) => {
     const rows = [{ id: 1, revision: 1, title: "第一条预览", content: "SELECT 1;" }, { id: 2, revision: 1, title: "第二条预览", content: "SELECT 2;" }];
     vi.stubGlobal("fetch", vi.fn(async (path: string) => {

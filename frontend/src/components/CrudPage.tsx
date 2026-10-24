@@ -109,11 +109,9 @@ function CrudContent({ config }: { config: CrudConfig }) {
     if (list.data && !list.isPlaceholderData && page > Math.max(1, list.data.pages)) setPage(Math.max(1, list.data.pages));
   }, [list.data, list.isPlaceholderData, page]);
   useEffect(() => {
+    // The active document is independent of list filters and pagination.
     setPreviewId(null);
-  }, [page, pageSize, database, category, debouncedKeyword, favoriteOnly]);
-  useEffect(() => {
-    if (!list.isPlaceholderData && list.data && previewId !== null && !list.data.items.some((row) => row.id === previewId)) setPreviewId(null);
-  }, [list.data, list.isPlaceholderData, previewId]);
+  }, [config.key]);
   useLayoutEffect(() => {
     if (list.isPlaceholderData || paginationTop.current === null) return;
     if (list.error) { paginationTop.current = null; return; }

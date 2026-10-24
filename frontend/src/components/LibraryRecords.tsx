@@ -164,10 +164,10 @@ export function LibraryPreview({ config, id, open = true, onClose, onEdit, onNot
   const title = row ? recordTitle(config, row) : "记录预览";
   async function closePreview() {
     if (screenfull.isEnabled && screenfull.element === readerRef.current) await screenfull.exit();
-    const trigger = document.querySelector<HTMLButtonElement>('.library-record-title[aria-pressed="true"]');
+    const trigger = document.querySelector<HTMLButtonElement>('.library-record-title[aria-pressed="true"]') ?? document.querySelector<HTMLButtonElement>(".preview-toggle");
     if (dialogRef.current?.open) dialogRef.current.close();
     onClose();
-    trigger?.focus();
+    trigger?.focus({ preventScroll: true });
   }
   async function toggleReading() {
     if (!screenfull.isEnabled || !readerRef.current) return;
