@@ -58,7 +58,7 @@
 | npm | 随 Node.js 安装 | 11.12.1 |
 | Python | 3.12.x x64 | 3.12.10 |
 
-前端直接依赖版本由 `frontend/package.json` 与 `frontend/package-lock.json` 锁定：React 19.3.1、React Router 7.18.4、TanStack Query 5.104.4、Lucide React 1.59.0、hash-wasm 4.12.0、Marked 18.1.1、DOMPurify 3.4.17；构建工具为 TypeScript 7.0.2、Vite 8.3.4、Vitest 5.0.5。测试依赖见 `server/requirements-dev.txt`：pytest 8.3.5、httpx 0.28.1、Playwright 1.48.0。
+前端直接依赖版本由 `frontend/package.json` 与 `frontend/package-lock.json` 锁定：React 19.3.1、React Router 7.18.4、TanStack Query 5.104.4、Lucide React 1.59.0、hash-wasm 4.12.0、Marked 18.1.1、DOMPurify 3.4.17、react-resizable-panels 4.14.8、Screenfull 6.0.2、Tocbot 4.36.8、marked-gfm-heading-id 4.1.4；构建工具为 TypeScript 7.0.2、Vite 8.3.4、Vitest 5.0.5。测试依赖见 `server/requirements-dev.txt`：pytest 8.3.5、httpx 0.28.1、Playwright 1.48.0。
 
 ## 部署与启动
 
@@ -188,13 +188,17 @@ assets/                      桌面图标资源
 
 ## 内置文件预览
 
+知识库和脚本库在宽屏（至少 1400 CSS 像素）使用 [react-resizable-panels](https://github.com/bvaughn/react-resizable-panels)（MIT）调整文件列表与预览的宽度：拖动两栏之间的分隔条，或聚焦后按方向键微调，双击恢复均分。点击同一标题可展开或收起预览，点击其他标题直接切换文件；展开和收起使用约220毫秒过渡，再次展开恢复列表与预览各50%的默认比例，拖拽时即时调整，并遵循系统的减少动态效果设置。列表和预览分别保留 280px、340px 最小宽度；列表中的标题、操作按钮、标签和时间按实际栏宽排布。分类浏览独立收起或展开，宽度固定为 44px 或 176px，不参与拖拽。各模块在当前浏览器分别记住分类栏状态，筛选仍保留在 URL。切换数据库、分类、分页、搜索和收藏筛选只更新列表，保持当前预览及阅读位置；即使记录不在筛选结果中也可继续阅读。窄屏继续使用预览抽屉。打开原文件、打开所在目录和复制路径功能保留。
+
+预览顶部使用紧凑工具区，文件内容占用剩余高度。通过 [Screenfull](https://github.com/sindresorhus/screenfull)（MIT）进入浏览器原生大屏阅读，按 Esc 或退出按钮返回，保持分栏比例、列表筛选与选中记录；切换大屏不重新加载已打开的文件。Markdown 正文在普通预览使用16px、大屏使用17px（窄屏16px），由 [Tocbot](https://github.com/tscanlin/tocbot)（MIT）生成分层目录、跟随阅读位置高亮。预览内容区实际宽度达到800px且文章有标题时，右侧自动显示220px目录栏；缩窄后隐藏，无标题时不占目录空间，普通分栏和大屏遵循相同规则；目录也可手动收起。章节锚点由 Marked 官方 [marked-gfm-heading-id](https://github.com/markedjs/marked-gfm-heading-id) 扩展生成，支持中文及重复标题；点击目录不改写模块筛选URL。Word/PDF继续使用内置查看器已有的文档目录/书签能力，没有源标题或书签时不自动识别或虚构章节。
+
 知识库和脚本库不会自行解析或重绘 Office、PDF 等格式。安装包集成成熟开源项目 [kkFileView](https://github.com/kekingcn/kkFileView) v5.0.3（Apache-2.0），由它调用 LibreOffice Portable、PDF.js 和浏览器能力显示原文件。预览服务只监听 `127.0.0.1`，仅信任工作台回环来源，关闭上传、脚本预览和外部重定向，并使用每次启动随机生成的访问密钥。业务服务发出的文件地址带 30 分钟随机令牌，且每次读取都会重新检查允许目录和文件边界。
 
 源码模式默认没有预编译的第三方运行包，因此可视化预览会提示查看器未启动。源码桌面启动器自动查找 `.runtime/file-viewer`，也可以通过 `DBA_FILE_VIEWER_HOME` 指向源码目录之外的运行包。`packaging/windows/build-file-viewer.ps1` 负责构建该运行包，安装构建脚本会把它一起打包。第三方许可和版本说明随安装目录的 `file-viewer` 一并交付。
 
-PDF 预览默认收起缩略图侧栏，HTML 默认使用 kkFileView 自带的隔离沙箱显示版式。Office 文档通过 LibreOffice 转换；特殊字体、宏、加密文件和专有格式的效果取决于上游兼容性，快捷打开原文件和所在目录始终保留。
+PDF 预览默认收起缩略图侧栏，HTML 默认使用 kkFileView 自带的隔离沙箱显示版式。Word 文档在本机安装 Microsoft Word 时优先使用其原生只读 PDF 导出，其他情况通过内置 LibreOffice 转换；特殊字体、宏、加密文件和专有格式的效果取决于上游兼容性，快捷打开原文件和所在目录始终保留。
 
-Markdown 复用 [Marked](https://github.com/markedjs/marked) 的 GFM 解析与 [DOMPurify](https://github.com/cure53/DOMPurify) 的 HTML 清理，支持管道表格、HTML 表格及 Typora 的 Markdown/HTML 图片引用。相对图片通过原文档的短时授权读取，仅允许文档目录及子目录中的图片，并逐次检查本机目录权限；不开放任意文件、父目录或网络路径。原 Markdown、图片和数据库正文均不会被重写。
+Markdown 复用 [Marked](https://github.com/markedjs/marked) 的 GFM 解析与 [DOMPurify](https://github.com/cure53/DOMPurify) 的 HTML 清理，支持管道表格、HTML 表格及 Typora 的 Markdown/HTML 图片引用，包括 JFIF 格式的 JPEG 图片。未编码空格的 Typora 图片路径通过 Marked 自带的兼容图片规则识别，表格与正文继续使用 GFM。独立的 `[TOC]` 目录标记由预览目录功能承接，不再作为正文显示；代码示例和正文中的标记照常保留。相对图片通过原文档的短时授权读取，仅允许文档目录及子目录中的图片，并逐次检查本机目录权限；不开放任意文件、父目录或网络路径。原 Markdown、图片和数据库正文均不会被重写；原图片已丢失或仍指向旧机器路径时，需要先恢复对应源文件。
 
 `server/tests/test_visual_preview_browser.py` 是需要真实运行包的格式验收测试：将 `DBA_TEST_PREVIEW_SAMPLES` 指向包含 `sample.pdf/docx/pptx/txt/md/sql` 的验收样本目录后运行。它会自动启动隔离查看器，实际检查页面画布、正文和暗色窄屏截图；运行前先从托盘退出正式工作台，避免并行 LibreOffice 进程冲突。普通全量测试隔离外部查看器，不要求第三方运行包。
 
