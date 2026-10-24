@@ -5,6 +5,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from backend import file_visual_preview, local_capabilities
 from backend.config import Settings
+from backend import word_preview
 
 
 def enable(monkeypatch, root, actions="open"):
@@ -100,6 +101,50 @@ def test_visual_preview_reports_viewer_startup_and_expired_grants(client, raw_cl
 
 def test_visual_preview_issue_endpoint_requires_login(raw_client):
     assert raw_client.get("/api/articles/1/visual-preview").status_code == 401
+
+
+def test_word_native_preview_retains_grants_revocation_and_version_checks(client, raw_client, tmp_path, monkeypatch):
+    enable(monkeypatch, tmp_path)
+    monkeypatch.setattr(file_visual_preview, "_viewer_available", lambda: True)
+    monkeypatch.setattr(word_preview, "is_available", lambda: True)
+    target = tmp_path / "中文原件.docx"
+    target.write_bytes(b"source")
+    rendered = tmp_path / word_preview.pdf_name(target)
+    rendered.write_bytes(b"%PDF-1.7\nlayout")
+    monkeypatch.setattr(word_preview, "convert", lambda source: rendered)
+    row = record(client, target)
+    issued = client.get(f"/api/articles/{row['id']}/visual-preview")
+    assert issued.status_code == 200
+    assert issued.json()["converter"] == "Microsoft Word"
+    path = source_path(issued.json()["viewer_url"])
+    assert "/preview-file/word/" in path
+    assert raw_client.get(path).content == rendered.read_bytes()
+    assert raw_client.head(path).headers["content-type"].startswith("application/pdf")
+    assert raw_client.get(path.replace(rendered.name, "other.pdf")).status_code == 404
+    enable(monkeypatch, tmp_path, actions="folder")
+    assert raw_client.get(path).status_code == 403
+    enable(monkeypatch, tmp_path)
+    target.write_bytes(b"source changed")
+    assert raw_client.get(path).status_code == 404
+    target.unlink()
+    assert raw_client.get(path).status_code == 404
+
+
+def test_word_conversion_failure_returns_actionable_error(client, tmp_path, monkeypatch):
+    enable(monkeypatch, tmp_path)
+    monkeypatch.setattr(file_visual_preview, "_viewer_available", lambda: True)
+    monkeypatch.setattr(word_preview, "is_available", lambda: True)
+    target = tmp_path / "original.docx"
+    target.write_bytes(b"source")
+    row = record(client, target)
+
+    def fail(source):
+        raise word_preview.WordPreviewError("Word 转换失败")
+
+    monkeypatch.setattr(word_preview, "convert", fail)
+    response = client.get(f"/api/articles/{row['id']}/visual-preview")
+    assert response.status_code == 503
+    assert response.json()["error"]["message"] == "Word 转换失败"
 
 
 def test_markdown_preview_serves_original_source_and_relative_images_without_sidecar(client, raw_client, tmp_path, monkeypatch):

@@ -16,6 +16,7 @@ from pathlib import Path, PureWindowsPath
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 
+from backend import word_preview
 from backend.config import settings
 from backend.database import get_db_ctx
 from backend.local_capabilities import audit_local_action, require_local_action, resolve_allowed_path
@@ -113,9 +114,17 @@ def visual_preview_linked_file(module: str, record_id: int) -> JSONResponse:
             }, headers={"Cache-Control": "no-store"})
         if not _viewer_available():
             raise HTTPException(503, "内置文件预览服务正在启动或不可用，请稍后重试")
+        native_word = target.suffix.lower() in word_preview.WORD_EXTENSIONS and word_preview.is_available()
+        if native_word:
+            try:
+                rendered = word_preview.convert(target)
+                target = resolve_allowed_path(str(target), expect="file")
+            except word_preview.WordPreviewError as exc:
+                raise HTTPException(503, str(exc)) from exc
         token = _new_grant(target)
-        filename = urllib.parse.quote(target.name, safe="")
-        source_url = f"http://127.0.0.1:{settings.port}/preview-file/{token}/{filename}"
+        filename = urllib.parse.quote(rendered.name if native_word else target.name, safe="")
+        source_route = f"word/{token}" if native_word else token
+        source_url = f"http://127.0.0.1:{settings.port}/preview-file/{source_route}/{filename}"
         encoded = base64.b64encode(source_url.encode("utf-8")).decode("ascii")
         query = urllib.parse.urlencode({"url": encoded, "key": VIEWER_KEY})
         viewer_url = f"{VIEWER_ORIGIN}/onlinePreview?{query}"
@@ -125,6 +134,7 @@ def visual_preview_linked_file(module: str, record_id: int) -> JSONResponse:
                 "filename": target.name,
                 "viewer": "kkFileView",
                 "viewer_version": VIEWER_VERSION,
+                "converter": "Microsoft Word" if native_word else "kkFileView",
                 "viewer_url": viewer_url,
             },
             headers={"Cache-Control": "no-store"},
@@ -172,6 +182,24 @@ def serve_markdown_image(token: str, reference: str = Query(alias="path", min_le
         raise
     except (OSError, ValueError):
         raise HTTPException(404, "图片不存在或暂时无法读取")
+
+
+@router.api_route("/word/{token}/{filename}", methods=["GET", "HEAD"])
+def serve_word_pdf(token: str, filename: str):
+    try:
+        target = _take_grant(token)
+        if target.suffix.lower() not in word_preview.WORD_EXTENSIONS or filename != word_preview.pdf_name(target):
+            raise HTTPException(404, "预览文件已变化，请重新打开预览")
+        rendered = word_preview.convert(target)
+        resolve_allowed_path(str(target), expect="file")
+        audit_local_action("preview", "word_pdf_read", target)
+        return FileResponse(rendered, media_type="application/pdf", headers={
+            "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
+        })
+    except word_preview.WordPreviewError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(404, "预览文件不存在或暂时无法读取") from exc
 
 
 @router.api_route("/{token}/{filename}", methods=["GET", "HEAD"])
