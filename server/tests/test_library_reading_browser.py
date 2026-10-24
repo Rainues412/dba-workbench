@@ -156,6 +156,8 @@ def test_fullscreen_markdown_outline_and_compact_reading(live_server, tmp_path, 
             page.get_by_role("button", name="退出大屏阅读", exact=True).click()
             expect(page.locator(":fullscreen")).to_have_count(0)
             expect(page.get_by_role("dialog")).to_be_visible()
+            # Fullscreen state changes before the application's focus/keyboard handoff finishes.
+            expect(page.get_by_role("dialog").get_by_role("button", name="大屏阅读", exact=True)).to_be_focused()
             page.keyboard.press("Escape")
             expect(page.get_by_role("dialog")).to_have_count(0)
             assert hashlib.sha256(source.read_bytes()).hexdigest() == original_hash
