@@ -12,6 +12,16 @@ from playwright.sync_api import expect, sync_playwright
 from test_browser_smoke import _api_client, _edge, _login
 
 
+def _search_articles(page, title):
+    # A matching row can already be visible before the debounced search starts.
+    # Wait for its new response so a placeholder refresh cannot disable it mid-click.
+    with page.expect_response(lambda response: response.request.method == "GET"
+                              and urllib.parse.urlsplit(response.url).path == "/api/articles/"
+                              and urllib.parse.parse_qs(urllib.parse.urlsplit(response.url).query).get("keyword") == [title]):
+        page.get_by_placeholder("按标题搜索知识库").fill(title)
+    expect(page.locator(".data-panel")).to_have_attribute("aria-busy", "false")
+
+
 @pytest.mark.browser
 def test_markdown_images_and_tables_render_in_production_build(live_server, tmp_path, monkeypatch):
     from backend import local_capabilities
@@ -61,8 +71,10 @@ def test_markdown_images_and_tables_render_in_production_build(live_server, tmp_
                 title = f"Markdown原文件验收-{case}"
                 client.post("/api/articles/", json={"title": title, "file_path": str(path)}, headers={"X-CSRF-Token": csrf}).raise_for_status()
                 page.get_by_role("navigation", name="主导航").get_by_role("link", name="知识库", exact=True).click()
-                page.get_by_placeholder("按标题搜索知识库").fill(title)
-                page.get_by_role("button", name=f"预览：{title}", exact=True).click()
+                _search_articles(page, title)
+                trigger = page.get_by_role("button", name=f"预览：{title}", exact=True)
+                trigger.click()
+                expect(trigger).to_have_attribute("aria-pressed", "true")
                 preview = page.get_by_role("region", name=f"原文件预览：{path.name}", exact=True)
                 expect(preview).to_be_visible()
                 assert not preview.locator("p").evaluate_all("items => items.some(item => /^\\[toc\\]$/i.test(item.textContent.trim()))")
@@ -137,8 +149,10 @@ def test_audited_typora_documents_render_available_images_and_consume_toc(live_s
                 title = f"Typora同类验收-{index}"
                 client.post("/api/articles/", json={"title": title, "file_path": str(source)}, headers={"X-CSRF-Token": csrf}).raise_for_status()
                 page.get_by_role("navigation", name="主导航").get_by_role("link", name="知识库", exact=True).click()
-                page.get_by_placeholder("按标题搜索知识库").fill(title)
-                page.get_by_role("button", name=f"预览：{title}", exact=True).click()
+                _search_articles(page, title)
+                trigger = page.get_by_role("button", name=f"预览：{title}", exact=True)
+                trigger.click()
+                expect(trigger).to_have_attribute("aria-pressed", "true")
                 preview = page.get_by_role("region", name=f"原文件预览：{source.name}", exact=True)
                 expect(preview).to_be_visible()
                 assert not preview.locator("p").evaluate_all("items => items.some(item => /^\\[toc\\]$/i.test(item.textContent.trim()))")
