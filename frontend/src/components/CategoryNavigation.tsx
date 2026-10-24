@@ -1,4 +1,4 @@
-import { FolderOpen, Layers3 } from "lucide-react";
+import { FolderOpen, Layers3, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { databaseMeta } from "./DatabaseLabel";
 import { DatabaseFilter } from "./DatabaseFilter";
 import { ErrorState, LoadingState } from "./States";
@@ -11,7 +11,7 @@ export type Classification = {
 
 export type Facets = { total: number; items: Array<Record<string, string | number>> };
 
-export function CategoryNavigation({ classification, data, loading, error, retry, database, category, categoryOptions = [], onChange }: {
+export function CategoryNavigation({ classification, data, loading, error, retry, database, category, categoryOptions = [], onChange, collapsed = false, onToggle }: {
   classification: Classification;
   data?: Facets;
   loading: boolean;
@@ -21,6 +21,8 @@ export function CategoryNavigation({ classification, data, loading, error, retry
   category: string;
   categoryOptions?: string[];
   onChange: (database: string, category: string) => void;
+  collapsed?: boolean;
+  onToggle?: () => void;
 }) {
   const { databaseField, categoryField, categoryLabel } = classification;
   const databaseCounts = new Map<string, number>();
@@ -37,8 +39,12 @@ export function CategoryNavigation({ classification, data, loading, error, retry
   const databaseNames = [...new Set([...Object.keys(databaseMeta), ...databaseCounts.keys(), database].filter(Boolean))];
   const categoryTotal = database ? databaseCounts.get(database) ?? 0 : data?.total ?? 0;
   const categories = [...new Set([...categoryOptions, ...(categoryField ? (data?.items ?? []).map((row) => String(row[categoryField] ?? "")) : []), category].filter(Boolean))];
-  return <section className="panel library-categories" aria-label="分类浏览">
-    <h2><Layers3 size={16} />分类浏览</h2>
+  return <section className={`panel library-categories${collapsed ? " collapsed" : ""}`} aria-label="分类浏览">
+    <div className="library-categories-heading">
+      {!collapsed && <h2><Layers3 size={16} />分类浏览</h2>}
+      {onToggle && <button className="icon-button" type="button" aria-label={collapsed ? "展开分类浏览" : "收起分类浏览"} title={collapsed ? "展开分类浏览" : "收起分类浏览"} aria-expanded={!collapsed} onClick={onToggle}>{collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button>}
+    </div>
+    {collapsed ? <span className="library-categories-caption" aria-hidden="true">分类</span> : <>
     <div role="group" aria-label="数据库分类">
       <DatabaseFilter value={database} names={databaseNames} counts={databaseCounts} total={data?.total ?? 0} onChange={(value) => onChange(value, "")} />
     </div>
@@ -51,5 +57,6 @@ export function CategoryNavigation({ classification, data, loading, error, retry
         {categories.map((name) => <button className="category-filter" key={name} type="button" title={name} aria-pressed={category === name} onClick={() => onChange(database, name)}><strong>{name}</strong><span>{categoryCounts.get(name) ?? 0}</span></button>)}
       </div>
     </div>}
+    </>}
   </section>;
 }

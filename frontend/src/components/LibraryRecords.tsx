@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Copy, FileText, FolderOpen, MoreHorizontal, Pencil, Pin, Star, Trash2, X } from "lucide-react";
+import { Copy, FileText, FolderOpen, Maximize2, Minimize2, MoreHorizontal, Pencil, Pin, Star, Trash2, X } from "lucide-react";
+import screenfull from "screenfull";
 import { api, Entity } from "../api/client";
 import type { CrudConfig } from "./CrudPage";
 import { DatabaseLabel } from "./DatabaseLabel";
@@ -75,9 +76,10 @@ export function LibraryRecords({ config, rows, selectedId, disabled, onPreview, 
   </ul>;
 }
 
-export function LibraryPreview({ config, id, onClose, onEdit, onNotice, onRefresh }: {
+export function LibraryPreview({ config, id, open = true, onClose, onEdit, onNotice, onRefresh }: {
   config: CrudConfig;
   id: number | null;
+  open?: boolean;
   onClose: () => void;
   onEdit: (id: number) => void;
   onNotice: (message: string) => void;
@@ -85,6 +87,10 @@ export function LibraryPreview({ config, id, onClose, onEdit, onNotice, onRefres
 }) {
   const headingId = useId();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const readerRef = useRef<HTMLDivElement>(null);
+  const fullscreenTrigger = useRef<HTMLButtonElement>(null);
+  const savedPageScroll = useRef(0);
+  const [expanded, setExpanded] = useState(false);
   const [message, setMessage] = useState("");
   const [drawer, setDrawer] = useState(() => typeof window.matchMedia === "function" && window.matchMedia("(max-width: 1399px)").matches);
   const detail = useQuery({
@@ -120,50 +126,87 @@ export function LibraryPreview({ config, id, onClose, onEdit, onNotice, onRefres
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
     const media = window.matchMedia("(max-width: 1399px)");
-    const changed = () => setDrawer(media.matches);
+    const changed = () => { if (!document.fullscreenElement) setDrawer(media.matches); };
     media.addEventListener("change", changed);
-    return () => media.removeEventListener("change", changed);
+    document.addEventListener("fullscreenchange", changed);
+    return () => { media.removeEventListener("change", changed); document.removeEventListener("fullscreenchange", changed); };
   }, []);
+  useEffect(() => {
+    if (!screenfull.isEnabled) return;
+    const changed = () => {
+      const active = screenfull.element === readerRef.current;
+      setExpanded(active);
+      if (!active) requestAnimationFrame(() => { window.scrollTo(0, savedPageScroll.current); fullscreenTrigger.current?.focus({ preventScroll: true }); });
+    };
+    screenfull.on("change", changed);
+    return () => screenfull.off("change", changed);
+  }, []);
+  useEffect(() => {
+    if (!expanded) return;
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && screenfull.isEnabled) {
+        event.preventDefault(); event.stopPropagation(); void screenfull.exit();
+      }
+    };
+    document.addEventListener("keydown", escape, true);
+    return () => document.removeEventListener("keydown", escape, true);
+  }, [expanded]);
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!drawer || id === null || !dialog) return;
+    if (!open) { if (dialog.open) dialog.close(); return; }
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     dialog.showModal();
     return () => { if (dialog.open) dialog.close(); document.body.style.overflow = previousOverflow; };
-  }, [drawer, id]);
+  }, [drawer, id, open]);
 
   const title = row ? recordTitle(config, row) : "记录预览";
-  function closePreview() {
+  async function closePreview() {
+    if (screenfull.isEnabled && screenfull.element === readerRef.current) await screenfull.exit();
     const trigger = document.querySelector<HTMLButtonElement>('.library-record-title[aria-pressed="true"]');
     if (dialogRef.current?.open) dialogRef.current.close();
     onClose();
     trigger?.focus();
+  }
+  async function toggleReading() {
+    if (!screenfull.isEnabled || !readerRef.current) return;
+    try {
+      if (!expanded) savedPageScroll.current = window.scrollY;
+      await screenfull.toggle(readerRef.current);
+    } catch { setMessage("暂时无法进入大屏阅读，请重试或使用浏览器的全屏功能。"); }
+  }
+  async function editRecord() {
+    if (screenfull.isEnabled && screenfull.element === readerRef.current) await screenfull.exit();
+    onEdit(id!);
   }
   function notify(value: string) { setMessage(value); onNotice(value); }
   async function copyContent() {
     try { await navigator.clipboard.writeText(body); notify(file.data?.truncated && needsFile ? "已复制当前预览片段" : "正文已复制"); }
     catch { notify("复制失败，请手动选择正文复制"); }
   }
-  const content = <>
+  const content = <div ref={readerRef} className={`library-reader${expanded ? " expanded" : ""}`}>
     <header className="library-preview-heading"><h2 id={headingId} title={title}>{title}</h2><div>
-      <button type="button" className="button small" disabled={!row || detail.isLoading || !!detail.error} onClick={() => onEdit(id!)}><Pencil size={14} />编辑</button>
+      <button ref={fullscreenTrigger} type="button" className="icon-button" aria-label={expanded ? "退出大屏阅读" : "大屏阅读"} title={screenfull.isEnabled ? expanded ? "退出大屏阅读（Esc）" : "大屏阅读" : "当前浏览器不支持全屏阅读"} disabled={!row || !screenfull.isEnabled} onClick={() => void toggleReading()}>{expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button>
+      <button type="button" className="button small" disabled={!row || detail.isLoading || !!detail.error} onClick={() => void editRecord()}><Pencil size={14} />编辑</button>
       <button type="button" className="icon-button" aria-label="关闭预览" title="关闭预览" onClick={closePreview}><X size={19} /></button>
     </div></header>
+    {row && !detail.isLoading && !detail.error && <div className="library-preview-tools">
+      <div className="library-preview-overview">
+        <RecordMeta config={config} row={row} />
+        {Boolean(row.updated_at) && <dl className="library-preview-meta"><dt>更新于</dt><dd title={String(row.updated_at)}>{String(row.updated_at).replace("T", " ").slice(0, 16)}</dd></dl>}
+      </div>
+      {config.fileLinks && <section className="library-preview-actions" aria-label="快捷访问">
+        <LocalFileLinks row={row} label={title} config={config.fileLinks} disabled={false} onNotice={notify} actionLabel={config.fileLinks.openLabel} compact />
+        {!row[config.fileLinks.pathField] && !(config.fileLinks.urlField && row[config.fileLinks.urlField]) && <p className="muted">未关联本地文件或网址</p>}
+      </section>}
+    </div>}
     <div className="library-preview-body">
       {message && <p className="library-inline-notice" aria-live="polite">{message}</p>}
       {id === null ? <EmptyState title="选择一条记录预览" description="点击列表标题即可查看，文件和网址通过独立按钮打开。" />
         : detail.isLoading ? <LoadingState label="正在读取完整记录" />
         : detail.error || !row ? <ErrorState message="预览加载失败，请重试" retry={() => void detail.refetch()} />
         : <>
-          <div className="library-preview-overview">
-            <RecordMeta config={config} row={row} />
-            {Boolean(row.updated_at) && <dl className="library-preview-meta"><dt>更新于</dt><dd title={String(row.updated_at)}>{String(row.updated_at).replace("T", " ").slice(0, 16)}</dd></dl>}
-          </div>
-          {config.fileLinks && <section className="library-preview-section library-preview-actions" aria-label="快捷访问">
-            <LocalFileLinks row={row} label={title} config={config.fileLinks} disabled={false} onNotice={notify} actionLabel={config.fileLinks.openLabel} compact />
-            {!row[config.fileLinks.pathField] && !(config.fileLinks.urlField && row[config.fileLinks.urlField]) && <p className="muted">未关联本地文件或网址</p>}
-          </section>}
           <>
               {showSummary && <p className="library-preview-summary">{summary}</p>}
               {hasLinkedFile && <section className="library-preview-section library-visual-preview" aria-label="原文件预览">
@@ -172,7 +215,7 @@ export function LibraryPreview({ config, id, onClose, onEdit, onNotice, onRefres
                 </div>
                 {visual.isLoading ? <LoadingState label="正在准备原文件预览" />
                   : visual.error ? <ErrorState message={`原文件预览失败：${visual.error.message}`} retry={() => void visual.refetch()} />
-                  : visual.data?.viewer === "markdown" ? <Suspense fallback={<LoadingState label="正在加载 Markdown 查看器" />}><MarkdownFilePreview filename={visual.data.filename} sourceUrl={visual.data.viewer_url} assetUrl={visual.data.asset_url!} /></Suspense>
+                  : visual.data?.viewer === "markdown" ? <Suspense fallback={<LoadingState label="正在加载 Markdown 查看器" />}><MarkdownFilePreview filename={visual.data.filename} sourceUrl={visual.data.viewer_url} assetUrl={visual.data.asset_url!} expanded={expanded} /></Suspense>
                   : visual.data ? <iframe className="library-visual-frame" title={`原文件预览：${visual.data.filename}`} src={visual.data.viewer_url} sandbox="allow-downloads allow-forms allow-popups allow-same-origin allow-scripts" referrerPolicy="no-referrer" />
                   : null}
               </section>}
@@ -195,8 +238,8 @@ export function LibraryPreview({ config, id, onClose, onEdit, onNotice, onRefres
           </>
         </>}
     </div>
-  </>;
+  </div>;
   if (drawer && id === null) return null;
-  return drawer ? <dialog ref={dialogRef} className="library-preview library-preview-drawer" aria-labelledby={headingId} onCancel={(event) => { event.preventDefault(); closePreview(); }} onClick={(event) => { if (event.target === event.currentTarget) closePreview(); }}>{content}</dialog>
-    : <aside className="panel library-preview" aria-label="记录预览" onKeyDown={(event) => { if (event.key === "Escape") closePreview(); }}>{content}</aside>;
+  return drawer ? <dialog ref={dialogRef} className="library-preview library-preview-drawer" aria-labelledby={headingId} onCancel={(event) => { event.preventDefault(); if (expanded && screenfull.isEnabled) void screenfull.exit(); else void closePreview(); }} onClick={(event) => { if (event.target === event.currentTarget) void closePreview(); }}>{content}</dialog>
+    : <aside className="panel library-preview" aria-label="记录预览" onKeyDown={(event) => { if (event.key === "Escape" && !expanded) void closePreview(); }}>{content}</aside>;
 }

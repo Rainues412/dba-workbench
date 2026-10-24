@@ -5,12 +5,59 @@ import { MarkdownFilePreview, renderMarkdown } from "../components/MarkdownFileP
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-function show() {
+function show(expanded = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-  render(<QueryClientProvider client={client}><MarkdownFilePreview filename="安装.md" sourceUrl="/preview-file/token/安装.md" assetUrl="/preview-file/assets/token" /></QueryClientProvider>);
+  render(<QueryClientProvider client={client}><MarkdownFilePreview filename="安装.md" sourceUrl="/preview-file/token/安装.md" assetUrl="/preview-file/assets/token" expanded={expanded} /></QueryClientProvider>);
 }
 
 describe("source Markdown rendering", () => {
+  it("consumes standalone Typora TOC markers but preserves literal examples and links", () => {
+    const element = document.createElement("div");
+    element.innerHTML = renderMarkdown("[TOC]\n\n# 标题\n\n[toc]\n\n正文中的 [TOC] 保留。\n\n`[TOC]`\n\n```text\n[TOC]\n```\n\n[TOC](https://example.test/toc)", "/preview-file/assets/token");
+    expect([...element.querySelectorAll("p")].some((paragraph) => paragraph.childElementCount === 0 && /^\[toc\]$/i.test(paragraph.textContent || ""))).toBe(false);
+    expect(element.querySelector("h1")).toHaveTextContent("标题");
+    expect(element).toHaveTextContent("正文中的 [TOC] 保留。");
+    expect(element.querySelectorAll("code")).toHaveLength(2);
+    for (const code of element.querySelectorAll("code")) expect(code).toHaveTextContent("[TOC]");
+    expect(element.querySelector("a")).toHaveAttribute("href", "https://example.test/toc");
+  });
+
+  it("uses Tocbot for nested navigation without changing the page URL", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("# 安装\n\n## 检查\n\n### 执行")));
+    show(true);
+    const preview = await screen.findByRole("region", { name: "原文件预览：安装.md" });
+    const toc = screen.getByRole("navigation", { name: "文章目录" });
+    const jump = await within(toc).findByRole("link", { name: "执行" });
+    expect(within(toc).getAllByRole("link")).toHaveLength(3);
+    expect(jump.closest("ul")?.parentElement?.tagName).toBe("LI");
+    const scroll = vi.fn();
+    preview.scrollTo = scroll;
+    const url = window.location.href;
+    fireEvent.click(jump);
+    expect(scroll).toHaveBeenCalledWith({ top: expect.any(Number) });
+    expect(window.location.href).toBe(url);
+    fireEvent.click(within(toc).getByRole("button", { name: "收起文章目录" }));
+    expect(screen.queryByRole("navigation", { name: "文章目录" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "展开目录" }));
+    expect(screen.getByRole("navigation", { name: "文章目录" })).toBeInTheDocument();
+  });
+
+  it("does not reserve an outline or show its toggle for a file without headings", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("只有正文，没有标题。")));
+    show(true);
+    expect(await screen.findByText("只有正文，没有标题。")).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "文章目录" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "展开目录" })).not.toBeInTheDocument();
+  });
+
+  it("creates unique Chinese heading anchors with the official Marked extension and keeps source links usable", () => {
+    const element = document.createElement("div");
+    element.innerHTML = renderMarkdown("# 安装步骤\n\n## 安装步骤\n\n## 安装步骤\n\n[跳转](#安装步骤)\n\n<h3>HTML 标题</h3>", "/preview-file/assets/token");
+    expect([...element.querySelectorAll("h1,h2")].map((heading) => heading.id)).toEqual(["preview-安装步骤", "preview-安装步骤-1", "preview-安装步骤-2"]);
+    expect(element.querySelector("a")).toHaveAttribute("href", "#preview-安装步骤");
+    expect(element.querySelector("h3")?.id).toBeTruthy();
+  });
+
   it("renders GFM and HTML tables and adapts both Markdown and Typora HTML image references", () => {
     const html = renderMarkdown("| 数据库 | 版本 |\n| :--- | ---: |\n| Oracle | 11g |\n\n<table><tr><td>原始表格</td></tr></table>\n\n![原图](img/中文%20图片.png)\n\n<img src=\"img/typora.png\" width=\"200\">", "/preview-file/assets/token");
     const element = document.createElement("div");

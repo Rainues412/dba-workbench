@@ -6,7 +6,7 @@ import { CrudPage, type CrudConfig } from "../components/CrudPage";
 import { articlesConfig, resourcesConfig, scriptsConfig } from "../pages/entityConfigs";
 import { databaseMeta } from "../components/DatabaseLabel";
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); ["articles", "scripts", "resources"].forEach((key) => localStorage.removeItem(`dba-library-layout:${key}`)); });
 
 function CurrentLocation() {
   const location = useLocation();
@@ -24,6 +24,66 @@ function list(items: object[], total = items.length) {
 }
 
 describe("library classification and read-only preview", () => {
+  it.each([articlesConfig, scriptsConfig])("$key toggles the same title closed and switches or reopens records during the closing transition", async (config) => {
+    const rows = [{ id: 1, revision: 1, title: "第一条预览", content: "SELECT 1;" }, { id: 2, revision: 1, title: "第二条预览", content: "SELECT 2;" }];
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+      if (path.endsWith("facets")) return Response.json({ total: 2, items: [] });
+      const row = rows.find((item) => path === `${config.path}${item.id}`);
+      return row ? Response.json(row) : list(rows);
+    }));
+    show(config);
+    const first = await screen.findByRole("button", { name: "预览：第一条预览" });
+    const second = screen.getByRole("button", { name: "预览：第二条预览" });
+    fireEvent.click(first);
+    await within(screen.getByRole("complementary", { name: "记录预览" })).findByRole("heading", { name: rows[0].title });
+    fireEvent.click(first);
+    expect(first).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("complementary", { name: "记录预览" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "预览" })).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(second);
+    await within(screen.getByRole("complementary", { name: "记录预览" })).findByRole("heading", { name: rows[1].title });
+    expect(second).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(first);
+    await within(screen.getByRole("complementary", { name: "记录预览" })).findByRole("heading", { name: rows[0].title });
+    expect(second).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(first);
+    await waitFor(() => expect(document.querySelector(".library-preview")).toBeNull());
+    fireEvent.click(first);
+    expect(await within(screen.getByRole("complementary", { name: "记录预览" })).findByRole("heading", { name: rows[0].title })).toBeInTheDocument();
+  });
+
+  it.each([articlesConfig, scriptsConfig])("$key collapses categories independently and restores the choice without losing filters or preview", async (config) => {
+    const row = { id: 1, revision: 1, title: "保留选中记录", content: "SELECT 1;" };
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => path.endsWith("facets") ? Response.json({ total: 1, items: [] }) : path === `${config.path}1` ? Response.json(row) : list([row])));
+    show(config, "/?database=Oracle&category=技术文档");
+    fireEvent.click(await screen.findByRole("button", { name: "预览：保留选中记录" }));
+    const preview = screen.getByRole("complementary", { name: "记录预览" });
+    await within(preview).findByRole("heading", { name: row.title });
+    fireEvent.click(screen.getByRole("button", { name: "收起分类浏览" }));
+    expect(screen.getByRole("button", { name: "展开分类浏览" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("combobox", { name: "筛选数据库" })).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "当前分类筛选" })).toHaveTextContent("Oracle");
+    expect(within(preview).getByRole("heading", { name: row.title })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "预览：保留选中记录" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("separator", { name: "调整文件列表和预览宽度" })).toBeInTheDocument();
+    cleanup();
+    show(config, "/?database=Oracle&category=技术文档");
+    expect(await screen.findByRole("button", { name: "展开分类浏览" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "展开分类浏览" }));
+    expect(screen.getByRole("combobox", { name: "筛选数据库" })).toHaveTextContent("Oracle");
+    expect(screen.getByRole("group", { name: "当前分类筛选" })).toHaveTextContent("技术文档");
+  });
+
+  it("category toggling still works when browser storage is unavailable", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => path.endsWith("facets") ? Response.json({ total: 0, items: [] }) : list([])));
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("blocked"); });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("blocked"); });
+    show(articlesConfig);
+    fireEvent.click(await screen.findByRole("button", { name: "收起分类浏览" }));
+    fireEvent.click(screen.getByRole("button", { name: "展开分类浏览" }));
+    expect(screen.getByRole("combobox", { name: "筛选数据库" })).toBeInTheDocument();
+  });
+
   it.each([articlesConfig, scriptsConfig, resourcesConfig])("$key keeps record metadata concise and preserves its file actions", async (config) => {
     const row = { id: 1, revision: 1, [config.columns[0].name]: "条目布局", [config.classification!.databaseField]: "Oracle", [config.classification!.categoryField!]: "安装部署", [config.fileLinks!.pathField]: "D:/docs/record.sql", version: 1, tags: "Oracle,ORACLE,安装部署,v1,RAC,RAC,ASM,备份,恢复" };
     vi.stubGlobal("fetch", vi.fn(async (path: string) => path.endsWith("facets") ? Response.json({ total: 1, items: [] }) : list([row])));
@@ -59,6 +119,7 @@ describe("library classification and read-only preview", () => {
     await within(preview).findByTitle("原文件预览：完整文档路径.pdf");
     expect(preview.querySelector(".library-preview-overview .library-record-meta")).toHaveTextContent("MySQL");
     expect(preview.querySelector(".library-preview-overview .library-preview-meta")).toHaveTextContent("2026-10-23 20:30");
+    expect(preview.querySelector(".library-preview-overview .library-preview-meta dd")).toHaveAttribute("title", row.updated_at);
     const actions = within(preview).getByRole("region", { name: "快捷访问" });
     expect(within(actions).getByRole("button", { name: "打开文档：路径与预览布局" })).toBeEnabled();
     expect(within(actions).getByRole("button", { name: "打开所在文件夹：路径与预览布局" })).toHaveAttribute("title", row.file_path);
