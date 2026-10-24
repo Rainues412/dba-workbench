@@ -11,6 +11,18 @@ function show(expanded = false) {
 }
 
 describe("source Markdown rendering", () => {
+  it("uses Marked's legacy image tokenizer for unencoded Typora spaces while preserving GFM and code examples", () => {
+    const element = document.createElement("div");
+    element.innerHTML = renderMarkdown('![截图](img/image2022-8-23 14_23_21.png)\n\n![中文](img/中文 图片.png "原始说明")\n\n| 数据库 |\n| --- |\n| MySQL |\n\n`![示例](img/leave unchanged.png)`\n\n```markdown\n![示例](img/leave unchanged.png)\n```', "/preview-file/assets/token");
+    const images = [...element.querySelectorAll("img")];
+    expect(images).toHaveLength(2);
+    expect(decodeURIComponent(new URL(images[0].src).searchParams.get("path")!)).toBe("img/image2022-8-23 14_23_21.png");
+    expect(images[1]).toHaveAttribute("title", "原始说明");
+    expect(element.querySelector("table")).toHaveTextContent("MySQL");
+    expect(element.querySelectorAll("code")).toHaveLength(2);
+    for (const code of element.querySelectorAll("code")) expect(code).toHaveTextContent("![示例](img/leave unchanged.png)");
+  });
+
   it("consumes standalone Typora TOC markers but preserves literal examples and links", () => {
     const element = document.createElement("div");
     element.innerHTML = renderMarkdown("[TOC]\n\n# 标题\n\n[toc]\n\n正文中的 [TOC] 保留。\n\n`[TOC]`\n\n```text\n[TOC]\n```\n\n[TOC](https://example.test/toc)", "/preview-file/assets/token");

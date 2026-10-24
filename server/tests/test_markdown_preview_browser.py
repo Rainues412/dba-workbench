@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 import time
+import urllib.parse
 from pathlib import Path
 
 import pytest
@@ -19,10 +20,17 @@ def test_markdown_images_and_tables_render_in_production_build(live_server, tmp_
     images = tmp_path / "img"
     images.mkdir()
     Image.new("RGB", (320, 180), "#4f6bed").save(images / "中文 图片.png")
+    Image.new("RGB", (320, 180), "#f59e0b").save(images / "中文 图片.jfif", format="JPEG")
     sample = tmp_path / "图片与表格.md"
-    sample.write_text("""# Markdown 原文件验收
+    sample.write_text("""[TOC]
+
+# Markdown 原文件验收
 
 ![安装截图](img/中文%20图片.png)
+
+![未编码空格路径](img/中文 图片.png)
+
+![JPEG 截图](img/中文%20图片.jfif)
 
 | 数据库 | 版本 | 用途 |
 | :--- | ---: | --- |
@@ -57,6 +65,7 @@ def test_markdown_images_and_tables_render_in_production_build(live_server, tmp_
                 page.get_by_role("button", name=f"预览：{title}", exact=True).click()
                 preview = page.get_by_role("region", name=f"原文件预览：{path.name}", exact=True)
                 expect(preview).to_be_visible()
+                assert not preview.locator("p").evaluate_all("items => items.some(item => /^\\[toc\\]$/i.test(item.textContent.trim()))")
                 if case == "fixture":
                     expect(preview.get_by_role("table")).to_have_count(2)
                     expect(preview.get_by_role("cell", name="Oracle", exact=True)).to_be_visible()
@@ -91,6 +100,69 @@ def test_markdown_images_and_tables_render_in_production_build(live_server, tmp_
                 page.evaluate("document.documentElement.dataset.theme = 'light'")
             for path, original_hash in hashes.items():
                 assert hashlib.sha256(path.read_bytes()).hexdigest() == original_hash
+        finally:
+            browser.close()
+            client.close()
+
+
+@pytest.mark.browser
+def test_audited_typora_documents_render_available_images_and_consume_toc(live_server, tmp_path, monkeypatch):
+    audit_path = os.environ.get("DBA_TEST_MARKDOWN_AUDIT")
+    if not audit_path:
+        pytest.skip("Set DBA_TEST_MARKDOWN_AUDIT to a read-only source-document audit")
+    audit_all = os.environ.get("DBA_TEST_MARKDOWN_ALL_IMAGES") == "1"
+    cases = [entry for entry in json.loads(Path(audit_path).read_text(encoding="utf-8"))["files"] if entry["toc"] or entry.get("spaceImages") or (audit_all and entry["images"])]
+    assert cases
+    from backend import local_capabilities
+    from backend.config import Settings
+    monkeypatch.setattr(local_capabilities, "_enrolled_roots", set())
+    monkeypatch.setattr(local_capabilities, "settings", Settings.from_env({
+        "DBA_LOCAL_CAPABILITIES": "true",
+        "DBA_ALLOWED_ROOTS": os.pathsep.join({str(Path(entry["file"]).parent) for entry in cases}),
+        "DBA_ALLOWED_LOCAL_ACTIONS": "open,edit,folder",
+    }))
+    client, csrf = _api_client(live_server)
+    results = []
+    with sync_playwright() as playwright:
+        browser = _edge(playwright)
+        try:
+            page = browser.new_page(viewport={"width": 1680, "height": 1050})
+            # Local-document validation must not contact third-party image hosts.
+            page.route("https://**/*", lambda route: route.abort())
+            page.route("http://**/*", lambda route: route.continue_() if urllib.parse.urlsplit(route.request.url).hostname in {"127.0.0.1", "localhost"} else route.abort())
+            _login(page, live_server)
+            for index, entry in enumerate(cases):
+                source = Path(entry["file"])
+                assert hashlib.sha256(source.read_bytes()).hexdigest() == entry["sha256"]
+                title = f"Typora同类验收-{index}"
+                client.post("/api/articles/", json={"title": title, "file_path": str(source)}, headers={"X-CSRF-Token": csrf}).raise_for_status()
+                page.get_by_role("navigation", name="主导航").get_by_role("link", name="知识库", exact=True).click()
+                page.get_by_placeholder("按标题搜索知识库").fill(title)
+                page.get_by_role("button", name=f"预览：{title}", exact=True).click()
+                preview = page.get_by_role("region", name=f"原文件预览：{source.name}", exact=True)
+                expect(preview).to_be_visible()
+                assert not preview.locator("p").evaluate_all("items => items.some(item => /^\\[toc\\]$/i.test(item.textContent.trim()))")
+                expect(preview.locator("img")).to_have_count(len(entry["images"]))
+                available = [item for item in entry["images"] if item["status"] in {"supported", "unsupported-extension"}]
+                missing = [item for item in entry["images"] if item["status"] in {"missing", "missing-absolute"}]
+                external = [item for item in entry["images"] if item["status"] == "external"]
+                assert len(available) + len(missing) + len(external) == len(entry["images"])
+                deadline = time.monotonic() + 30
+                while time.monotonic() < deadline:
+                    if preview.locator("img").evaluate_all("images => images.every(image => image.complete)"):
+                        break
+                    page.wait_for_timeout(100)
+                loaded = preview.locator("img").evaluate_all("images => images.filter(image => image.complete && image.naturalWidth > 0).map(image => image.getAttribute('src'))")
+                assert len(loaded) == len(available), {"file": str(source), "loaded": loaded, "expected": available}
+                loaded_references = {urllib.parse.unquote(urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)["path"][0]) for url in loaded}
+                for item in available:
+                    assert urllib.parse.unquote(item["reference"]) in loaded_references
+                results.append({"file": str(source), "loaded_images": len(loaded), "missing_source_images": len(missing), "external_images_not_requested": len(external), "toc_marker_visible": False})
+                if entry.get("spaceImages") or entry["toc"]:
+                    page.screenshot(path=str(tmp_path / f"typora-audit-{index}.png"), full_page=True)
+                page.get_by_role("button", name="关闭预览", exact=True).click()
+                assert hashlib.sha256(source.read_bytes()).hexdigest() == entry["sha256"]
+            (tmp_path / "browser-audit-results.json").write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
         finally:
             browser.close()
             client.close()
