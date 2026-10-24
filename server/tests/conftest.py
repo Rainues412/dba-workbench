@@ -82,6 +82,9 @@ def live_server(isolated_app) -> Generator[str, None, None]:
         port=port,
         log_level="warning",
         access_log=False,
+        # Browsers can leave a response in flight when their context closes.
+        # Bound Uvicorn's graceful drain before the fixture's hard thread deadline.
+        timeout_graceful_shutdown=3,
     )
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, daemon=True)

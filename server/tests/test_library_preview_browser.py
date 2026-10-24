@@ -91,7 +91,9 @@ def test_classification_list_preview_and_shortcuts(live_server, tmp_path, monkey
                     expect(page.get_by_role("group", name="数据库分类")).to_be_visible()
                 else:
                     assert preview.evaluate("element => element.open && element.matches(':modal')")
-                    assert preview.bounding_box()["width"] <= width
+                    # Browser transforms can round a viewport-sized dialog by a fraction of a pixel.
+                    # The document overflow assertion above still rejects real horizontal scrolling.
+                    assert preview.bounding_box()["width"] <= width + 0.5
                 page.screenshot(animations="disabled", path=str(tmp_path / f"{module}-preview-{theme}-{width}.png"))
                 preview.get_by_role("button", name=f"{open_label}：{title}", exact=True).click()
                 notice = page.get_by_role("status").filter(has_text=f"已{open_label}") if module == "resources" else preview.locator(".library-inline-notice")
