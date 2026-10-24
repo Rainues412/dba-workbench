@@ -126,7 +126,7 @@ describe("library classification and read-only preview", () => {
   });
 
   it.each(["D:/docs/layout.pdf", ""])("articles show only source-file preview and preserve saved content when path is %s", async (filePath) => {
-    const row = { id: 18, revision: 3, title: "仅源文件预览", content: "保留的历史文章正文", file_path: filePath };
+    const row = { id: 18, revision: 3, title: "仅源文件预览", summary: "select name from v$database; ![image](img/image.png)", content: "保留的历史文章正文", file_path: filePath };
     const reads: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (path: string) => {
       reads.push(path);
@@ -141,13 +141,15 @@ describe("library classification and read-only preview", () => {
     await within(preview).findByText(filePath ? "原文件预览失败：内置查看器暂不可用" : "尚未关联源文件");
     expect(within(preview).queryByRole("region", { name: "正文预览" })).not.toBeInTheDocument();
     expect(within(preview).queryByText(row.content)).not.toBeInTheDocument();
+    expect(within(preview).queryByText(row.summary)).not.toBeInTheDocument();
     expect(reads).not.toContain("/api/articles/18/file-preview");
     fireEvent.click(within(preview).getByRole("button", { name: "编辑" }));
     expect(await within(screen.getByRole("dialog")).findByLabelText("正文", { exact: true })).toHaveValue(row.content);
+    expect(within(screen.getByRole("dialog")).getByLabelText("摘要", { exact: true })).toHaveValue(row.summary);
   });
 
   it.each([articlesConfig, scriptsConfig])("$key embeds kkFileView for the original linked file without flattening its layout", async (config) => {
-    const row = { id: 16, revision: 1, title: "原样预览", content: config.key === "articles" ? "不再展示的文章正文" : "", file_path: "D:/docs/layout.pdf" };
+    const row = { id: 16, revision: 1, title: "原样预览", summary: config.key === "articles" ? "知识库摘要" : undefined, description: config.key === "scripts" ? "保留的脚本说明" : undefined, content: config.key === "articles" ? "不再展示的文章正文" : "", file_path: "D:/docs/layout.pdf" };
     const reads: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (path: string) => {
       reads.push(path);
@@ -164,6 +166,8 @@ describe("library classification and read-only preview", () => {
     expect(frame).toHaveAttribute("sandbox", expect.stringContaining("allow-scripts"));
     expect(within(preview).getByText("layout.pdf")).toHaveAttribute("title", "layout.pdf");
     expect(reads).not.toContain(`${config.path}16/file-preview`);
+    expect(within(preview).queryByText("知识库摘要")).not.toBeInTheDocument();
+    if (config.key === "scripts") expect(within(preview).getByText("保留的脚本说明")).toBeInTheDocument();
     if (config.key === "articles") expect(within(preview).queryByRole("region", { name: "正文预览" })).not.toBeInTheDocument();
   });
 
@@ -335,11 +339,12 @@ describe("library classification and read-only preview", () => {
     fireEvent.click(within(preview).getByRole("button", { name: "编辑" }));
     const dialog = await screen.findByRole("dialog");
     expect(await within(dialog).findByLabelText("正文", { exact: true })).toHaveValue(content);
+    expect(within(dialog).getByLabelText("摘要", { exact: true })).toHaveValue(row.summary);
     fireEvent.change(within(dialog).getByLabelText("标题", { exact: true }), { target: { value: "已修改标题" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
     await waitFor(() => expect(writes).toHaveLength(1));
     expect(new Headers(writes[0].headers).get("If-Match")).toBe("6");
-    expect(JSON.parse(String(writes[0].body))).toMatchObject({ title: "已修改标题", content });
+    expect(JSON.parse(String(writes[0].body))).toMatchObject({ title: "已修改标题", content, summary: row.summary });
   });
 
   it("preview history is read-only and cannot restore or write a version", async () => {

@@ -97,7 +97,7 @@ export function LibraryPreview({ config, id, onClose, onEdit, onNotice, onRefres
   const linkedPath = String(row?.file_path || "");
   const hasLinkedFile = Boolean(row && linkedPath.trim());
   const summary = String(row?.summary || row?.description || "").trim();
-  const showSummary = summary && !(hasLinkedFile && /^来自\s/.test(summary));
+  const showSummary = config.key !== "articles" && summary && !(hasLinkedFile && /^来自\s/.test(summary));
   const visual = useQuery({
     queryKey: [config.key, "visual-preview", id, linkedPath, row?.updated_at],
     queryFn: ({ signal }) => api<{ filename: string; viewer: string; viewer_version?: string; viewer_url: string; asset_url?: string }>(`${config.path}${id}/visual-preview`, { signal }),

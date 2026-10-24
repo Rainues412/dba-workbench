@@ -76,8 +76,10 @@ def test_classification_list_preview_and_shortcuts(live_server, tmp_path, monkey
                     if module == "articles":
                         expect(preview.get_by_role("region", name="正文预览", exact=True)).to_have_count(0)
                         expect(preview).not_to_contain_text(body)
+                        expect(preview).not_to_contain_text("运维说明摘要")
                     else:
                         expect(preview).to_contain_text(body)
+                        expect(preview).to_contain_text("运维说明摘要")
                 expect(preview.locator(".library-code img")).to_have_count(0)
                 assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
                 if module == "resources":
@@ -128,11 +130,15 @@ def test_classification_list_preview_and_shortcuts(live_server, tmp_path, monkey
             expect(dialog.get_by_role("heading", name=f"编辑{label}", exact=True)).to_be_visible()
             field = "备注" if module == "resources" else "脚本正文" if module == "scripts" else "正文"
             expect(dialog.get_by_label(field, exact=True)).to_have_value(body)
+            if module == "articles":
+                expect(dialog.get_by_label("摘要", exact=True)).to_have_value("运维说明摘要")
             dialog.get_by_label("名称" if module != "articles" else "标题", exact=True).fill("已验证完整保存")
             dialog.get_by_role("button", name="保存", exact=True).click()
             expect(dialog).to_have_count(0)
             saved = client.get(f"/api/{module}/{original['id']}").json()
             assert saved["notes" if module == "resources" else "content"] == body
+            if module == "articles":
+                assert saved["summary"] == "运维说明摘要"
             assert saved["revision"] == original["revision"] + 1
             assert target.read_text(encoding="utf-8") == "select 'local file is not modified';"
         finally:
