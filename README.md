@@ -58,7 +58,7 @@
 | npm | 随 Node.js 安装 | 11.12.1 |
 | Python | 3.12.x x64 | 3.12.10 |
 
-前端直接依赖版本由 `frontend/package.json` 与 `frontend/package-lock.json` 锁定：React 19.3.1、React Router 7.18.4、TanStack Query 5.104.4、Lucide React 1.59.0、hash-wasm 4.12.0、Marked 18.1.1、DOMPurify 3.4.17、react-resizable-panels 4.14.8、Screenfull 6.0.2、Tocbot 4.36.8、marked-gfm-heading-id 4.1.4；构建工具为 TypeScript 7.0.2、Vite 8.3.4、Vitest 5.0.5。测试依赖见 `server/requirements-dev.txt`：pytest 8.3.5、httpx 0.28.1、Playwright 1.48.0。
+前端直接依赖版本由 `frontend/package.json` 与 `frontend/package-lock.json` 锁定：React 19.3.1、React Router 7.18.4、TanStack Query 5.104.4、Lucide React 1.59.0、hash-wasm 4.12.0、Marked 18.1.1、DOMPurify 3.4.17、react-resizable-panels 4.14.8、Screenfull 6.0.2、Tocbot 4.36.8、marked-gfm-heading-id 4.1.4、Motion 14.6.0、react-highlight-words 1.0.0；构建工具为 TypeScript 7.0.2、Vite 8.3.4、Vitest 5.0.5。测试依赖见 `server/requirements-dev.txt`：pytest 8.3.5、httpx 0.28.1、Playwright 1.48.0。
 
 ## 部署与启动
 
