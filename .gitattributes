@@ -5,3 +5,6 @@
 *.png binary
 *.ico binary
 *.zip binary
+
+# Keep local agent guidance out of GitHub-generated and git archive source bundles.
+[Aa][Gg][Ee][Nn][Tt][Ss].[Mm][Dd] export-ignore
