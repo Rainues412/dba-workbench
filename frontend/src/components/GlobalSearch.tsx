@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
+import { SearchHighlight } from "./SearchHighlight";
 
 const modules = [
   ["scripts", "脚本库"], ["articles", "知识库"], ["resources", "资源中心"],
@@ -32,7 +33,8 @@ export function GlobalSearch() {
   function choose(item: SearchItem) {
     setFocused(false);
     input.current?.blur();
-    navigate(`/${item.module}?record=${item.id}`);
+    const target = item.module === "articles" || item.module === "scripts" ? "preview" : "record";
+    navigate(`/${item.module}?${target}=${item.id}`, { state: { previewSearch: target === "preview" } });
   }
 
   useEffect(() => {
@@ -111,12 +113,13 @@ export function GlobalSearch() {
             className={`global-search-result${activeIndex === index ? " is-active" : ""}`}
             key={`${item.module}-${item.id}`}
             role="option"
+            aria-label={`${displayTitle} ${item.moduleLabel}`}
             aria-selected={activeIndex === index}
             onMouseEnter={() => setActiveIndex(index)}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => choose(item)}
           >
-            <span className="global-search-result-title" title={displayTitle}>{displayTitle}</span>
+            <span className="global-search-result-title" title={displayTitle}><SearchHighlight text={displayTitle} query={query} /></span>
             <span className="global-search-result-module">{item.moduleLabel}</span>
           </button>})}
     </div>}

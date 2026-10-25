@@ -57,10 +57,11 @@
 .library-categories .database-label strong { overflow: hidden; text-overflow: ellipsis; }
 .library-categories .category-filter-row { margin-top: .9rem; padding-top: .85rem; }
 .library-categories .category-filter-options { flex-direction: column; flex-wrap: nowrap; gap: .3rem; }
-.library-categories .category-filter { width: 100%; min-width: 0; justify-content: space-between; border-color: transparent; background: transparent; }
-.library-categories .category-filter[aria-pressed="true"] { background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 25%, var(--border)); }
+.library-categories .category-filter { position: relative; isolation: isolate; width: 100%; min-width: 0; justify-content: space-between; border-color: transparent; background: transparent; }
+.library-categories .category-filter[aria-pressed="true"] { background: transparent; border-color: transparent; }
+.category-active-indicator { inset: -1px; z-index: -1; border: 1px solid color-mix(in srgb, var(--primary) 25%, var(--border)); background: var(--primary-soft); }
 .library-categories .category-filter strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
-.library-categories .category-filter span { flex: 0 0 auto; min-width: 20px; text-align: center; }
+.library-categories .category-filter-count { flex: 0 0 auto; min-width: 20px; text-align: center; }
 .library-categories .state { padding-inline: .2rem; }
 .library-page .data-panel { border-left: 1px solid var(--border); }
 .library-page .active-classification { padding: .65rem 1rem; border-bottom: 1px solid var(--border); }
@@ -81,10 +82,13 @@
 .library-page .toolbar .result-count { flex-basis: 100%; text-align: left; font-size: .7rem; }
 .preview-toggle.active { color: var(--primary); background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 30%, var(--border)); }
 .library-record-list { margin: 0; padding: 0; list-style: none; }
-.library-record { position: relative; display: grid; grid-template-columns: 36px minmax(0, 1fr); align-items: start; gap: .7rem; min-width: 0; padding: 1rem; border-bottom: 1px solid var(--border); border-left: 3px solid transparent; }
+.library-record { position: relative; isolation: isolate; display: grid; grid-template-columns: 36px minmax(0, 1fr); align-items: start; gap: .7rem; min-width: 0; padding: 1rem; border-bottom: 1px solid var(--border); border-left: 3px solid transparent; }
 .library-record:last-child { border-bottom: 0; }
+.library-record { scroll-margin-block: 82px 16px; }
 .library-record:hover { background: var(--surface-soft); }
-.library-record.selected { border-left-color: var(--primary); background: var(--primary-soft); }
+.library-record.selected { background: transparent; }
+.record-active-indicator { inset: 0 0 0 -3px; z-index: -1; border-left: 3px solid var(--primary); background: var(--primary-soft); }
+.library-record.selected .library-record-title { color: var(--primary); }
 .library-record-icon { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--border); border-radius: 10px; color: var(--primary); background: var(--surface); }
 .library-record-icon.scripts { color: #8b5cf6; }
 .library-record-icon.articles { color: var(--danger); }
@@ -176,6 +180,9 @@
 .library-toc > div > .toc-list { padding-left: 0; }
 .library-toc .toc-link { display: block; padding: .4rem .5rem; border-radius: 6px; color: var(--muted); text-decoration: none; overflow-wrap: anywhere; }
 .library-toc .toc-link:hover, .library-toc .is-active-link { color: var(--primary); background: var(--primary-soft); }
+.library-toc-tree { position: relative; isolation: isolate; }
+.toc-active-indicator { position: absolute; z-index: -1; top: 0; left: 0; pointer-events: none; border-radius: 6px; background: var(--primary-soft); }
+.library-toc .is-active-link { background: transparent; font-weight: 650; }
 .library-toc .toc-link:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .library-toc-expand { display: none; position: absolute; z-index: 1; top: .4rem; right: 1.5rem; background: var(--surface); }
 @container file-preview (min-width: 800px) {

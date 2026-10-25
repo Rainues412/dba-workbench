@@ -2,6 +2,8 @@ import { FolderOpen, Layers3, PanelLeftClose, PanelLeftOpen } from "lucide-react
 import { databaseMeta } from "./DatabaseLabel";
 import { DatabaseFilter } from "./DatabaseFilter";
 import { ErrorState, LoadingState } from "./States";
+import { motion } from "motion/react";
+import { SelectionIndicator, SelectionMotion } from "./SelectionMotion";
 
 export type Classification = {
   databaseField: string;
@@ -41,7 +43,7 @@ export function CategoryNavigation({ classification, data, loading, error, retry
   const categoryTotal = database ? databaseCounts.get(database) ?? 0 : data?.total ?? 0;
   const categories = [...new Set([...categoryOptions, ...(categoryField ? (data?.items ?? []).map((row) => String(row[categoryField] ?? "")) : []), category].filter(Boolean))]
     .filter((name) => !hideEmptyCategories || (categoryCounts.get(name) ?? 0) > 0);
-  return <section className={`panel library-categories${collapsed ? " collapsed" : ""}`} aria-label="分类浏览">
+  return <SelectionMotion><motion.section layoutScroll className={`panel library-categories${collapsed ? " collapsed" : ""}`} aria-label="分类浏览">
     <div className="library-categories-heading">
       {!collapsed && <h2><Layers3 size={16} />分类浏览</h2>}
       {onToggle && <button className="icon-button" type="button" aria-label={collapsed ? "展开分类浏览" : "收起分类浏览"} title={collapsed ? "展开分类浏览" : "收起分类浏览"} aria-expanded={!collapsed} onClick={onToggle}>{collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button>}
@@ -55,10 +57,10 @@ export function CategoryNavigation({ classification, data, loading, error, retry
     {categoryField && <div className="category-filter-row" role="group" aria-label={categoryLabel}>
       <span className="category-filter-label"><FolderOpen size={15} />{categoryLabel}</span>
       <div className="category-filter-options">
-        <button className="category-filter" type="button" aria-pressed={!category} onClick={() => onChange(database, "")}>全部<span>{categoryTotal}</span></button>
-        {categories.map((name) => <button className="category-filter" key={name} type="button" title={name} aria-pressed={category === name} onClick={() => onChange(database, name)}><strong>{name}</strong><span>{categoryCounts.get(name) ?? 0}</span></button>)}
+        <button className="category-filter" type="button" aria-pressed={!category} onClick={() => onChange(database, "")}>{!category && <SelectionIndicator className="category-active-indicator" />}<strong>全部</strong><span className="category-filter-count">{categoryTotal}</span></button>
+        {categories.map((name) => <button className="category-filter" key={name} type="button" title={name} aria-pressed={category === name} onClick={() => onChange(database, name)}>{category === name && <SelectionIndicator className="category-active-indicator" />}<strong>{name}</strong><span className="category-filter-count">{categoryCounts.get(name) ?? 0}</span></button>)}
       </div>
     </div>}
     </>}
-  </section>;
+  </motion.section></SelectionMotion>;
 }

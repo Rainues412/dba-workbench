@@ -1,5 +1,5 @@
 """Scripts API - CRUD operations for the script library."""
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
 from backend.database import get_db_ctx, page_response, validate_page
@@ -40,6 +40,7 @@ def list_scripts(
     favorite_only: int = 0,
     page: int = 1,
     page_size: int = 20,
+    locate_id: Optional[int] = Query(default=None, ge=1),
 ):
     """List scripts with filtering and pagination."""
     with get_db_ctx() as conn:
@@ -65,12 +66,21 @@ def list_scripts(
         total = conn.execute(f"SELECT COUNT(*) FROM scripts {where}", params).fetchone()[0]
 
         offset, ps = validate_page(page, page_size)
+        order_by = "updated_at DESC, id DESC"
+        if locate_id is not None:
+            position = conn.execute(
+                f"SELECT position FROM (SELECT id, ROW_NUMBER() OVER (ORDER BY {order_by}) AS position FROM scripts {where}) WHERE id = ?",
+                params + [locate_id],
+            ).fetchone()
+            if position:
+                page = (position[0] - 1) // ps + 1
+                offset = (page - 1) * ps
         # 列表接口排除content字段，避免大文本导致JSON序列化问题
         rows = conn.execute(
             f"""SELECT id, title, description, db_type, wb_type, tags, file_path,
                        is_favorite, created_at, updated_at, version, revision
                 FROM scripts {where}
-                ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?""",
+                ORDER BY {order_by} LIMIT ? OFFSET ?""",
             params + [ps, offset],
         ).fetchall()
         return page_response(total, rows, page, ps)

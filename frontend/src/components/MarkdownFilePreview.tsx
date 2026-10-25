@@ -5,6 +5,7 @@ import { List, PanelLeftClose } from "lucide-react";
 import DOMPurify from "dompurify";
 import { ErrorState, LoadingState } from "./States";
 import { createMarkdownParser } from "./markdownParser";
+import { OutlineIndicator } from "./OutlineIndicator";
 
 export function renderMarkdown(source: string, assetUrl: string) {
   const options = {
@@ -85,7 +86,7 @@ export function MarkdownFilePreview({ filename, sourceUrl, assetUrl, expanded = 
     : <div className={`library-markdown-layout${expanded ? " expanded" : ""}${hasHeadings ? " has-outline" : ""}${showToc ? "" : " toc-collapsed"}`}>
       <nav className="library-toc" aria-label="文章目录" hidden={!hasHeadings || !showToc}>
         <div className="library-toc-heading"><strong><List size={16} />文章目录</strong><button className="icon-button" title="收起文章目录" aria-label="收起文章目录" onClick={() => setShowToc(false)}><PanelLeftClose size={16} /></button></div>
-        <div ref={tocRef} />
+        <div className="library-toc-tree"><div ref={tocRef} /><OutlineIndicator container={tocRef} /></div>
       </nav>
       {hasHeadings && !showToc && <button className="button small library-toc-expand" onClick={() => setShowToc(true)}><List size={15} />展开目录</button>}
       <div id={scrollId} ref={documentRef} className="library-markdown" role="region" aria-label={`原文件预览：${filename}`} onClick={(event) => {

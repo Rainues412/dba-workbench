@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Archive, ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, ChevronsUp, FolderOpen, Minus, PanelRight, Pencil, Pin, Plus, RotateCcw, Search, Star, Trash2, Undo2, X } from "lucide-react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import { api, ApiError, Entity, entityApi } from "../api/client";
 import { CategoryNavigation } from "./CategoryNavigation";
@@ -45,6 +45,8 @@ function CrudContent({ config }: { config: CrudConfig }) {
   const PageIcon = config.icon;
   const client = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const handledPreview = useRef<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [keyword, setKeyword] = useState("");
@@ -57,6 +59,8 @@ function CrudContent({ config }: { config: CrudConfig }) {
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [previewId, setPreviewId] = useState<number | null>(null);
+  const [locateId, setLocateId] = useState<number | null>(null);
+  const [revealId, setRevealId] = useState<number | null>(null);
   const [previewEnabled, setPreviewEnabled] = useState(true);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
@@ -67,6 +71,9 @@ function CrudContent({ config }: { config: CrudConfig }) {
   const isTask = config.key === "tasks";
   const hasFavorites = ["scripts", "articles", "resources"].includes(config.key);
   const hasPreview = ["scripts", "articles"].includes(config.key);
+  const previewTarget = searchParams.get("preview");
+  const recordTarget = searchParams.get("record");
+  if (hasPreview && locateId !== null) filters.locate_id = String(locateId);
   if (isTask && taskArchive) filters.archived = "1";
   else if (isTask && status) filters.status = status;
   if (isTask && priority) filters.priority = priority;
@@ -102,16 +109,47 @@ function CrudContent({ config }: { config: CrudConfig }) {
     enabled: selectedId !== null,
   });
   useEffect(() => {
-    const record = Number(searchParams.get("record"));
+    const record = Number(recordTarget);
     if (Number.isSafeInteger(record) && record > 0) { setCreating(false); setSelectedId(record); }
-  }, [searchParams]);
+  }, [recordTarget]);
   useEffect(() => {
     if (list.data && !list.isPlaceholderData && page > Math.max(1, list.data.pages)) setPage(Math.max(1, list.data.pages));
   }, [list.data, list.isPlaceholderData, page]);
   useEffect(() => {
-    // The active document is independent of list filters and pagination.
-    setPreviewId(null);
-  }, [config.key]);
+    if (!previewTarget) { handledPreview.current = null; return; }
+    if (handledPreview.current === previewTarget && !location.state?.previewSearch) return;
+    handledPreview.current = previewTarget;
+    const id = Number(previewTarget);
+    if (hasPreview && Number.isSafeInteger(id) && id > 0) {
+      setCreating(false); setSelectedId(null); setPreviewId(id); setPreviewEnabled(true);
+      setLocateId(id); setRevealId(id); setPage(1); setKeyword(""); setDebouncedKeyword(""); setFavoriteOnly(false);
+    }
+    // A new search also locates the exact row using the server's ordering.
+  }, [hasPreview, previewTarget, location.key, location.state]);
+  useEffect(() => {
+    if (locateId === null || list.isFetching || list.isPlaceholderData || !list.data) return;
+    setPage(list.data.page);
+    setLocateId(null);
+  }, [locateId, list.data, list.isFetching, list.isPlaceholderData]);
+  useEffect(() => {
+    if (revealId === null || revealId !== previewId || !previewEnabled || locateId !== null || list.isFetching || list.isPlaceholderData) return;
+    const row = panelRef.current?.querySelector<HTMLElement>(".library-record.selected");
+    if (!row) return;
+    let active = true;
+    const frame = requestAnimationFrame(async () => {
+      // Wait for the list/preview split to settle before revealing a lower row.
+      const group = panelRef.current?.closest(".library-panels");
+      const transitions = typeof group?.getAnimations === "function" ? group.getAnimations({ subtree: true }).filter((animation) => {
+        const target = (animation.effect as KeyframeEffect | null)?.target;
+        return target instanceof Element && target.matches("[data-panel], .library-preview-pane");
+      }) : [];
+      await Promise.all(transitions.map((animation) => animation.finished.catch(() => undefined)));
+      if (!active || !row.isConnected) return;
+      row.scrollIntoView?.({ block: "nearest", inline: "nearest", behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+      setRevealId(null);
+    });
+    return () => { active = false; cancelAnimationFrame(frame); };
+  }, [revealId, previewId, previewEnabled, locateId, list.data, list.isFetching, list.isPlaceholderData]);
   useLayoutEffect(() => {
     if (list.isPlaceholderData || paginationTop.current === null) return;
     if (list.error) { paginationTop.current = null; return; }
@@ -125,11 +163,15 @@ function CrudContent({ config }: { config: CrudConfig }) {
 
   function changePage(nextPage: number) {
     if (nextPage === page) return;
+    setLocateId(null);
+    setRevealId(null);
     paginationTop.current = panelRef.current?.querySelector(".pagination")?.getBoundingClientRect().top ?? null;
     setPage(nextPage);
   }
 
   function changeClassification(nextDatabase: string, nextCategory: string) {
+    setLocateId(null);
+    setRevealId(null);
     paginationTop.current = null;
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
@@ -165,6 +207,18 @@ function CrudContent({ config }: { config: CrudConfig }) {
     setSelectedId(null); setCreating(false);
     if (searchParams.has("record")) { const next = new URLSearchParams(searchParams); next.delete("record"); setSearchParams(next, { replace: true }); }
   }
+  function clearPreviewTarget() {
+    setLocateId(null);
+    setRevealId(null);
+    if (!searchParams.has("preview")) return;
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete("preview");
+      return next;
+    }, { replace: true });
+  }
+  function closePreview() { clearPreviewTarget(); setPreviewEnabled(false); }
+  function editRecord(id: number) { clearPreviewTarget(); setCreating(false); setSelectedId(id); }
   async function refresh() {
     await Promise.all([client.invalidateQueries({ queryKey: [config.key] }), client.invalidateQueries({ queryKey: ["dashboard"] })]);
   }
@@ -201,7 +255,7 @@ function CrudContent({ config }: { config: CrudConfig }) {
     if (!window.confirm(`确定删除“${String(row[config.columns[0].name] ?? "该记录")}”吗？`)) return;
     try {
       await entityApi.remove(config.path, row.id, row.revision);
-      if (previewId === row.id) setPreviewId(null);
+      if (previewId === row.id) { clearPreviewTarget(); setPreviewId(null); }
       setNotice("记录已删除");
       await refresh();
     } catch (reason) {
@@ -219,11 +273,11 @@ function CrudContent({ config }: { config: CrudConfig }) {
     <LibraryLayout module={config.key} enabled={hasFavorites}
       categories={config.classification ? (collapsed, onToggle) => <CategoryNavigation classification={config.classification!} data={facets.data} loading={facets.isLoading} error={!!facets.error} retry={() => void facets.refetch()} database={database} category={category} categoryOptions={config.fields.find((field) => field.name === config.classification?.categoryField)?.options} hideEmptyCategories={config.key === "articles"} onChange={changeClassification} collapsed={collapsed} onToggle={onToggle} /> : undefined}
       previewOpen={previewEnabled}
-      preview={hasPreview && !creating && selectedId === null ? <LibraryPreview config={config} id={previewId} open={previewEnabled} onClose={() => setPreviewEnabled(false)} onEdit={(id) => { setCreating(false); setSelectedId(id); }} onNotice={setNotice} onRefresh={refresh} /> : undefined}>
+      preview={hasPreview && !creating && selectedId === null ? <LibraryPreview config={config} id={previewId} open={previewEnabled} onClose={closePreview} onEdit={editRecord} onNotice={setNotice} onRefresh={refresh} /> : undefined}>
     <section className="panel data-panel" ref={panelRef} aria-busy={list.isFetching}>
       <div className="toolbar"><label className="search-field"><Search size={17} aria-hidden="true" /><span className="sr-only">按标题搜索{config.title}</span><input value={keyword} onChange={(event) => { paginationTop.current = null; setKeyword(event.target.value); setPage(1); }} placeholder={`按标题搜索${config.title}`} /></label>
         {hasFavorites && <div className="list-filters"><label className="checkbox-label"><input type="checkbox" checked={favoriteOnly} onChange={(event) => { paginationTop.current = null; setFavoriteOnly(event.target.checked); setPage(1); }} />只看收藏</label></div>}
-        {hasPreview && <button type="button" className={`button small preview-toggle${previewEnabled ? " active" : ""}`} aria-pressed={previewEnabled} title="再次点击同一标题收起预览；文件通过快捷按钮打开" onClick={() => { setPreviewEnabled(!previewEnabled); if (!previewEnabled && !previewId && list.data?.items[0]) setPreviewId(list.data.items[0].id); }}><PanelRight size={16} />预览</button>}
+        {hasPreview && <button type="button" className={`button small preview-toggle${previewEnabled ? " active" : ""}`} aria-pressed={previewEnabled} title="再次点击同一标题收起预览；文件通过快捷按钮打开" onClick={() => { clearPreviewTarget(); setPreviewEnabled(!previewEnabled); if (!previewEnabled && !previewId && list.data?.items[0]) setPreviewId(list.data.items[0].id); }}><PanelRight size={16} />预览</button>}
         <span className="result-count" aria-live="polite">{list.isPlaceholderData ? "正在加载…" : <>共 <strong>{list.data?.total ?? 0}</strong> 条记录</>}</span></div>
       {isTask && <div className="list-filters task-filters">{isTask && <>{!taskArchive && <label>状态<select aria-label="筛选任务状态" value={status} onChange={(event) => { paginationTop.current = null; setStatus(event.target.value); if (event.target.value === "已完成") setOverdueOnly(false); setPage(1); }}><option value="">全部状态</option>{["待处理", "进行中", "已完成"].map((value) => <option key={value}>{value}</option>)}</select></label>}<label>优先级<select aria-label="筛选任务优先级" value={priority} onChange={(event) => { paginationTop.current = null; setPriority(event.target.value); setPage(1); }}><option value="">全部优先级</option>{["高", "中", "低"].map((value) => <option key={value}>{value}</option>)}</select></label>{!taskArchive && <button className={`task-overdue-filter${overdueOnly ? " active" : ""}`} type="button" aria-pressed={overdueOnly} onClick={() => { paginationTop.current = null; setOverdueOnly((value) => !value); if (!overdueOnly && status === "已完成") setStatus(""); setPage(1); }}><AlertTriangle size={16} />仅看逾期</button>}<span className="muted task-retention-note">{taskArchive ? "归档任务按创建时间从新到旧排列，可查看详情或恢复到任务列表。" : "已完成任务按创建时间从新到旧排列，完成满 15 天自动归档，可通过“查看归档”查看或恢复。"}</span></>}</div>}
       {(database || category) && <div className="active-classification" role="group" aria-label="当前分类筛选">
@@ -235,7 +289,7 @@ function CrudContent({ config }: { config: CrudConfig }) {
       </div>}
       {notice && <div className="alert" role="status"><span><CheckCircle2 size={17} />{notice}</span><button className="icon-button" aria-label="关闭通知" onClick={() => setNotice("")}><X size={17} /></button></div>}
       {list.isLoading ? <TableSkeleton /> : list.error ? <ErrorState message="数据加载失败" retry={() => void list.refetch()} /> : !list.data?.items.length ? <EmptyState title={isTask && taskArchive ? "没有已归档任务" : `没有${config.title}数据`} description={isTask && taskArchive ? "已完成任务保留 15 天后自动归档，可在此查看或恢复。" : database || category || keyword ? "当前分类或搜索条件下没有记录，可切换分类、清空搜索或新增记录。" : "可通过右上角按钮创建第一条记录。"} /> : <>
-        {hasFavorites ? <LibraryRecords config={config} rows={list.data.items} selectedId={previewEnabled ? previewId : null} disabled={list.isPlaceholderData} onPreview={(id) => { setPreviewEnabled((enabled) => previewId !== id || !enabled); setPreviewId(id); }} onEdit={(id) => { setCreating(false); setSelectedId(id); }} onUpdate={quickUpdate} onRemove={remove} onNotice={setNotice} /> : <div className="table-wrap"><table className={isTask ? "task-table" : config.key === "customers" ? "customer-table" : undefined}><thead><tr>{config.columns.map((column) => <th key={column.name}>{column.label}</th>)}<th className="actions-heading"><span className="sr-only">操作</span></th></tr></thead><tbody>{list.data.items.map((row) => <tr className={isTask ? taskRowClass(row) : undefined} key={row.id}>{config.columns.map((column, index) => <td key={column.name} data-label={column.label}><span className={index === 0 ? "primary-cell" : undefined}>{index === 0 && config.fileLinks ? <LocalFileLinks row={row} label={String(row[column.name] ?? "")} config={config.fileLinks} disabled={list.isPlaceholderData} onNotice={setNotice} /> : isTask ? formatTaskCell(row, column.name) : config.key === "customers" ? formatCustomerCell(row, column.name) : formatCell(row[column.name], column.name)}</span></td>)}<td className="row-actions" data-label="操作">{hasFavorites && <button className="icon-button" aria-label={row.is_favorite ? "取消收藏" : "收藏"} disabled={list.isPlaceholderData} onClick={() => void quickUpdate(row, { is_favorite: row.is_favorite ? 0 : 1 })}><Star size={15} fill={row.is_favorite ? "currentColor" : "none"} /></button>}{config.key === "articles" && <button className="icon-button" aria-label={row.is_pinned ? "取消置顶" : "置顶"} disabled={list.isPlaceholderData} onClick={() => void quickUpdate(row, { is_pinned: row.is_pinned ? 0 : 1 })}><Pin size={15} fill={row.is_pinned ? "currentColor" : "none"} /></button>}{isTask && <button className="button small" disabled={list.isPlaceholderData} onClick={() => void quickUpdate(row, { status: row.status === "已完成" ? "待处理" : "已完成" })}>{row.status === "已完成" ? <><Undo2 size={14} />恢复</> : <><CheckCircle2 size={14} />完成</>}</button>}<button className="button small" disabled={list.isPlaceholderData} onClick={() => { setCreating(false); setSelectedId(row.id); }}><Pencil size={14} />查看/编辑</button><button className="button small danger" disabled={list.isPlaceholderData} onClick={() => void remove(row)}><Trash2 size={14} />删除</button></td></tr>)}</tbody></table></div>}
+        {hasFavorites ? <LibraryRecords config={config} rows={list.data.items} selectedId={previewEnabled ? previewId : null} disabled={list.isPlaceholderData} searchQuery={debouncedKeyword} onPreview={(id) => { clearPreviewTarget(); setPreviewEnabled((enabled) => previewId !== id || !enabled); setPreviewId(id); }} onEdit={editRecord} onUpdate={quickUpdate} onRemove={remove} onNotice={setNotice} /> : <div className="table-wrap"><table className={isTask ? "task-table" : config.key === "customers" ? "customer-table" : undefined}><thead><tr>{config.columns.map((column) => <th key={column.name}>{column.label}</th>)}<th className="actions-heading"><span className="sr-only">操作</span></th></tr></thead><tbody>{list.data.items.map((row) => <tr className={isTask ? taskRowClass(row) : undefined} key={row.id}>{config.columns.map((column, index) => <td key={column.name} data-label={column.label}><span className={index === 0 ? "primary-cell" : undefined}>{index === 0 && config.fileLinks ? <LocalFileLinks row={row} label={String(row[column.name] ?? "")} config={config.fileLinks} disabled={list.isPlaceholderData} onNotice={setNotice} /> : isTask ? formatTaskCell(row, column.name) : config.key === "customers" ? formatCustomerCell(row, column.name) : formatCell(row[column.name], column.name)}</span></td>)}<td className="row-actions" data-label="操作">{hasFavorites && <button className="icon-button" aria-label={row.is_favorite ? "取消收藏" : "收藏"} disabled={list.isPlaceholderData} onClick={() => void quickUpdate(row, { is_favorite: row.is_favorite ? 0 : 1 })}><Star size={15} fill={row.is_favorite ? "currentColor" : "none"} /></button>}{config.key === "articles" && <button className="icon-button" aria-label={row.is_pinned ? "取消置顶" : "置顶"} disabled={list.isPlaceholderData} onClick={() => void quickUpdate(row, { is_pinned: row.is_pinned ? 0 : 1 })}><Pin size={15} fill={row.is_pinned ? "currentColor" : "none"} /></button>}{isTask && <button className="button small" disabled={list.isPlaceholderData} onClick={() => void quickUpdate(row, { status: row.status === "已完成" ? "待处理" : "已完成" })}>{row.status === "已完成" ? <><Undo2 size={14} />恢复</> : <><CheckCircle2 size={14} />完成</>}</button>}<button className="button small" disabled={list.isPlaceholderData} onClick={() => { setCreating(false); setSelectedId(row.id); }}><Pencil size={14} />查看/编辑</button><button className="button small danger" disabled={list.isPlaceholderData} onClick={() => void remove(row)}><Trash2 size={14} />删除</button></td></tr>)}</tbody></table></div>}
       </>}
       {list.data && !list.error && <Pagination page={list.data.page} pages={list.data.pages} total={list.data.total} pageSize={pageSize} onChange={changePage} onPageSizeChange={(size) => { paginationTop.current = null; setPageSize(size); setPage(1); }} />}
     </section>

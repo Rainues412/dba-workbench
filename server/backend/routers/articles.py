@@ -1,5 +1,5 @@
 """Articles API - CRUD operations for the knowledge base."""
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
 from backend.database import get_db_ctx, page_response, validate_page
@@ -41,6 +41,7 @@ def list_articles(
     favorite_only: int = 0,
     page: int = 1,
     page_size: int = 20,
+    locate_id: Optional[int] = Query(default=None, ge=1),
 ):
     """List articles with filtering and pagination."""
     with get_db_ctx() as conn:
@@ -66,11 +67,20 @@ def list_articles(
         total = conn.execute(f"SELECT COUNT(*) FROM articles {where}", params).fetchone()[0]
 
         offset, ps = validate_page(page, page_size)
+        order_by = "is_pinned DESC, updated_at DESC, id DESC"
+        if locate_id is not None:
+            position = conn.execute(
+                f"SELECT position FROM (SELECT id, ROW_NUMBER() OVER (ORDER BY {order_by}) AS position FROM articles {where}) WHERE id = ?",
+                params + [locate_id],
+            ).fetchone()
+            if position:
+                page = (position[0] - 1) // ps + 1
+                offset = (page - 1) * ps
         rows = conn.execute(
             f"""SELECT id, title, summary, category, tags, file_path, wb_db, is_favorite, is_pinned,
                        view_count, created_at, updated_at, revision
                 FROM articles {where}
-                ORDER BY is_pinned DESC, updated_at DESC, id DESC LIMIT ? OFFSET ?""",
+                ORDER BY {order_by} LIMIT ? OFFSET ?""",
             params + [ps, offset],
         ).fetchall()
         return page_response(total, rows, page, ps)

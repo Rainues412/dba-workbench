@@ -28,7 +28,7 @@ def test_global_search_opens_exact_record_in_each_module(live_server):
         with sync_playwright() as playwright:
             browser = _edge(playwright)
             try:
-                page = browser.new_page()
+                page = browser.new_page(viewport={"width": 1800, "height": 1000})
                 page.set_default_timeout(10_000)
                 _login(page, live_server)
                 for module, _, label in records:
@@ -38,10 +38,17 @@ def test_global_search_opens_exact_record_in_each_module(live_server):
                     search.fill("跨模块定位")
                     results = page.get_by_role("listbox", name="全局搜索结果")
                     results.get_by_role("option", name=re.compile(f"跨模块定位-{module}")).click()
-                    page.wait_for_url(f"**/{module}?record={ids[module]}")
-                    editor = page.get_by_role("dialog")
-                    expect(editor.get_by_label(label, exact=True)).to_have_value(f"跨模块定位-{module}")
-                    editor.get_by_role("button", name="关闭", exact=True).click()
+                    target = "preview" if module in {"articles", "scripts"} else "record"
+                    page.wait_for_url(f"**/{module}?{target}={ids[module]}")
+                    if target == "preview":
+                        preview = page.get_by_role("complementary", name="记录预览")
+                        expect(preview.get_by_role("heading", name=f"跨模块定位-{module}", exact=True)).to_be_visible()
+                        expect(page.get_by_role("dialog")).to_have_count(0)
+                        preview.get_by_role("button", name="关闭预览", exact=True).click()
+                    else:
+                        editor = page.get_by_role("dialog")
+                        expect(editor.get_by_label(label, exact=True)).to_have_value(f"跨模块定位-{module}")
+                        editor.get_by_role("button", name="关闭", exact=True).click()
                     page.wait_for_url(f"**/{module}")
                 page.keyboard.press("Control+k")
                 search = page.get_by_role("combobox", name="跨模块搜索关键词")

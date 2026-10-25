@@ -29,7 +29,9 @@ describe("global search", () => {
     const fetch = vi.fn(async () => response({ scripts: [{ id: 21, title: "MySQL 巡检" }], customers: [{ id: 3, name: "客户 A" }], tasks: [{ id: 8, title: "不应参与搜索的任务" }], passwords: [{ id: 1, title: "不应显示" }] }));
     vi.stubGlobal("fetch", fetch); mount(); search("MySQL");
     expect(await screen.findByRole("option", { name: /MySQL 巡检/ })).toBeInTheDocument();
-    expect(screen.getByText("MySQL 巡检")).toHaveAttribute("title", "MySQL 巡检");
+    const resultTitle = screen.getByRole("option", { name: /MySQL 巡检/ }).querySelector(".global-search-result-title");
+    expect(resultTitle).toHaveAttribute("title", "MySQL 巡检");
+    expect(resultTitle?.querySelector("mark")).toHaveTextContent("MySQL");
     expect((fetch.mock.calls[0] as unknown as [string])[0]).toBe("/api/search/?q=MySQL&limit=0");
     expect(screen.getByRole("option", { name: /客户 A/ })).toBeInTheDocument();
     expect(screen.queryByText("不应参与搜索的任务")).not.toBeInTheDocument();
@@ -37,7 +39,7 @@ describe("global search", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole("combobox"), { key: "ArrowDown" });
     fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
-    expect(screen.getByLabelText("当前位置")).toHaveTextContent("/scripts?record=21");
+    expect(screen.getByLabelText("当前位置")).toHaveTextContent("/scripts?preview=21");
   });
 
   it("keeps all matches in one scrollable list rather than truncating to five", async () => {
@@ -55,7 +57,7 @@ describe("global search", () => {
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "新" } });
     await screen.findByRole("option", { name: /新的结果/ });
     finishOld(response({ articles: [{ id: 1, title: "过期结果" }] }));
-    await waitFor(() => expect(screen.getByText("新的结果")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("option", { name: /新的结果/ })).toBeInTheDocument());
     expect(screen.queryByText("过期结果")).not.toBeInTheDocument();
   });
 
@@ -65,5 +67,12 @@ describe("global search", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("暂不可用");
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "无结果" } });
     expect(await screen.findByText("没有匹配记录")).toBeInTheDocument();
+  });
+
+  it.each(["articles", "resources", "customers"])("uses the correct read or edit target for %s", async (module) => {
+    vi.stubGlobal("fetch", vi.fn(async () => response({ [module]: [{ id: 9, title: "目标文件" }] })));
+    mount(); search("目标");
+    fireEvent.click(await screen.findByRole("option", { name: /目标文件/ }));
+    expect(screen.getByLabelText("当前位置")).toHaveTextContent(`/${module}?${module === "articles" ? "preview" : "record"}=9`);
   });
 });

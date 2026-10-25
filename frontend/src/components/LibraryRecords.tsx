@@ -8,6 +8,8 @@ import { DatabaseLabel } from "./DatabaseLabel";
 import { EntityDetails } from "./EntityDetails";
 import { LocalFileLinks } from "./LocalFileLinks";
 import { EmptyState, ErrorState, LoadingState } from "./States";
+import { SearchHighlight } from "./SearchHighlight";
+import { SelectionIndicator, SelectionMotion } from "./SelectionMotion";
 
 const MarkdownFilePreview = lazy(() => import("./MarkdownFilePreview").then((module) => ({ default: module.MarkdownFilePreview })));
 
@@ -30,11 +32,12 @@ function RecordMeta({ config, row }: { config: CrudConfig; row: Entity }) {
   </div>;
 }
 
-export function LibraryRecords({ config, rows, selectedId, disabled, onPreview, onEdit, onUpdate, onRemove, onNotice }: {
+export function LibraryRecords({ config, rows, selectedId, disabled, searchQuery = "", onPreview, onEdit, onUpdate, onRemove, onNotice }: {
   config: CrudConfig;
   rows: Entity[];
   selectedId: number | null;
   disabled: boolean;
+  searchQuery?: string;
   onPreview: (id: number) => void;
   onEdit: (id: number) => void;
   onUpdate: (row: Entity, payload: Record<string, unknown>) => Promise<void>;
@@ -42,17 +45,18 @@ export function LibraryRecords({ config, rows, selectedId, disabled, onPreview, 
   onNotice: (message: string) => void;
 }) {
   const Icon = config.icon;
-  return <ul className="library-record-list" aria-label={`${config.title}记录`}>
+  return <SelectionMotion><ul className="library-record-list" aria-label={`${config.title}记录`}>
     {rows.map((row) => {
       const title = recordTitle(config, row);
       const filePath = config.key !== "resources" && config.fileLinks ? String(row[config.fileLinks.pathField] || "").trim() : "";
       const description = String(row.summary || row.description || (config.key === "resources" ? row.path || row.url : "") || "");
       return <li key={row.id} className={`library-record${selectedId === row.id ? " selected" : ""}`}>
+        {selectedId === row.id && <SelectionIndicator className="record-active-indicator" radius={0} />}
         <span className={`library-record-icon ${config.key}`} aria-hidden="true"><Icon size={20} /></span>
         <div className="library-record-copy">
           <div className="library-record-heading">
             <div className="library-record-summary">
-              {config.key === "resources" && config.fileLinks ? <div className="library-resource-links" title={title}><LocalFileLinks row={row} label={title} config={config.fileLinks} disabled={disabled} onNotice={onNotice} compact /></div> : <button type="button" className="library-record-title" title={title} aria-label={`预览：${title}`} aria-pressed={selectedId === row.id} disabled={disabled} onClick={() => onPreview(row.id)}>{title}</button>}
+              {config.key === "resources" && config.fileLinks ? <div className="library-resource-links" title={title}><LocalFileLinks row={row} label={title} config={config.fileLinks} disabled={disabled} onNotice={onNotice} compact /></div> : <button type="button" className="library-record-title" title={title} aria-label={`预览：${title}`} aria-pressed={selectedId === row.id} disabled={disabled} onClick={() => onPreview(row.id)}><SearchHighlight text={title} query={searchQuery} /></button>}
               {filePath ? <p className="library-record-path" title={filePath}><FolderOpen size={13} aria-hidden="true" /><span>{filePath}</span></p>
                 : description && <p className="library-record-description" title={description}>{description}</p>}
             </div>
@@ -73,7 +77,7 @@ export function LibraryRecords({ config, rows, selectedId, disabled, onPreview, 
         </div>
       </li>;
     })}
-  </ul>;
+  </ul></SelectionMotion>;
 }
 
 export function LibraryPreview({ config, id, open = true, onClose, onEdit, onNotice, onRefresh }: {

@@ -29,6 +29,16 @@ describe("knowledge category visibility", () => {
     expect(buttons()).toEqual(["全部3", "备份与恢复3"]);
   });
 
+  it("keeps one moving indicator on the current category, including custom categories", () => {
+    const { rerender, container } = render(<CategoryNavigation {...props} database="Oracle" />);
+    expect(container.querySelectorAll(".category-active-indicator")).toHaveLength(1);
+    rerender(<CategoryNavigation {...props} database="Oracle" category="新导入的自定义主题" />);
+    expect(container.querySelectorAll(".category-active-indicator")).toHaveLength(1);
+    expect(screen.getByTitle("新导入的自定义主题").querySelector(".category-active-indicator")).not.toBeNull();
+    rerender(<CategoryNavigation {...props} collapsed />);
+    expect(container.querySelector(".category-active-indicator")).toBeNull();
+  });
+
   it("automatically shows a topic on its first article and hides it after its last article is removed", () => {
     const { rerender } = render(<CategoryNavigation {...props} database="MySQL" />);
     const withFirstArticle = { total: 7, items: [...data.items, { wb_db: "MySQL", category: "性能优化", count: 1 }] };

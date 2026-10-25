@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { motion } from "motion/react";
 import {
   BookOpenText, Building2, ChevronRight, HardDrive, LayoutDashboard,
   ListTodo, LogOut, Moon, PackageOpen, PanelLeftClose, PanelLeftOpen,
@@ -8,6 +9,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { GlobalSearch } from "./GlobalSearch";
 import { DataBackup } from "./DataBackup";
+import { SelectionIndicator, SelectionMotion } from "./SelectionMotion";
 
 const navigation = [
   { to: "/", label: "工作台", description: "数据概览", icon: LayoutDashboard },
@@ -47,15 +49,20 @@ export function Shell() {
         </div>
 
         <div className="nav-section-label">工作区</div>
-        <nav aria-label="主导航">
+        <SelectionMotion>
+        <motion.nav layoutScroll aria-label="主导航">
           {navigation.map(({ to, label, description, icon: Icon }) => (
             <NavLink key={to} to={to} end={to === "/"} aria-label={label} title={collapsed ? `${label}：${description}` : undefined} className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>
+              {({ isActive }) => <>
+              {isActive && <SelectionIndicator className="nav-active-indicator" radius={12} />}
               <span className="nav-icon" aria-hidden="true"><Icon size={19} strokeWidth={1.9} /></span>
               <span className="nav-copy"><strong>{label}</strong><small>{description}</small></span>
               <ChevronRight className="nav-chevron" size={15} aria-hidden="true" />
+              </>}
             </NavLink>
           ))}
-        </nav>
+        </motion.nav>
+        </SelectionMotion>
 
         <div className="sidebar-footer">
           <div className="user-card">

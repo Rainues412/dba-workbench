@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CrudPage, type CrudConfig } from "../components/CrudPage";
 import { articlesConfig, resourcesConfig, scriptsConfig } from "../pages/entityConfigs";
@@ -10,7 +10,8 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); ["arti
 
 function CurrentLocation() {
   const location = useLocation();
-  return <output aria-label="页面地址">{location.pathname}{location.search}</output>;
+  const navigate = useNavigate();
+  return <><output aria-label="页面地址">{location.pathname}{location.search}</output><button onClick={() => navigate("/?preview=31", { state: { previewSearch: true } })}>再次搜索定位</button></>;
 }
 
 function show(config: CrudConfig, entry = "/") {
@@ -24,6 +25,74 @@ function list(items: object[], total = items.length) {
 }
 
 describe("library classification and read-only preview", () => {
+  it.each([articlesConfig, scriptsConfig])("$key locates and highlights a search result on its server-selected page, including a repeat search", async (config) => {
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => undefined);
+    const row = { id: 31, revision: 1, title: "第三页的目标文件" };
+    let locations = 0;
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+      if (path.endsWith("facets")) return Response.json({ total: 23, items: [] });
+      if (path === `${config.path}31`) return Response.json(row);
+      const query = new URL(path, "http://localhost").searchParams;
+      if (query.has("locate_id")) locations++;
+      const page = query.has("locate_id") ? 3 : Number(query.get("page") || 1);
+      return Response.json({ items: page === 3 ? [row] : [{ ...row, id: 5, title: "其他文件" }], total: 23, page, page_size: 10, pages: 3 });
+    }));
+    show(config, "/?preview=31");
+    const target = await screen.findByRole("button", { name: "预览：第三页的目标文件" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "第 3 页" })).toHaveAttribute("aria-current", "page"));
+    expect(target).toHaveAttribute("aria-pressed", "true");
+    expect(target.closest("li")?.querySelector(".record-active-indicator")).not.toBeNull();
+    await waitFor(() => expect(scroll).toHaveBeenCalledWith({ block: "nearest", inline: "nearest", behavior: "smooth" }));
+    fireEvent.click(screen.getByRole("button", { name: "第 1 页" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "预览：第三页的目标文件" })).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "再次搜索定位" }));
+    await screen.findByRole("button", { name: "预览：第三页的目标文件" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "第 3 页" })).toHaveAttribute("aria-current", "page"));
+    expect(locations).toBe(2);
+    await waitFor(() => expect(scroll).toHaveBeenCalledTimes(2));
+  });
+
+  it.each([articlesConfig, scriptsConfig])("$key opens a search target outside the current page and reopens it after closing", async (config) => {
+    const row = { id: 31, revision: 1, title: "搜索定位的文件", file_path: "D:/docs/目标.pdf" };
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+      if (path.endsWith("facets")) return Response.json({ total: 0, items: [] });
+      if (path.endsWith("visual-preview")) return Response.json({ filename: "目标.pdf", viewer_url: "/preview-test.pdf" });
+      return path === `${config.path}31` ? Response.json(row) : list([]);
+    }));
+    show(config, "/?preview=31&database=Oracle");
+    const preview = await screen.findByRole("complementary", { name: "记录预览" });
+    await within(preview).findByTitle("原文件预览：目标.pdf");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "预览：搜索定位的文件" })).not.toBeInTheDocument();
+    fireEvent.click(within(preview).getByRole("button", { name: "关闭预览" }));
+    expect(screen.getByLabelText("页面地址")).toHaveTextContent("/?database=Oracle");
+    fireEvent.click(screen.getByRole("button", { name: "再次搜索定位" }));
+    await within(screen.getByRole("complementary", { name: "记录预览" })).findByTitle("原文件预览：目标.pdf");
+    fireEvent.click(within(screen.getByRole("complementary", { name: "记录预览" })).getByRole("button", { name: "编辑" }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByLabelText("页面地址")).not.toHaveTextContent("preview=");
+  });
+
+  it("highlights the applied title search without changing the title or preview action", async () => {
+    const row = { id: 1, revision: 1, title: "Oracle RAC 排障" };
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => path.endsWith("facets") ? Response.json({ total: 1, items: [] }) : list([row])));
+    show(articlesConfig);
+    fireEvent.change(screen.getByRole("textbox", { name: "按标题搜索知识库" }), { target: { value: "RAC" } });
+    const title = await screen.findByRole("button", { name: `预览：${row.title}` });
+    await waitFor(() => expect(title.querySelector("mark")).toHaveTextContent("RAC"));
+    expect(title).toHaveAttribute("title", row.title);
+    expect(title.querySelectorAll("mark")).toHaveLength(1);
+  });
+
+  it.each(["-1", "NaN", "1.5", "9007199254740992"])("ignores invalid preview target %s", async (id) => {
+    const fetch = vi.fn(async (path: string) => path.endsWith("facets") ? Response.json({ total: 0, items: [] }) : list([]));
+    vi.stubGlobal("fetch", fetch);
+    show(articlesConfig, `/?preview=${id}`);
+    await screen.findByText("没有知识库数据");
+    expect(fetch.mock.calls.every(([path]) => !path.endsWith(`/${id}`))).toBe(true);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
   it.each([articlesConfig, scriptsConfig])("$key retains the active preview when filters remove its row from the list", async (config) => {
     const databaseField = config.classification!.databaseField;
     const categoryField = config.classification!.categoryField!;
@@ -41,6 +110,7 @@ describe("library classification and read-only preview", () => {
     fireEvent.click(await screen.findByRole("button", { name: "预览：正在阅读的记录" }));
     const preview = screen.getByRole("complementary", { name: "记录预览" });
     await within(preview).findByRole("heading", { name: row.title });
+    expect(document.querySelector(".library-record.selected .record-active-indicator")).not.toBeNull();
     fireEvent.click(within(screen.getByRole("region", { name: "分类浏览" })).getByTitle("其他分类"));
     await waitFor(() => expect(screen.queryByRole("button", { name: "预览：正在阅读的记录" })).not.toBeInTheDocument());
     expect(within(preview).getByRole("heading", { name: row.title })).toBeInTheDocument();
