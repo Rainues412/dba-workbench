@@ -20,8 +20,8 @@ export const articlesConfig: CrudConfig = {
   fileLinks: { pathField: "file_path", openMode: "open", openLabel: "打开文档" },
   columns: [{ name: "title", label: "标题" }, { name: "wb_db", label: "数据库" }, { name: "category", label: "分类" }, { name: "updated_at", label: "更新时间" }],
   fields: [
-    { name: "title", label: "标题", required: true }, { name: "wb_db", label: "数据库", defaultValue: "通用", options: ["Oracle", "MySQL", "PostgreSQL", "SQL Server", "Linux", "Redis", "通用", "其他"] },
-    { name: "category", label: "分类", type: "select", defaultValue: "学习记录", options: ["技术文档", "排障手册", "安装部署", "备份恢复", "架构设计", "性能调优", "安全加固", "迁移方案", "巡检规范", "学习笔记", "学习记录"] }, { name: "tags", label: "标签" },
+    { name: "title", label: "标题", required: true }, { name: "wb_db", label: "数据库", defaultValue: "通用", options: ["Oracle", "MySQL", "PostgreSQL", "SQL Server", "Linux", "Redis", "MongoDB", "Windows", "通用", "其他"] },
+    { name: "category", label: "分类", type: "select", defaultValue: "待确认", options: ["原理与SQL", "安装与升级", "日常管理", "备份与恢复", "高可用与同步", "故障排查", "性能优化", "安全与权限", "迁移与改造", "监控与巡检", "规范与应急", "工具与环境", "综合资料", "待确认"] }, { name: "tags", label: "标签" },
     { name: "file_path", label: "文件路径" }, { name: "summary", label: "摘要", type: "textarea" },
     { name: "content", label: "正文", type: "textarea" },
   ],

@@ -8,6 +8,31 @@ import { articlesConfig, scriptsConfig } from "../pages/entityConfigs";
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("classification editor", () => {
+  it("creates uncategorized knowledge as pending review without the old catch-all options", async () => {
+    const writes: RequestInit[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (path: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        writes.push(init);
+        return Response.json({ id: 8, revision: 1, ...JSON.parse(String(init.body)) });
+      }
+      if (path.endsWith("facets")) return Response.json({ total: 0, items: [] });
+      return Response.json({ total: 0, items: [], page: 1, page_size: 10, pages: 0 });
+    }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    render(<MemoryRouter><QueryClientProvider client={client}><CrudPage config={articlesConfig} /></QueryClientProvider></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: "新增" }));
+    const dialog = await screen.findByRole("dialog");
+    const category = within(dialog).getByRole("combobox", { name: "分类" });
+    expect(category).toHaveValue("待确认");
+    expect(within(category).getByRole("option", { name: "故障排查" })).toBeInTheDocument();
+    expect(within(category).queryByRole("option", { name: "技术文档" })).not.toBeInTheDocument();
+    expect(within(category).queryByRole("option", { name: "学习记录" })).not.toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText("标题", { exact: true }), { target: { value: "待整理的新文档" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(JSON.parse(String(writes[0].body))).toMatchObject({ title: "待整理的新文档", category: "待确认", wb_db: "通用" });
+  });
+
   for (const config of [articlesConfig, scriptsConfig]) {
     const fieldName = config.classification!.categoryField!;
     const field = config.fields.find((candidate) => candidate.name === fieldName)!;

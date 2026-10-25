@@ -14,7 +14,7 @@ class ArticleCreate(BaseModel):
     title: str
     summary: str = ""
     content: str = ""
-    category: str = "学习记录"
+    category: str = "待确认"
     tags: str = ""
     file_path: str = ""
     wb_db: str = "通用"

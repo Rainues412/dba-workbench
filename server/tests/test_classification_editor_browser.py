@@ -6,7 +6,7 @@ from test_browser_smoke import _api_client, _edge, _login, _select_database
 
 @pytest.mark.browser
 @pytest.mark.parametrize("module,label,current,target", [
-    ("articles", "分类", "安装部署", "性能调优"),
+    ("articles", "分类", "安装部署", "性能优化"),
     ("scripts", "类型", "巡检", "备份"),
 ])
 def test_editor_lists_all_categories_in_production(live_server, tmp_path, module, label, current, target):
@@ -46,6 +46,9 @@ def test_editor_lists_all_categories_in_production(live_server, tmp_path, module
                 assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
                 select.select_option(current)
                 select.focus()
+                # A retained legacy value is appended after the current taxonomy.
+                # Start at the first option before testing keyboard selection.
+                select.press("Home")
                 select.press("ArrowDown")
                 select.press("Enter")
                 assert select.input_value() != current
