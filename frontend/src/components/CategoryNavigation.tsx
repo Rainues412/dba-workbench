@@ -11,7 +11,7 @@ export type Classification = {
 
 export type Facets = { total: number; items: Array<Record<string, string | number>> };
 
-export function CategoryNavigation({ classification, data, loading, error, retry, database, category, categoryOptions = [], onChange, collapsed = false, onToggle }: {
+export function CategoryNavigation({ classification, data, loading, error, retry, database, category, categoryOptions = [], hideEmptyCategories = false, onChange, collapsed = false, onToggle }: {
   classification: Classification;
   data?: Facets;
   loading: boolean;
@@ -20,6 +20,7 @@ export function CategoryNavigation({ classification, data, loading, error, retry
   database: string;
   category: string;
   categoryOptions?: string[];
+  hideEmptyCategories?: boolean;
   onChange: (database: string, category: string) => void;
   collapsed?: boolean;
   onToggle?: () => void;
@@ -38,7 +39,8 @@ export function CategoryNavigation({ classification, data, loading, error, retry
   }
   const databaseNames = [...new Set([...Object.keys(databaseMeta), ...databaseCounts.keys(), database].filter(Boolean))];
   const categoryTotal = database ? databaseCounts.get(database) ?? 0 : data?.total ?? 0;
-  const categories = [...new Set([...categoryOptions, ...(categoryField ? (data?.items ?? []).map((row) => String(row[categoryField] ?? "")) : []), category].filter(Boolean))];
+  const categories = [...new Set([...categoryOptions, ...(categoryField ? (data?.items ?? []).map((row) => String(row[categoryField] ?? "")) : []), category].filter(Boolean))]
+    .filter((name) => !hideEmptyCategories || (categoryCounts.get(name) ?? 0) > 0);
   return <section className={`panel library-categories${collapsed ? " collapsed" : ""}`} aria-label="分类浏览">
     <div className="library-categories-heading">
       {!collapsed && <h2><Layers3 size={16} />分类浏览</h2>}
