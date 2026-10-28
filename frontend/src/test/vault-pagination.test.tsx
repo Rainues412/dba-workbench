@@ -65,8 +65,13 @@ describe("vault complete loading, pagination and favorites", () => {
     let dialog = screen.getByRole("dialog");
     const input = within(dialog).getByLabelText("密码");
     const username = within(dialog).getByLabelText("账号名");
+    expect(input.closest("form")).toHaveAttribute("autocomplete", "off");
     expect(username).toHaveValue("");
+    expect(username).toHaveAttribute("name", "vault_entry_username");
+    expect(username).toHaveAttribute("autocomplete", "off");
     expect(input).toHaveValue("");
+    expect(input).toHaveAttribute("name", "vault_entry_password");
+    expect(input).toHaveAttribute("autocomplete", "new-password");
     expect(input).toHaveAttribute("type", "password");
     fireEvent.change(input, { target: { value: "test-only-entry-password" } });
     const toggle = within(dialog).getByRole("button", { name: "显示密码" });
