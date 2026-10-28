@@ -17,6 +17,19 @@ describe("application shell", () => {
 });
 
 describe("vault automatic locking", () => {
+  it("stays unlocked after five minutes and locks at fifteen idle minutes", () => {
+    vi.useFakeTimers();
+    const lock = vi.fn();
+    const stop = startVaultAutoLock(lock);
+    vi.advanceTimersByTime(5 * 60 * 1000);
+    expect(lock).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(10 * 60 * 1000 - 1);
+    expect(lock).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(lock).toHaveBeenCalledExactlyOnceWith("idle");
+    stop();
+  });
+
   it("does not lock on a short window switch, but still expires while hidden", () => {
     vi.useFakeTimers();
     const lock = vi.fn();
@@ -42,7 +55,7 @@ describe("vault automatic locking", () => {
     stop();
   });
 
-  it("locks after five idle minutes and activity resets the timer", () => {
+  it("locks after fifteen idle minutes and activity resets the timer", () => {
     vi.useFakeTimers();
     const lock = vi.fn();
     const stop = startVaultAutoLock(lock);

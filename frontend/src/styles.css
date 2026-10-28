@@ -420,6 +420,9 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .reauth-icon { width: 44px; height: 44px; border-radius: 13px; }
 .vault-gate { padding-block: 2.7rem; text-align: center; }
 .vault-gate-icon { width: 62px; height: 62px; margin: 0 auto 1rem; border-radius: 19px; }
+.vault-lock-hint { display: flex; align-items: flex-start; justify-content: center; gap: .4rem; width: min(460px, 100%); margin: .85rem auto 0; color: var(--muted); font-size: .75rem; line-height: 1.6; text-align: left; }
+.vault-lock-hint > svg { flex: none; margin-top: .2em; }
+.vault-lock-hint-part { display: inline-block; max-width: 100%; vertical-align: top; }
 .vault-forgot-link { justify-self: start; width: fit-content; margin-top: -.3rem; padding: 0; border: 0; color: var(--primary); background: transparent; font-size: .74rem; font-weight: 650; cursor: pointer; }
 .vault-forgot-link:hover { text-decoration: underline; }
 .vault-forgot-link:focus-visible { outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent); outline-offset: 3px; border-radius: 3px; }
