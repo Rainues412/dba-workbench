@@ -80,10 +80,11 @@ export function Dashboard() {
           const priority = getPriorityMeta(task.priority);
           return <li className={`task-priority-${priority.tone}`} key={task.id}>
             <span className={`task-status-icon${task.is_overdue ? " overdue" : ""}`}>{task.is_overdue ? <TriangleAlert size={17} /> : <Clock3 size={17} />}</span>
-            <span className="task-copy"><strong>{task.title}</strong><small>{task.due_date ? `截止 ${task.due_date}` : "未设置截止日期"}</small></span>
+            <span className="task-copy"><strong title={task.title}>{task.title}</strong><small>{task.due_date ? `截止 ${task.due_date}` : "未设置截止日期"}</small></span>
             <span className="task-badges">
               <span className={`priority-badge ${priority.tone}`}>{priority.label}</span>
-              <span className={`badge${task.is_overdue ? " danger" : ""}`}>{task.is_overdue ? "已逾期" : "待处理"}</span>
+              <span className={`badge${task.status === "进行中" ? " status-info" : ""}`}>{task.status}</span>
+              {Boolean(task.is_overdue) && <span className="badge danger">已逾期</span>}
             </span>
             <button className="task-quick-complete" type="button" title="标记为已完成" aria-label={`完成任务：${task.title}`} disabled={processing.has(task.id)} onClick={() => void completeTask(task)}><CheckCircle2 size={16} /><span>{processing.has(task.id) ? "处理中" : "完成"}</span></button>
           </li>;

@@ -304,7 +304,7 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .task-copy strong, .task-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-copy strong { color: var(--text-strong); font-size: .8rem; }
 .task-copy small { margin-top: .2rem; color: var(--muted); font-size: .68rem; }
-.task-badges { display: flex; flex: 0 0 auto; align-items: center; gap: .4rem; }
+.task-badges { display: flex; flex: 0 0 auto; flex-wrap: wrap; align-items: center; gap: .4rem; }
 .task-panel-heading-actions { display: flex; align-items: center; gap: .75rem; }
 .dashboard-overdue-summary { display: inline-flex; align-items: center; gap: .3rem; padding: .3rem .48rem; border: 1px solid color-mix(in srgb, var(--danger) 24%, var(--border)); border-radius: 999px; color: var(--danger); background: var(--danger-soft); font-size: .67rem; font-weight: 750; text-decoration: none; }
 .dashboard-overdue-summary:hover { border-color: var(--danger); }
@@ -359,10 +359,6 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .modal-actions { justify-content: flex-end; padding-top: .2rem; }
 .vault-password-modal { width: min(640px, 100%); }
 .vault-password-field { display: grid; min-width: 0; gap: .4rem; }
-.vault-password-input { position: relative; min-width: 0; }
-.vault-password-input > input { padding-right: 3rem; }
-.vault-password-input > input::-ms-reveal { display: none; }
-.vault-password-input > .icon-button { position: absolute; top: 50%; right: 3px; transform: translateY(-50%); color: var(--muted); }
 .reauth-countdown { color: var(--muted); font-size: .8rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .reauth-state { display: grid; justify-items: start; gap: .35rem; }
 .vault-editor-reauth-controls { display: flex; flex-wrap: wrap; gap: .6rem; }
@@ -377,6 +373,10 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .vault-category-menu > li > svg { flex-shrink: 0; }
 .vault-category-menu > li.is-highlighted { color: var(--primary); background: var(--surface-tint); }
 .vault-category-menu > li.vault-category-empty { color: var(--muted); cursor: default; font-size: .75rem; }
+.vault-password-input { position: relative; min-width: 0; }
+.vault-password-input > input { padding-right: 3rem; }
+.vault-password-input > input::-ms-reveal { display: none; }
+.vault-password-input > .icon-button { position: absolute; top: 50%; right: 3px; transform: translateY(-50%); color: var(--muted); }
 .captcha-row { display: grid; grid-template-columns: 164px minmax(150px, 1fr) 38px; align-items: center; gap: .6rem; }
 .captcha-row img, .captcha-placeholder { width: 164px; height: 52px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-soft); }
 .captcha-placeholder { display: grid; place-items: center; color: var(--muted); font-size: .72rem; }
@@ -721,7 +721,7 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
   .dashboard-hero h1 { font-size: 2rem; }
   .task-list li { align-items: flex-start; flex-wrap: wrap; }
   .task-copy { width: calc(100% - 48px); }
-  .task-badges { width: 100%; margin-left: 46px; }
+  .task-badges { width: calc(100% - 46px); margin-left: 46px; }
   .secret-row { flex-wrap: wrap; }
   .secret-row code { flex-basis: 100%; }
 }

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -46,6 +46,31 @@ describe("dashboard task queue", () => {
     expect(new Headers(writes[0].init?.headers).get("If-Match")).toBe("3");
     expect(JSON.parse(String(writes[0].init?.body))).toEqual({ status: "已完成" });
     expect(await screen.findByText("任务队列已清空")).toBeInTheDocument();
+  });
+
+  it("shows each real task status independently of overdue warnings", async () => {
+    const taskRows = [
+      { id: 1, status: "待处理", is_overdue: 0 },
+      { id: 2, status: "进行中", is_overdue: 0 },
+      { id: 3, status: "待处理", is_overdue: 1 },
+      { id: 4, status: "进行中", is_overdue: 1 },
+    ].map((task) => ({ ...task, revision: 1, title: `状态任务 ${task.id}`, priority: "中" }));
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+      if (path === "/api/dashboard/stats") return Response.json({ script_count: 0, article_count: 0, task_total: 4, task_pending: 4, task_overdue: 2, customer_count: 0, resource_count: 0, password_count: 0 });
+      if (path === "/api/dashboard/recent-tasks") return Response.json(taskRows);
+      if (path === "/api/dashboard/database-distribution") return Response.json([]);
+      throw new Error(`Unexpected request: ${path}`);
+    }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    render(<MemoryRouter><QueryClientProvider client={client}><Dashboard /></QueryClientProvider></MemoryRouter>);
+
+    await screen.findByRole("list", { name: "未完成任务列表" });
+    for (const task of taskRows) {
+      const row = within(screen.getByText(task.title).closest("li")!);
+      expect(row.getByText(task.status)).toBeInTheDocument();
+      expect(row.queryByText("已逾期") !== null).toBe(Boolean(task.is_overdue));
+      if (task.status === "进行中") expect(row.getByText(task.status)).toHaveClass("status-info");
+    }
   });
 
   it("keeps more than six unfinished tasks in an internally scrollable list", async () => {
