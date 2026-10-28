@@ -61,7 +61,7 @@ function CrudContent({ config }: { config: CrudConfig }) {
   const [previewId, setPreviewId] = useState<number | null>(null);
   const [locateId, setLocateId] = useState<number | null>(null);
   const [revealId, setRevealId] = useState<number | null>(null);
-  const [previewEnabled, setPreviewEnabled] = useState(true);
+  const [previewEnabled, setPreviewEnabled] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
   const [notice, setNotice] = useState("");
@@ -255,7 +255,9 @@ function CrudContent({ config }: { config: CrudConfig }) {
     if (!window.confirm(`确定删除“${String(row[config.columns[0].name] ?? "该记录")}”吗？`)) return;
     try {
       await entityApi.remove(config.path, row.id, row.revision);
-      if (previewId === row.id) { clearPreviewTarget(); setPreviewId(null); }
+      if (previewId === row.id) {
+        clearPreviewTarget(); setPreviewId(null); setPreviewEnabled(false);
+      }
       setNotice("记录已删除");
       await refresh();
     } catch (reason) {
@@ -277,7 +279,7 @@ function CrudContent({ config }: { config: CrudConfig }) {
     <section className="panel data-panel" ref={panelRef} aria-busy={list.isFetching}>
       <div className="toolbar"><label className="search-field"><Search size={17} aria-hidden="true" /><span className="sr-only">按标题搜索{config.title}</span><input value={keyword} onChange={(event) => { paginationTop.current = null; setKeyword(event.target.value); setPage(1); }} placeholder={`按标题搜索${config.title}`} /></label>
         {hasFavorites && <div className="list-filters"><label className="checkbox-label"><input type="checkbox" checked={favoriteOnly} onChange={(event) => { paginationTop.current = null; setFavoriteOnly(event.target.checked); setPage(1); }} />只看收藏</label></div>}
-        {hasPreview && <button type="button" className={`button small preview-toggle${previewEnabled ? " active" : ""}`} aria-pressed={previewEnabled} title="再次点击同一标题收起预览；文件通过快捷按钮打开" onClick={() => { clearPreviewTarget(); setPreviewEnabled(!previewEnabled); if (!previewEnabled && !previewId && list.data?.items[0]) setPreviewId(list.data.items[0].id); }}><PanelRight size={16} />预览</button>}
+        {hasPreview && <button type="button" className={`button small preview-toggle${previewEnabled ? " active" : ""}`} aria-pressed={previewEnabled} disabled={previewId === null} title={previewId === null ? "点击标题打开预览" : "再次点击同一标题收起预览；文件通过快捷按钮打开"} onClick={() => { clearPreviewTarget(); setPreviewEnabled(!previewEnabled); }}><PanelRight size={16} />预览</button>}
         <span className="result-count" aria-live="polite">{list.isPlaceholderData ? "正在加载…" : <>共 <strong>{list.data?.total ?? 0}</strong> 条记录</>}</span></div>
       {isTask && <div className="list-filters task-filters">{isTask && <>{!taskArchive && <label>状态<select aria-label="筛选任务状态" value={status} onChange={(event) => { paginationTop.current = null; setStatus(event.target.value); if (event.target.value === "已完成") setOverdueOnly(false); setPage(1); }}><option value="">全部状态</option>{["待处理", "进行中", "已完成"].map((value) => <option key={value}>{value}</option>)}</select></label>}<label>优先级<select aria-label="筛选任务优先级" value={priority} onChange={(event) => { paginationTop.current = null; setPriority(event.target.value); setPage(1); }}><option value="">全部优先级</option>{["高", "中", "低"].map((value) => <option key={value}>{value}</option>)}</select></label>{!taskArchive && <button className={`task-overdue-filter${overdueOnly ? " active" : ""}`} type="button" aria-pressed={overdueOnly} onClick={() => { paginationTop.current = null; setOverdueOnly((value) => !value); if (!overdueOnly && status === "已完成") setStatus(""); setPage(1); }}><AlertTriangle size={16} />仅看逾期</button>}<span className="muted task-retention-note">{taskArchive ? "归档任务按创建时间从新到旧排列，可查看详情或恢复到任务列表。" : "已完成任务按创建时间从新到旧排列，完成满 15 天自动归档，可通过“查看归档”查看或恢复。"}</span></>}</div>}
       {(database || category) && <div className="active-classification" role="group" aria-label="当前分类筛选">

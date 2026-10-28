@@ -131,6 +131,8 @@ def test_resizable_preview_preserves_categories_filters_and_file_actions(live_se
             page.reload()
             expect(page.get_by_role("button", name="展开分类浏览", exact=True)).to_be_visible()
             expect(page.get_by_role("group", name="当前分类筛选")).to_contain_text("Oracle")
+            expect(page.locator(".library-preview")).to_have_count(0)
+            page.locator(".library-record-title").first.click()
             restored = _sizes(page)
             assert abs(restored["list"] / (restored["list"] + restored["preview"]) * 100 - 50) < 1
             page.get_by_role("button", name="展开分类浏览", exact=True).click()

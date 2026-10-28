@@ -25,6 +25,35 @@ function list(items: object[], total = items.length) {
 }
 
 describe("library classification and read-only preview", () => {
+  it.each([articlesConfig, scriptsConfig])("$key keeps preview closed on entry until a title is chosen", async (config) => {
+    const row = { id: 1, revision: 1, title: "点击后阅读的文章", wb_db: "Oracle", category: "日常管理" };
+    const fetch = vi.fn(async (path: string) => {
+      if (path.endsWith("facets")) return Response.json({ total: 1, items: [{ ...row, count: 1 }] });
+      return path === `${config.path}1` ? Response.json(row) : list([row]);
+    });
+    vi.stubGlobal("fetch", fetch);
+    show(config);
+    const title = await screen.findByRole("button", { name: `预览：${row.title}` });
+    expect(screen.queryByRole("complementary", { name: "记录预览" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "预览" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "预览" })).toBeDisabled();
+    expect(fetch.mock.calls.some(([path]) => path === `${config.path}1`)).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "收起分类浏览" }));
+    expect(screen.queryByRole("complementary", { name: "记录预览" })).not.toBeInTheDocument();
+    fireEvent.click(title);
+    const preview = screen.getByRole("complementary", { name: "记录预览" });
+    await within(preview).findByRole("heading", { name: row.title });
+    expect(title).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "预览" })).toBeEnabled();
+    fireEvent.click(title);
+    expect(screen.queryByRole("complementary", { name: "记录预览" })).not.toBeInTheDocument();
+    cleanup();
+    show(config);
+    await screen.findByRole("button", { name: `预览：${row.title}` });
+    expect(screen.queryByRole("complementary", { name: "记录预览" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "预览" })).toBeDisabled();
+  });
+
   it.each([articlesConfig, scriptsConfig])("$key locates and highlights a search result on its server-selected page, including a repeat search", async (config) => {
     const scroll = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => undefined);
     const row = { id: 31, revision: 1, title: "第三页的目标文件" };
