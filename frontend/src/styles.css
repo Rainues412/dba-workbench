@@ -363,6 +363,16 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .vault-password-input > input { padding-right: 3rem; }
 .vault-password-input > input::-ms-reveal { display: none; }
 .vault-password-input > .icon-button { position: absolute; top: 50%; right: 3px; transform: translateY(-50%); color: var(--muted); }
+.vault-category-field { position: relative; display: grid; min-width: 0; gap: .4rem; }
+.vault-category-control { position: relative; min-width: 0; }
+.vault-category-control > input { padding-right: 3rem; }
+.vault-category-control > .icon-button { position: absolute; top: 50%; right: 3px; transform: translateY(-50%); color: var(--muted); }
+.vault-category-menu { position: absolute; z-index: 2; top: 100%; right: 0; left: 0; max-height: min(240px, 35vh); margin: .3rem 0 0; padding: .3rem; overflow-y: auto; list-style: none; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-raised); box-shadow: var(--shadow-lg); }
+.vault-category-menu > li { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .6rem .65rem; border-radius: 6px; cursor: pointer; }
+.vault-category-menu > li > span { min-width: 0; overflow-wrap: anywhere; }
+.vault-category-menu > li > svg { flex-shrink: 0; }
+.vault-category-menu > li.is-highlighted { color: var(--primary); background: var(--surface-tint); }
+.vault-category-menu > li.vault-category-empty { color: var(--muted); cursor: default; font-size: .75rem; }
 .captcha-row { display: grid; grid-template-columns: 164px minmax(150px, 1fr) 38px; align-items: center; gap: .6rem; }
 .captcha-row img, .captcha-placeholder { width: 164px; height: 52px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-soft); }
 .captcha-placeholder { display: grid; place-items: center; color: var(--muted); font-size: .72rem; }

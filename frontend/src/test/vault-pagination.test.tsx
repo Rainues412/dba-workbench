@@ -58,6 +58,47 @@ async function unlock() {
 }
 
 describe("vault complete loading, pagination and favorites", () => {
+  it("offers distinct nonempty categories from all pages even when filtered, and saves a new category", async () => {
+    mocks.decrypt.mockImplementation(async (_key, item) => ({ site: `Site ${item.id}`, url: "", username: "user", password: "secret", category: item.id === 201 ? "其他页分类" : item.id === 2 ? " 工作 " : item.id === 3 ? "  " : "工作", notes: "", favorite: item.id === 201 }));
+    await unlock();
+    await screen.findByRole("heading", { name: "Site 1" });
+    fireEvent.click(screen.getByRole("button", { name: "仅看收藏" }));
+    fireEvent.click(screen.getByRole("button", { name: "新增条目" }));
+    let dialog = screen.getByRole("dialog");
+    let category = within(dialog).getByRole("combobox", { name: "分类" });
+    expect(category).toHaveValue("");
+    fireEvent.click(within(dialog).getByRole("button", { name: "选择已有分类" }));
+    expect(within(dialog).getAllByRole("option").map((option) => option.textContent)).toEqual(["工作", "其他页分类"]);
+    fireEvent.click(within(dialog).getByRole("option", { name: "工作" }));
+    expect(category).toHaveValue("工作");
+    expect(mocks.encrypt).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+    dialog = screen.getByRole("dialog");
+    category = within(dialog).getByRole("combobox", { name: "分类" });
+    expect(category).toHaveValue("其他页分类");
+    fireEvent.click(within(dialog).getByRole("button", { name: "选择已有分类" }));
+    expect(within(dialog).getAllByRole("option").map((option) => option.textContent)).toEqual(["工作", "其他页分类"]);
+    fireEvent.change(category, { target: { value: "新分类" } });
+    fireEvent.submit(category.closest("form")!);
+    await waitFor(() => expect(updates).toHaveLength(1));
+    expect(mocks.encrypt.mock.calls.at(-1)?.[2]).toMatchObject({ category: "新分类" });
+    expect(updates[0].revision).toBe(2);
+  });
+
+  it("allows free category entry when there are no existing categories", async () => {
+    mocks.decrypt.mockImplementation(async (_key, item) => ({ site: `Site ${item.id}`, url: "", username: "", password: "secret", category: "", notes: "", favorite: false }));
+    await unlock();
+    await screen.findByRole("heading", { name: "Site 1" });
+    fireEvent.click(screen.getByRole("button", { name: "新增条目" }));
+    const category = within(screen.getByRole("dialog")).getByRole("combobox", { name: "分类" });
+    fireEvent.click(screen.getByRole("button", { name: "选择已有分类" }));
+    expect(within(screen.getByRole("dialog")).queryByRole("option")).not.toBeInTheDocument();
+    expect(screen.getByText("暂无分类，可直接输入新分类")).toBeInTheDocument();
+    fireEvent.change(category, { target: { value: "首个分类" } });
+    expect(category).toHaveValue("首个分类");
+  });
+
   it("reveals a new entry password without saving, preserves typed text and resets on reopening", async () => {
     await unlock();
     await screen.findByRole("heading", { name: "Site 1" });

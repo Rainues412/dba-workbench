@@ -138,7 +138,7 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
             dialog.get_by_label("名称或备注").fill(long_site)
             dialog.get_by_label("网址", exact=True).fill("https://example.test/" + "pathsegment/" * 30)
             dialog.get_by_label("账号名", exact=True).fill("u" * 180 + "@example.test")
-            dialog.get_by_label("分类", exact=True).fill(long_category)
+            dialog.get_by_role("combobox", name="分类", exact=True).fill(long_category)
             dialog.get_by_label("密码", exact=True).fill("test-only-long-secret-" * 20)
             dialog.get_by_role("button", name="保存", exact=True).click()
             long_card = page.locator(".vault-card").filter(has=page.get_by_role("heading", name=long_site, exact=True))
