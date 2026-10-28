@@ -75,10 +75,11 @@ def list_tasks(
             ORDER BY
                 CASE WHEN t.status != '已完成' AND date(t.due_date) < date('now', 'localtime')
                      THEN 0 ELSE 1 END,
-                CASE t.status WHEN '进行中' THEN 0 WHEN '待处理' THEN 1 WHEN '已完成' THEN 2 END,
+                CASE WHEN t.status = '已完成' THEN 1 ELSE 0 END,
+                CASE WHEN t.status != '已完成' THEN CASE t.priority WHEN '高' THEN 1 WHEN '中' THEN 2 WHEN '低' THEN 3 ELSE 4 END END,
+                CASE t.status WHEN '进行中' THEN 0 WHEN '待处理' THEN 1 WHEN '已完成' THEN 2 ELSE 3 END,
                 CASE WHEN t.status = '已完成' THEN julianday(t.created_at) END DESC,
-                CASE WHEN t.status != '已完成' THEN CASE t.priority WHEN '高' THEN 1 WHEN '中' THEN 2 WHEN '低' THEN 3 END END,
-                CASE WHEN t.status != '已完成' THEN t.due_date END ASC NULLS LAST, t.id DESC
+                CASE WHEN t.status != '已完成' THEN date(t.due_date) END ASC NULLS LAST, t.id DESC
             LIMIT ? OFFSET ?""",
             params + [ps, offset],
         ).fetchall()
