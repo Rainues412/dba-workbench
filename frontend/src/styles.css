@@ -363,6 +363,10 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .vault-password-input > input { padding-right: 3rem; }
 .vault-password-input > input::-ms-reveal { display: none; }
 .vault-password-input > .icon-button { position: absolute; top: 50%; right: 3px; transform: translateY(-50%); color: var(--muted); }
+.reauth-countdown { color: var(--muted); font-size: .8rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.reauth-state { display: grid; justify-items: start; gap: .35rem; }
+.vault-editor-reauth-controls { display: flex; flex-wrap: wrap; gap: .6rem; }
+.vault-editor-reauth-controls > input { flex: 1 1 220px; min-width: 0; }
 .vault-category-field { position: relative; display: grid; min-width: 0; gap: .4rem; }
 .vault-category-control { position: relative; min-width: 0; }
 .vault-category-control > input { padding-right: 3rem; }
@@ -692,7 +696,7 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
   .auth-panel { min-height: 100vh; padding: 1.25rem; background: radial-gradient(circle at top, var(--primary-soft), var(--surface) 48%); }
   .auth-mobile-brand { display: flex; }
   .reauth-panel { grid-template-columns: 42px 1fr; }
-  .reauth-panel > .badge { justify-self: start; grid-column: 2; }
+  .reauth-panel > .reauth-state { justify-self: start; grid-column: 2; }
   .reauth-panel form { flex-direction: column; }
   .vault-grid { grid-template-columns: 1fr; padding-inline: .75rem; }
   .modal { padding: 1rem; }

@@ -55,9 +55,23 @@ async function unlock() {
   fireEvent.change(input, { target: { value: "long-master-password" } });
   fireEvent.submit(input.closest("form")!);
   await screen.findByText("保险箱已解锁");
+  return client;
 }
 
 describe("vault complete loading, pagination and favorites", () => {
+  it("keeps an open draft when a background profile refresh fails", async () => {
+    const client = await unlock();
+    await screen.findByRole("heading", { name: "Site 1" });
+    fireEvent.click(screen.getByRole("button", { name: "新增条目" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("名称或备注"), { target: { value: "unsaved draft" } });
+    vi.mocked(fetch).mockImplementationOnce(async () => Response.json({}, { status: 503 }));
+    await act(async () => { await client.invalidateQueries({ queryKey: ["vault", "profile"] }); });
+    expect(await screen.findByText("保险箱状态暂未同步，恢复连接后会自动重试。")).toBeInTheDocument();
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("名称或备注")).toHaveValue("unsaved draft");
+  });
+
   it("offers distinct nonempty categories from all pages even when filtered, and saves a new category", async () => {
     mocks.decrypt.mockImplementation(async (_key, item) => ({ site: `Site ${item.id}`, url: "", username: "user", password: "secret", category: item.id === 201 ? "其他页分类" : item.id === 2 ? " 工作 " : item.id === 3 ? "  " : "工作", notes: "", favorite: item.id === 201 }));
     await unlock();

@@ -15,6 +15,7 @@ export class ApiError extends Error {
 }
 
 let csrfToken = "";
+export const REAUTH_REQUIRED_EVENT = "dba:reauth-required";
 
 export function setCsrfToken(token?: string | null) {
   csrfToken = token ?? "";
@@ -36,6 +37,10 @@ export async function api<T>(
   const response = await fetch(path, { ...init, headers, credentials: "same-origin" });
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as ApiErrorBody;
+    // Other 403s (CSRF, directory permissions) must not invalidate the grant.
+    if (response.status === 403 && (body.error?.message ?? body.detail) === "Recent password verification required" && typeof window !== "undefined") {
+      window.dispatchEvent(new Event(REAUTH_REQUIRED_EVENT));
+    }
     throw new ApiError(
       response.status,
       body.error?.code ?? "REQUEST_FAILED",
@@ -73,7 +78,7 @@ export type Page<T> = {
 export type Entity = Record<string, unknown> & { id: number; revision: number };
 
 export const authApi = {
-  status: () => api<Session>("/api/auth/status"),
+  status: (signal?: AbortSignal) => api<Session>("/api/auth/status", { signal }),
   setup: (username: string, password: string) =>
     api<Session>("/api/auth/setup", { method: "POST", body: jsonBody({ username, password }) }),
   login: (username: string, password: string) =>
