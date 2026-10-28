@@ -58,6 +58,58 @@ async function unlock() {
 }
 
 describe("vault complete loading, pagination and favorites", () => {
+  it("reveals a new entry password without saving, preserves typed text and resets on reopening", async () => {
+    await unlock();
+    await screen.findByRole("heading", { name: "Site 1" });
+    fireEvent.click(screen.getByRole("button", { name: "新增条目" }));
+    let dialog = screen.getByRole("dialog");
+    const input = within(dialog).getByLabelText("密码");
+    const username = within(dialog).getByLabelText("账号名");
+    expect(username).toHaveValue("");
+    expect(input).toHaveValue("");
+    expect(input).toHaveAttribute("type", "password");
+    fireEvent.change(input, { target: { value: "test-only-entry-password" } });
+    const toggle = within(dialog).getByRole("button", { name: "显示密码" });
+    expect(toggle).toHaveAttribute("type", "button");
+    expect(toggle).toHaveAttribute("aria-controls", input.id);
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(toggle);
+    expect(input).toHaveAttribute("type", "text");
+    expect(input).toHaveValue("test-only-entry-password");
+    expect(within(dialog).getByRole("button", { name: "隐藏密码" })).toHaveAttribute("aria-pressed", "true");
+    expect(mocks.encrypt).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "隐藏密码" }));
+    expect(input).toHaveAttribute("type", "password");
+    expect(input).toHaveValue("test-only-entry-password");
+    fireEvent.click(within(dialog).getByRole("button", { name: "显示密码" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    fireEvent.click(screen.getByRole("button", { name: "新增条目" }));
+    dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByLabelText("密码")).toHaveAttribute("type", "password");
+    expect(within(dialog).getByLabelText("密码")).toHaveValue("");
+    expect(within(dialog).getByLabelText("账号名")).toHaveValue("");
+  });
+
+  it("saves an edited visible password through encryption and reopens masked", async () => {
+    await unlock();
+    await screen.findByRole("heading", { name: "Site 1" });
+    fireEvent.click(screen.getByRole("button", { name: "仅看收藏" }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+    const dialog = screen.getByRole("dialog");
+    const input = within(dialog).getByLabelText("密码");
+    expect(input).toHaveAttribute("type", "password");
+    expect(input).toHaveValue("secret");
+    fireEvent.click(within(dialog).getByRole("button", { name: "显示密码" }));
+    fireEvent.change(input, { target: { value: "test-only-updated-password" } });
+    fireEvent.submit(input.closest("form")!);
+    await waitFor(() => expect(updates).toHaveLength(1));
+    expect(mocks.encrypt.mock.calls.at(-1)?.[2]).toMatchObject({ password: "test-only-updated-password", favorite: true });
+    expect(updates[0].revision).toBe(2);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+    expect(within(screen.getByRole("dialog")).getByLabelText("密码")).toHaveAttribute("type", "password");
+  });
+
   it("recovers the master password from the locked gate after login-password and captcha verification", async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
     render(<QueryClientProvider client={client}><Vault /></QueryClientProvider>);

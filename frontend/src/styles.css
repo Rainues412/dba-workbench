@@ -358,6 +358,11 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .modal-header h2 { margin-bottom: 0; }
 .modal-actions { justify-content: flex-end; padding-top: .2rem; }
 .vault-password-modal { width: min(640px, 100%); }
+.vault-password-field { display: grid; min-width: 0; gap: .4rem; }
+.vault-password-input { position: relative; min-width: 0; }
+.vault-password-input > input { padding-right: 3rem; }
+.vault-password-input > input::-ms-reveal { display: none; }
+.vault-password-input > .icon-button { position: absolute; top: 50%; right: 3px; transform: translateY(-50%); color: var(--muted); }
 .captcha-row { display: grid; grid-template-columns: 164px minmax(150px, 1fr) 38px; align-items: center; gap: .6rem; }
 .captcha-row img, .captcha-placeholder { width: 164px; height: 52px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-soft); }
 .captcha-placeholder { display: grid; place-items: center; color: var(--muted); font-size: .72rem; }

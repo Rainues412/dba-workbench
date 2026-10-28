@@ -86,7 +86,7 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
             assert editor.locator(".vault-switch-track").evaluate("element => getComputedStyle(element).borderRadius") == "999px"
             editor.get_by_label("名称或备注").fill("test-service")
             editor.get_by_label("账号名").fill("test-user")
-            editor.get_by_label("密码").fill("test-only-vault-secret")
+            editor.get_by_label("密码", exact=True).fill("test-only-vault-secret")
             editor.get_by_role("button", name="保存").click()
             page.get_by_role("heading", name="test-service").wait_for()
             assert "test-only-vault-secret" not in page.locator("body").inner_text()
