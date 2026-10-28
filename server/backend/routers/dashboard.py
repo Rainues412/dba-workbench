@@ -25,7 +25,7 @@ def get_stats():
 
 @router.get("/recent-tasks")
 def get_recent_tasks():
-    """Get pending/in-progress tasks, overdue first."""
+    """Get unfinished tasks by overdue, priority, status, then deadline."""
     with get_db_ctx() as conn:
         rows = conn.execute("""
             SELECT id, title, priority, status, due_date, revision,
@@ -33,8 +33,9 @@ def get_recent_tasks():
                       THEN 1 ELSE 0 END AS is_overdue
             FROM tasks WHERE status != '已完成'
             ORDER BY is_overdue DESC,
-                     CASE priority WHEN '高' THEN 1 WHEN '中' THEN 2 WHEN '低' THEN 3 END,
-                     due_date ASC NULLS LAST
+                     CASE priority WHEN '高' THEN 1 WHEN '中' THEN 2 WHEN '低' THEN 3 ELSE 4 END,
+                     CASE status WHEN '进行中' THEN 0 WHEN '待处理' THEN 1 ELSE 2 END,
+                     date(due_date) ASC NULLS LAST, id DESC
         """).fetchall()
         return [dict(r) for r in rows]
 

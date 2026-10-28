@@ -292,3 +292,30 @@ def test_pagination_and_detail_after_two_hundred_rows(client: TestClient, isolat
     )
     assert updated.status_code == 200
     assert updated.json()["content"] == original_body
+
+
+def test_dashboard_tasks_sort_by_overdue_priority_status_and_deadline(client: TestClient) -> None:
+    rows = {}
+    for title, priority, status, due_date in [
+        ("低进行中逾期", "低", "进行中", "2000-01-01"),
+        ("高待处理逾期", "高", "待处理", "2000-01-01"),
+        ("中待处理", "中", "待处理", None),
+        ("高进行中未来", "高", "进行中", "2099-01-01"),
+        ("中进行中", "中", "进行中", None),
+        ("高进行中逾期", "高", "进行中", "2000-01-01"),
+        ("高进行中无日期", "高", "进行中", None),
+        ("高已完成", "高", "已完成", None),
+    ]:
+        response = client.post("/api/tasks/", json={
+            "title": title, "priority": priority, "status": status, "due_date": due_date,
+        })
+        assert response.status_code == 200
+        rows[title] = response.json()
+    expected = ["高进行中逾期", "高待处理逾期", "低进行中逾期", "高进行中未来", "高进行中无日期", "中进行中", "中待处理"]
+    assert [row["title"] for row in client.get("/api/dashboard/recent-tasks").json()] == expected
+    # Re-read the queue after a status/priority edit instead of sorting stale client data.
+    updated = rows["低进行中逾期"]
+    response = client.put(f"/api/tasks/{updated['id']}", headers={"If-Match": str(updated["revision"])}, json={"priority": "高", "status": "待处理"})
+    assert response.status_code == 200
+    result = client.get("/api/dashboard/recent-tasks").json()
+    assert [row["title"] for row in result] == expected
