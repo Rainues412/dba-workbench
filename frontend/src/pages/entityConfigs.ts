@@ -51,11 +51,11 @@ export const tasksConfig: CrudConfig = {
 };
 
 export const customersConfig: CrudConfig = {
-  key: "customers", title: "客户项目", description: "集中查看客户项目、负责人及联系信息。", path: "/api/customers/", icon: Building2,
-  columns: [{ name: "name", label: "客户" }, { name: "project_name", label: "项目" }, { name: "wb_person", label: "负责人" }, { name: "status", label: "状态" }],
+  key: "customers", title: "客户项目", description: "点击有项目的客户名，展开查看项目详情。", path: "/api/customers/", icon: Building2,
+  columns: [{ name: "name", label: "客户名" }],
   fields: [
-    { name: "name", label: "客户", required: true }, { name: "project_name", label: "项目" }, { name: "group_name", label: "分组" },
-    { name: "status", label: "状态", type: "select", defaultValue: "活跃", options: ["活跃", "进行中", "已暂停", "已结束"] },
-    { name: "wb_person", label: "负责人" }, { name: "wb_contact", label: "联系方式" }, { name: "notes", label: "备注", type: "textarea" },
+    { name: "name", label: "客户名" },
+    { name: "status", label: "状态" },
+    { name: "notes", label: "备注" },
   ],
 };

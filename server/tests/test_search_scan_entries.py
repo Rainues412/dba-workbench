@@ -16,7 +16,7 @@ def test_all_searches_match_primary_titles_only_and_escape_wildcards(client):
         "articles": client.post("/api/articles/", json={"title": "article-title-hit", "summary": "secondary-only-token"}),
         "resources": client.post("/api/resources/", json={"name": "resource-title-hit", "notes": "secondary-only-token"}),
         "tasks": client.post("/api/tasks/", json={"title": "task-title-hit", "description": "secondary-only-token"}),
-        "customers": client.post("/api/customers/", json={"name": "customer-title-hit", "project_name": "secondary-only-token"}),
+        "customers": client.post("/api/customers/", json={"name": "customer-title-hit", "group_name": "secondary-only-token"}),
     }
     assert all(response.status_code == 200 for response in created.values())
 

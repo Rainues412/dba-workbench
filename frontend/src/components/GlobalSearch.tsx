@@ -6,10 +6,10 @@ import { SearchHighlight } from "./SearchHighlight";
 
 const modules = [
   ["scripts", "脚本库"], ["articles", "知识库"], ["resources", "资源中心"],
-  ["customers", "客户项目"],
+  ["customers", "客户项目"], ["customer_projects", "项目"],
 ] as const;
 type ModuleKey = (typeof modules)[number][0];
-type SearchRecord = { id: number; title?: string; name?: string };
+type SearchRecord = { id: number; title?: string; name?: string; customer_name?: string };
 type Results = Partial<Record<ModuleKey, SearchRecord[]>>;
 type SearchItem = SearchRecord & { module: ModuleKey; moduleLabel: string };
 
@@ -34,6 +34,10 @@ export function GlobalSearch() {
   function choose(item: SearchItem) {
     setFocused(false);
     input.current?.blur();
+    if (item.module === "customer_projects" && item.title) {
+      navigate(`/customers?${new URLSearchParams({ customer: String(item.id), project: item.title })}`);
+      return;
+    }
     const target = item.module === "articles" || item.module === "scripts" ? "preview" : "record";
     navigate(`/${item.module}?${target}=${item.id}`, { state: { previewSearch: target === "preview" } });
   }
@@ -117,15 +121,18 @@ export function GlobalSearch() {
             ref={(node) => { itemRefs.current[index] = node; }}
             id={`${listId}-${index}`}
             className={`global-search-result${activeIndex === index ? " is-active" : ""}`}
-            key={`${item.module}-${item.id}`}
+            key={`${item.module}-${item.id}-${item.module === "customer_projects" ? displayTitle : ""}`}
             role="option"
-            aria-label={`${displayTitle} ${item.moduleLabel}`}
+            aria-label={[displayTitle, item.customer_name, item.moduleLabel].filter(Boolean).join(" ")}
             aria-selected={activeIndex === index}
             onMouseEnter={() => setActiveIndex(index)}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => choose(item)}
           >
-            <span className="global-search-result-title" title={displayTitle}><SearchHighlight text={displayTitle} query={query} /></span>
+            <span className="global-search-result-copy">
+              <span className="global-search-result-title" title={displayTitle}><SearchHighlight text={displayTitle} query={query} /></span>
+              {item.customer_name && <span className="global-search-result-customer" title={item.customer_name}>{item.customer_name}</span>}
+            </span>
             <span className="global-search-result-module">{item.moduleLabel}</span>
           </button>})}
     </div>}

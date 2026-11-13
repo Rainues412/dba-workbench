@@ -16,7 +16,7 @@ def test_global_search_opens_exact_record_in_each_module(live_server):
         ("scripts", "title", "名称"),
         ("articles", "title", "标题"),
         ("resources", "name", "名称"),
-        ("customers", "name", "客户"),
+        ("customers", "name", "客户名"),
     ]
     client, csrf = _api_client(live_server)
     ids = {}

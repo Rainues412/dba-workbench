@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from backend.customer_projects import ProjectProfile
 from backend.database import get_db_ctx
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ def export_all():
 
 # Import business columns; identities/revisions are regenerated for appended rows.
 _TABLE_COLS = {
-    "customers":       {"cols": ["name", "project_name", "group_name", "status", "notes", "wb_person", "wb_contact", "created_at", "updated_at"], "fk": {}},
+    "customers":       {"cols": ["name", "project_name", "group_name", "status", "notes", "wb_person", "wb_contact", "created_at", "updated_at", "project_profile"], "fk": {}},
     "scripts":         {"cols": ["title", "description", "db_type", "tags", "content", "file_path", "is_favorite", "version", "wb_type", "created_at", "updated_at"], "fk": {}},
     "articles":        {"cols": ["title", "summary", "content", "category", "tags", "file_path", "is_favorite", "is_pinned", "wb_db", "view_count", "created_at", "updated_at"], "fk": {}},
     "tasks":           {"cols": ["title", "description", "status", "priority", "due_date", "is_overdue", "completed_at", "created_at", "updated_at"], "fk": {"customer_id": "customers"}},
@@ -55,6 +56,8 @@ def _coerce(value, col_name, table):
     """将 JSON 中的值转换为适合 SQLite 的类型。"""
     if value is None:
         return None
+    if col_name == "project_profile":
+        return ProjectProfile.model_validate_json(value).model_dump_json()
     # 数值列
     if col_name == "size_mb":
         return float(value)
