@@ -171,19 +171,20 @@ def main() -> None:
     from main import app
 
     viewer = start_file_viewer(_data_directory(), log_dir)
-    threading.Thread(target=_open_browser_when_ready, daemon=True).start()
-    config = uvicorn.Config(
-        app,
-        host=HOST,
-        port=PORT,
-        loop="asyncio",
-        http="h11",
-        ws="none",
-        log_level="info",
-    )
-    server = uvicorn.Server(config)
-    _start_tray(server)
     try:
+        threading.Thread(target=_open_browser_when_ready, daemon=True).start()
+        config = uvicorn.Config(
+            app,
+            host=HOST,
+            port=PORT,
+            loop="asyncio",
+            http="h11",
+            ws="none",
+            log_level="info",
+            timeout_graceful_shutdown=10,
+        )
+        server = uvicorn.Server(config)
+        _start_tray(server)
         server.run()
     except Exception as error:
         raise RuntimeError(f"启动失败，请查看日志：{log_dir / 'server.log'}") from error

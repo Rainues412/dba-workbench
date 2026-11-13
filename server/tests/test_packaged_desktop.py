@@ -5,6 +5,9 @@ import json
 import os
 
 import desktop
+import file_viewer_runtime
+import pytest
+import uvicorn
 from backend import browser_launch
 
 
@@ -56,6 +59,29 @@ def test_tray_exit_stops_server_and_icon() -> None:
 
     assert server.should_exit is True
     assert icon.stopped is True
+
+
+def test_desktop_bounds_shutdown_and_cleans_up_viewer(monkeypatch, tmp_path: Path) -> None:
+    viewer = object()
+    stopped = []
+    monkeypatch.setattr(desktop, "_configure_runtime", lambda: tmp_path)
+    monkeypatch.setattr(desktop, "_probe_service", lambda: "down")
+    monkeypatch.setattr(desktop, "_data_directory", lambda: tmp_path)
+    monkeypatch.setattr(desktop, "_open_browser_when_ready", lambda: None)
+    monkeypatch.setattr(file_viewer_runtime, "start_file_viewer", lambda *_: viewer)
+    monkeypatch.setattr(file_viewer_runtime, "stop_file_viewer", stopped.append)
+
+    def fail_to_start_tray(server):
+        assert server.config.timeout_graceful_shutdown == 10
+        assert isinstance(server, uvicorn.Server)
+        raise OSError("tray unavailable")
+
+    monkeypatch.setattr(desktop, "_start_tray", fail_to_start_tray)
+
+    with pytest.raises(RuntimeError, match="启动失败"):
+        desktop.main()
+
+    assert stopped == [viewer]
 
 
 def test_configured_browser_is_used_for_source_launcher(monkeypatch, tmp_path: Path) -> None:
