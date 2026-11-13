@@ -17,7 +17,6 @@ def test_tasks_without_a_deadline_are_not_overdue_in_any_view(client, date_field
     assert client.get("/api/tasks/", params={"overdue": True}).json()["total"] == 0
     assert client.get("/api/dashboard/stats").json()["task_overdue"] == 0
     assert client.get("/api/dashboard/recent-tasks").json()[0]["is_overdue"] == 0
-    assert client.get(f"/api/customers/{customer['id']}").json()["tasks"][0]["is_overdue"] == 0
 
 
 def test_only_unfinished_tasks_before_today_are_overdue_and_sort_first(client):

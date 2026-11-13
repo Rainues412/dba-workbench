@@ -15,26 +15,25 @@ def enable(monkeypatch, root, actions="open"):
     }))
 
 
-def record(client, path, module="scripts"):
-    result = client.post(f"/api/{module}/", json={"title": "仅路径记录", "file_path": str(path)})
+def record(client, path):
+    result = client.post("/api/scripts/", json={"title": "仅路径记录", "file_path": str(path)})
     assert result.status_code == 200
     return result.json()
 
 
-@pytest.mark.parametrize("module", ["scripts", "articles"])
 @pytest.mark.parametrize("encoding", ["utf-8-sig", "utf-16", "gb18030"])
-def test_linked_file_preview_reads_old_records_without_persisting(client, tmp_path, monkeypatch, module, encoding):
+def test_linked_file_preview_reads_old_records_without_persisting(client, tmp_path, monkeypatch, encoding):
     enable(monkeypatch, tmp_path)
     text = "-- 中文巡检\nselect '<img src=x onerror=alert(1)>';"
     target = tmp_path / "巡检.SQL"
     original = text.encode(encoding)
     target.write_bytes(original)
-    row = record(client, target, module)
-    result = client.get(f"/api/{module}/{row['id']}/file-preview")
+    row = record(client, target)
+    result = client.get(f"/api/scripts/{row['id']}/file-preview")
     assert result.status_code == 200, result.text
     assert result.headers["Cache-Control"] == "no-store"
     assert result.json() == {"filename": target.name, "content": text, "truncated": False}
-    saved = client.get(f"/api/{module}/{row['id']}").json()
+    saved = client.get(f"/api/scripts/{row['id']}").json()
     assert saved["content"] == ""
     assert saved["revision"] == row["revision"]
     assert saved["updated_at"] == row["updated_at"]
@@ -91,13 +90,13 @@ def test_invalid_formats_fail_clearly(client, tmp_path, monkeypatch, suffix, dat
 
 def test_empty_missing_and_truncated_files(client, tmp_path, monkeypatch):
     enable(monkeypatch, tmp_path)
-    assert client.get("/api/articles/999/file-preview").status_code == 404
+    assert client.get("/api/scripts/999/file-preview").status_code == 404
     empty = tmp_path / "empty.md"
     empty.write_bytes(b"")
-    row = record(client, empty, "articles")
-    assert client.get(f"/api/articles/{row['id']}/file-preview").json()["content"] == ""
+    row = record(client, empty)
+    assert client.get(f"/api/scripts/{row['id']}/file-preview").json()["content"] == ""
     empty.unlink()
-    assert client.get(f"/api/articles/{row['id']}/file-preview").status_code == 404
+    assert client.get(f"/api/scripts/{row['id']}/file-preview").status_code == 404
     # Cut a UTF-8 multibyte character at the size boundary without corrupting it.
     large = tmp_path / "large.sql"
     large.write_bytes(b"a" * (file_preview.MAX_TEXT_BYTES - 1) + "中文".encode())
@@ -110,8 +109,8 @@ def test_empty_missing_and_truncated_files(client, tmp_path, monkeypatch):
 def test_docx_text_and_untrusted_xml_limits(client, tmp_path, monkeypatch):
     enable(monkeypatch, tmp_path)
     target = tmp_path / "说明.docx"
-    row = record(client, target, "articles")
-    url = f"/api/articles/{row['id']}/file-preview"
+    row = record(client, target)
+    url = f"/api/scripts/{row['id']}/file-preview"
     xml = '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>操作说明</w:t><w:br/><w:t>下一行</w:t></w:r></w:p><w:p><w:r><w:t>下一段</w:t></w:r></w:p></w:body></w:document>'
     with ZipFile(target, "w") as archive:
         archive.writestr("word/document.xml", xml)

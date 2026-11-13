@@ -1,5 +1,4 @@
-"""Customers API - customers, contacts (project owners), communication logs."""
-import re
+"""Customers API for customer and project profiles."""
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 from typing import Optional
@@ -9,9 +8,6 @@ from backend.customer_projects import CUSTOMER_PROJECT_NAME, CUSTOMER_PROJECT_RO
 from backend.search_utils import title_matches
 
 router = APIRouter()
-
-_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-
 
 class CustomerCreate(BaseModel):
     name: str
@@ -33,28 +29,6 @@ class CustomerUpdate(BaseModel):
     wb_person: Optional[str] = None
     wb_contact: Optional[str] = None
     project_profile: ProjectProfile | None = None
-
-
-class ContactCreate(BaseModel):
-    name: str
-    role: str = ""
-    phone: str = ""
-    wechat: str = ""
-    notes: str = ""
-
-
-class ContactUpdate(BaseModel):
-    name: Optional[str] = None
-    role: Optional[str] = None
-    phone: Optional[str] = None
-    wechat: Optional[str] = None
-    notes: Optional[str] = None
-
-
-class CommCreate(BaseModel):
-    date: str
-    content: str
-    follow_up: str = ""
 
 
 def ensure_customer_name_available(conn, name: str, current_id: int = 0) -> None:
@@ -98,9 +72,7 @@ def list_customers(keyword: str = "", status: str = "", page: int = 1, page_size
                 offset = (page - 1) * ps
         rows = conn.execute(
             f"""SELECT c.id, c.name, c.project_name, c.group_name, c.status,
-                       c.wb_person, c.wb_contact, c.created_at, c.updated_at, c.revision, c.project_profile,
-                       (SELECT COUNT(*) FROM contacts ct WHERE ct.customer_id = c.id) AS contact_count,
-                       (SELECT COUNT(*) FROM tasks t WHERE t.customer_id = c.id AND t.status != '已完成') AS open_task_count
+                       c.wb_person, c.wb_contact, c.created_at, c.updated_at, c.revision, c.project_profile
                 FROM customers c {where}
                 ORDER BY {order_by}
                 LIMIT :page_size OFFSET :offset""",
@@ -141,18 +113,8 @@ def get_customer(cid: int):
             raise HTTPException(404, "Customer not found")
         contacts = [dict(r) for r in conn.execute(
             "SELECT * FROM contacts WHERE customer_id = ? ORDER BY id", (cid,)).fetchall()]
-        comms = [dict(r) for r in conn.execute(
-            "SELECT * FROM communications WHERE customer_id = ? ORDER BY date DESC, id DESC LIMIT 50", (cid,)).fetchall()]
-        tasks = [dict(r) for r in conn.execute(
-            """SELECT id, title, status, priority, due_date,
-                      CASE WHEN status != '已完成' AND date(due_date) < date('now', 'localtime')
-                      THEN 1 ELSE 0 END AS is_overdue
-               FROM tasks WHERE customer_id = ? ORDER BY status != '已完成' DESC, due_date ASC""",
-            (cid,)).fetchall()]
         result = customer_record(row)
         result["contacts"] = contacts
-        result["communications"] = comms
-        result["tasks"] = tasks
         return result
 
 
@@ -209,78 +171,5 @@ def delete_customer(cid: int, if_match: str | None = Header(None)):
         conn.execute("DELETE FROM contacts WHERE customer_id = ?", (cid,))
         conn.execute("UPDATE tasks SET customer_id = NULL WHERE customer_id = ?", (cid,))
         conn.execute("DELETE FROM customers WHERE id = ? AND revision = ?", (cid, expected))
-        conn.commit()
-        return {"ok": True}
-
-
-# ── Contacts ──
-
-@router.post("/{cid}/contacts")
-def add_contact(cid: int, data: ContactCreate):
-    with get_db_ctx() as conn:
-        if not conn.execute("SELECT id FROM customers WHERE id = ?", (cid,)).fetchone():
-            raise HTTPException(404, "Customer not found")
-        c = conn.execute(
-            "INSERT INTO contacts (customer_id, name, role, phone, wechat, notes) VALUES (?, ?, ?, ?, ?, ?)",
-            (cid, data.name, data.role, data.phone, data.wechat, data.notes),
-        )
-        conn.commit()
-        row = conn.execute("SELECT * FROM contacts WHERE id = ?", (c.lastrowid,)).fetchone()
-        return dict(row)
-
-
-@router.put("/contacts/{contact_id}")
-def update_contact(contact_id: int, data: ContactUpdate):
-    with get_db_ctx() as conn:
-        if not conn.execute("SELECT id FROM contacts WHERE id = ?", (contact_id,)).fetchone():
-            raise HTTPException(404, "Contact not found")
-        updates, params = [], []
-        for field in ["name", "role", "phone", "wechat", "notes"]:
-            val = getattr(data, field, None)
-            if val is not None:
-                updates.append(f"{field} = ?")
-                params.append(val)
-        if updates:
-            params.append(contact_id)
-            conn.execute(f"UPDATE contacts SET {', '.join(updates)} WHERE id = ?", params)
-            conn.commit()
-        row = conn.execute("SELECT * FROM contacts WHERE id = ?", (contact_id,)).fetchone()
-        return dict(row)
-
-
-@router.delete("/contacts/{contact_id}")
-def delete_contact(contact_id: int):
-    with get_db_ctx() as conn:
-        if not conn.execute("SELECT id FROM contacts WHERE id = ?", (contact_id,)).fetchone():
-            raise HTTPException(404, "Contact not found")
-        conn.execute("DELETE FROM contacts WHERE id = ?", (contact_id,))
-        conn.commit()
-        return {"ok": True}
-
-
-# ── Communications ──
-
-@router.post("/{cid}/communications")
-def add_comm(cid: int, data: CommCreate):
-    with get_db_ctx() as conn:
-        if not conn.execute("SELECT id FROM customers WHERE id = ?", (cid,)).fetchone():
-            raise HTTPException(404, "Customer not found")
-        if not _DATE_RE.match(data.date):
-            raise HTTPException(400, "日期格式须为 YYYY-MM-DD")
-        c = conn.execute(
-            "INSERT INTO communications (customer_id, date, content, follow_up) VALUES (?, ?, ?, ?)",
-            (cid, data.date, data.content, data.follow_up),
-        )
-        conn.commit()
-        row = conn.execute("SELECT * FROM communications WHERE id = ?", (c.lastrowid,)).fetchone()
-        return dict(row)
-
-
-@router.delete("/communications/{comm_id}")
-def delete_comm(comm_id: int):
-    with get_db_ctx() as conn:
-        if not conn.execute("SELECT id FROM communications WHERE id = ?", (comm_id,)).fetchone():
-            raise HTTPException(404, "Communication record not found")
-        conn.execute("DELETE FROM communications WHERE id = ?", (comm_id,))
         conn.commit()
         return {"ok": True}

@@ -12,7 +12,6 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from typing import Optional
 
 from backend.database import get_db_ctx
 from backend.local_capabilities import (
@@ -198,12 +197,8 @@ def guess_script_type(path: Path) -> str:
     return "通用"
 
 
-class ScanDirCreate(BaseModel):
-    path: str
-
-
 class ScanRequest(BaseModel):
-    paths: Optional[list[str]] = None  # scan specific dirs; default = all enabled scan_dirs
+    paths: list[str] = Field(min_length=1)
 
 
 def _existing_paths(conn) -> set:
@@ -280,68 +275,15 @@ def scan_dir(base: Path, known: set) -> list:
     return proposals
 
 
-# ── Scan directory management ──
-
-@router.get("/dirs")
-def list_scan_dirs():
-    require_local_action("scan")
-    with get_db_ctx() as conn:
-        rows = conn.execute("SELECT * FROM scan_dirs ORDER BY id").fetchall()
-        return [dict(r) for r in rows]
-
-
-@router.post("/dirs")
-def add_scan_dir(data: ScanDirCreate):
-    require_local_action("scan")
-    try:
-        path = resolve_allowed_path(data.path, expect="directory")
-    except HTTPException:
-        audit_local_action("scan", "denied_path")
-        raise
-    p = str(path)
-    with get_db_ctx() as conn:
-        # 检查是否已存在
-        if conn.execute("SELECT id FROM scan_dirs WHERE path = ?", (p,)).fetchone():
-            raise HTTPException(409, "该目录已在扫描列表中")
-        try:
-            conn.execute("INSERT INTO scan_dirs (path) VALUES (?)", (p,))
-            conn.commit()
-        except Exception as e:
-            logger.warning("Failed to add scan dir: %s", e)
-            raise HTTPException(500, f"添加失败: {e}")
-        row = conn.execute("SELECT * FROM scan_dirs WHERE path = ?", (p,)).fetchone()
-        audit_local_action("scan", "directory_added", path)
-        return dict(row)
-
-
-@router.delete("/dirs/{did}")
-def delete_scan_dir(did: int):
-    require_local_action("scan")
-    with get_db_ctx() as conn:
-        if not conn.execute("SELECT id FROM scan_dirs WHERE id = ?", (did,)).fetchone():
-            raise HTTPException(404, "Scan dir not found")
-        conn.execute("DELETE FROM scan_dirs WHERE id = ?", (did,))
-        conn.commit()
-        audit_local_action("scan", "directory_removed")
-        return {"ok": True}
-
-
-# ── Scan ──
-
 @router.post("/run")
 def run_scan(req: ScanRequest):
     """Scan directories and return proposed new entries (nothing is written yet)."""
     require_local_action("scan")
     with get_db_ctx() as conn:
-        if req.paths:
-            dirs = req.paths
-        else:
-            dirs = [r["path"] for r in conn.execute(
-                "SELECT path FROM scan_dirs WHERE enabled = 1").fetchall()]
         known = _existing_paths(conn)
 
     allowed_dirs = []
-    for directory in dirs:
+    for directory in req.paths:
         try:
             allowed_dirs.append(resolve_allowed_path(directory, expect="directory"))
         except HTTPException:

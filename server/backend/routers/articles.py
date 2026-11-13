@@ -4,7 +4,6 @@ from pydantic import BaseModel
 from typing import Optional
 from backend.database import get_db_ctx, page_response, validate_page
 from backend.concurrency import expected_revision, raise_write_conflict
-from backend.file_preview import preview_linked_file
 from backend.file_visual_preview import visual_preview_linked_file
 
 router = APIRouter()
@@ -125,11 +124,6 @@ def get_article(article_id: int):
         result = dict(row)
         result["view_count"] = row["view_count"] + 1  # 返回递增后的值
         return result
-
-
-@router.get("/{article_id}/file-preview")
-def preview_article_file(article_id: int):
-    return preview_linked_file("articles", article_id)
 
 
 @router.get("/{article_id}/visual-preview")

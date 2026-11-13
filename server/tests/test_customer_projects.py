@@ -1,6 +1,7 @@
 import sqlite3
 
 import backend.migrations as migrations
+from backend.database import get_db_ctx
 
 
 def test_customer_upgrade_keeps_legacy_fields_and_relations(tmp_path, monkeypatch):
@@ -34,7 +35,12 @@ def test_profile_save_revision_and_backup_round_trip(client):
     assert profile == {"chat": {"name": "客户公共群", "platform": "企业微信"}, "owners": [{"name": "王经理", "label": ""}], "projects": []}
     cid = created["id"]
     url = f"/api/customers/{cid}"
-    client.post(f"{url}/communications", json={"date": "2026-01-01", "content": "历史记录"}).raise_for_status()
+    with get_db_ctx() as conn:
+        conn.execute(
+            "INSERT INTO communications (customer_id, date, content) VALUES (?, ?, ?)",
+            (cid, "2026-01-01", "历史记录"),
+        )
+        conn.commit()
     profile["projects"] = [
         {"name": "数据库迁移", "chat": {"name": "迁移群", "platform": "钉钉"}, "owners": [
             {"name": "张三", "label": "资源开通"}, {"name": "李四", "label": "技术支持"},
@@ -50,12 +56,17 @@ def test_profile_save_revision_and_backup_round_trip(client):
     assert client.get("/api/customers/").json()["items"][0]["project_profile"] == profile
     saved = client.get(url).json()
     assert all(saved[key] == value for key, value in legacy.items())
-    assert saved["communications"][0]["content"] == "历史记录"
+    assert "communications" not in saved and "tasks" not in saved
     backup = client.get("/api/export/all").json()
+    assert backup["communications"][0]["content"] == "历史记录"
     client.post("/api/export/import", json={"data": backup}).raise_for_status()
     restored = next(row for row in client.get("/api/customers/").json()["items"] if row["id"] != cid)
     assert restored["project_profile"] == profile
-    assert client.get(f"/api/customers/{restored['id']}").json()["communications"][0]["content"] == "历史记录"
+    restored_backup = client.get("/api/export/all").json()
+    assert any(
+        row["customer_id"] == restored["id"] and row["content"] == "历史记录"
+        for row in restored_backup["communications"]
+    )
 
 
 def test_search_finds_current_project_names_and_preserves_customer_pagination(client):

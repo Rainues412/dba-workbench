@@ -40,8 +40,7 @@ def _enable_local_capabilities(
         ("post", "/api/launcher/path", {"path": r"D:\blocked.txt"}),
         ("post", "/api/launcher/check", {"path": r"D:\blocked.txt"}),
         ("post", "/api/launcher/pick-folder", {}),
-        ("get", "/api/scan/dirs", None),
-        ("post", "/api/scan/run", {}),
+        ("post", "/api/scan/run", {"paths": [r"D:\blocked.txt"]}),
         ("post", "/api/scan/commit", {"items": []}),
     ],
 )

@@ -4,6 +4,7 @@ from urllib.parse import quote
 import pytest
 from playwright.sync_api import expect, sync_playwright
 
+from backend.database import get_db_ctx
 from test_browser_smoke import _api_client, _edge, _login
 
 
@@ -16,8 +17,16 @@ def test_customer_directory_responsive_and_multi_owner_edit(live_server, tmp_pat
     legacy = {"name": name, "group_name": group_name, "wb_contact": "企业微信", "wb_person": "统一负责人甲", "notes": "原始备注"}
     customer = client.post("/api/customers/", json=legacy, headers=headers).raise_for_status().json()
     base = f"/api/customers/{customer['id']}"
-    client.post(f"{base}/contacts", json={"name": "资源对接人", "phone": "13800000000"}, headers=headers).raise_for_status()
-    client.post(f"{base}/communications", json={"date": "2026-10-21", "content": "历史沟通"}, headers=headers).raise_for_status()
+    with get_db_ctx() as conn:
+        conn.execute(
+            "INSERT INTO contacts (customer_id, name, phone) VALUES (?, ?, ?)",
+            (customer["id"], "资源对接人", "13800000000"),
+        )
+        conn.execute(
+            "INSERT INTO communications (customer_id, date, content) VALUES (?, ?, ?)",
+            (customer["id"], "2026-10-21", "历史沟通"),
+        )
+        conn.commit()
     client.post("/api/tasks/", json={"title": "已有巡检", "customer_id": customer["id"]}, headers=headers).raise_for_status()
     client.post("/api/customers/", json={
         "name": "独立客户", "project_name": "电鳗", "group_name": "巡检群", "wb_contact": "微信", "wb_person": "巡检负责人",
@@ -126,7 +135,14 @@ def test_customer_directory_responsive_and_multi_owner_edit(live_server, tmp_pat
                 dialog.get_by_role("button", name="关闭", exact=True).click()
             saved = client.get(base).json()
             assert all(saved[field] == value for field, value in legacy.items())
-            assert len(saved["contacts"]) == len(saved["communications"]) == len(saved["tasks"]) == 1
+            assert [contact["name"] for contact in saved["contacts"]] == ["资源对接人"]
+            backup = client.get("/api/export/all").raise_for_status().json()
+            assert [(row["customer_id"], row["content"]) for row in backup["communications"]] == [
+                (customer["id"], "历史沟通"),
+            ]
+            assert [(row["customer_id"], row["title"]) for row in backup["tasks"]] == [
+                (customer["id"], "已有巡检"),
+            ]
             assert [project["name"] for project in saved["project_profile"]["projects"]] == [f"项目 {n}" for n in range(1, 8)]
 
             search = page.get_by_role("textbox", name="搜索客户名或项目名")

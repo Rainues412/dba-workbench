@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import Optional
 from backend.database import get_db_ctx, page_response, validate_page
 from backend.concurrency import expected_revision, raise_write_conflict
-from backend.file_preview import preview_linked_file
+from backend.file_preview import preview_linked_script_file
 from backend.file_visual_preview import visual_preview_linked_file
 
 router = APIRouter()
@@ -131,7 +131,7 @@ def get_script(script_id: int):
 
 @router.get("/{script_id}/file-preview")
 def preview_script_file(script_id: int):
-    return preview_linked_file("scripts", script_id)
+    return preview_linked_script_file(script_id)
 
 
 @router.get("/{script_id}/visual-preview")

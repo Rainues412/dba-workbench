@@ -96,6 +96,8 @@ def test_scan_requires_action_and_rechecks_allowed_paths(client, tmp_path, monke
         "DBA_ALLOWED_ROOTS": str(allowed),
         "DBA_ALLOWED_LOCAL_ACTIONS": "scan",
     }))
+    for payload in ({}, {"paths": []}):
+        assert client.post("/api/scan/run", json=payload).status_code == 422
     assert client.post("/api/scan/run", json={"paths": [str(tmp_path)]}).status_code == 403
     assert client.post("/api/scan/commit", json={"items": [{"kind": "script", "name": "outside", "path": str(outside)}]}).status_code == 403
     assert client.get("/api/search/", params={"q": "outside"}).json()["scripts"] == []

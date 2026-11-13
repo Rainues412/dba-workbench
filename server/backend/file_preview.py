@@ -1,4 +1,4 @@
-"""Bounded, read-only previews of record-linked files inside authorized roots."""
+"""Bounded, read-only previews of script-linked files inside authorized roots."""
 import codecs
 import io
 import zlib
@@ -66,12 +66,9 @@ def _docx_text(data: bytes) -> str:
     return "".join(parts).strip("\n")
 
 
-def preview_linked_file(module: str, record_id: int) -> JSONResponse:
-    # Table names come exclusively from the two router call sites, never input.
-    if module not in {"articles", "scripts"}:
-        raise HTTPException(404, "记录不存在")
+def preview_linked_script_file(script_id: int) -> JSONResponse:
     with get_db_ctx() as conn:
-        row = conn.execute(f"SELECT file_path FROM {module} WHERE id = ?", (record_id,)).fetchone()
+        row = conn.execute("SELECT file_path FROM scripts WHERE id = ?", (script_id,)).fetchone()
     if not row:
         raise HTTPException(404, "记录不存在")
     if not row["file_path"]:
