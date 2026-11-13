@@ -5,15 +5,14 @@ import os
 import json
 import secrets
 import socket
-import subprocess
 import sys
 import threading
 import time
 import urllib.error
 import urllib.request
-import webbrowser
 from pathlib import Path
 
+from backend.browser_launch import find_edge, open_workbench
 
 APP_TITLE = "DBA 工作台"
 HOST = "127.0.0.1"
@@ -98,16 +97,8 @@ def _probe_service() -> str:
 
 def _open_workbench() -> None:
     browser_path = os.environ.get("DBA_BROWSER_PATH", "").strip().strip('"')
-    if browser_path and Path(browser_path).is_file():
-        subprocess.Popen(
-            [browser_path, "--new-window", URL],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-        )
-        return
-    webbrowser.open(URL, new=1)
+    browser = Path(browser_path) if browser_path and Path(browser_path).is_file() else find_edge()
+    open_workbench(URL, browser)
 
 
 def _open_browser_when_ready() -> None:

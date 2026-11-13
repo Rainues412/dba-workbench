@@ -5,6 +5,7 @@ import json
 import os
 
 import desktop
+from backend import browser_launch
 
 
 def test_packaged_data_directory_defaults_to_local_app_data(monkeypatch, tmp_path: Path) -> None:
@@ -62,11 +63,13 @@ def test_configured_browser_is_used_for_source_launcher(monkeypatch, tmp_path: P
     browser.touch()
     calls = []
     monkeypatch.setenv("DBA_BROWSER_PATH", str(browser))
-    monkeypatch.setattr(desktop.subprocess, "Popen", lambda command, **kwargs: calls.append((command, kwargs)))
+    monkeypatch.setattr(browser_launch, "_browser_windows", lambda: {})
+    monkeypatch.setattr(browser_launch, "_maximize_new_workbench", lambda existing: None)
+    monkeypatch.setattr(browser_launch.subprocess, "Popen", lambda command, **kwargs: calls.append((command, kwargs)))
 
     desktop._open_workbench()
 
-    assert calls[0][0] == [str(browser), "--new-window", desktop.URL]
+    assert calls[0][0] == [str(browser), "--new-window", "--start-maximized", desktop.URL]
 
 
 def test_runtime_honors_source_log_directory(monkeypatch, tmp_path: Path) -> None:

@@ -4,20 +4,20 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import socket
 import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
-import webbrowser
 from datetime import datetime
 from pathlib import Path
 
 
 REPO_DIR = Path(__file__).resolve().parents[2]
 SERVER_DIR = REPO_DIR / "server"
+sys.path.insert(0, str(SERVER_DIR))
+from backend.browser_launch import find_edge, open_workbench
 LOCAL_CONFIG = REPO_DIR / ".runtime" / "local-capabilities.json"
 VENV_PYTHON = REPO_DIR / ".runtime" / ".venv" / "Scripts" / "python.exe"
 HOST = "127.0.0.1"
@@ -27,27 +27,6 @@ LOG_DIR = Path(
     os.environ.get("DBA_WORKBENCH_LOG_DIR", REPO_DIR / ".runtime" / "logs")
 )
 LOG_PATH = LOG_DIR / "server.log"
-
-
-def find_edge() -> Path | None:
-    """Find Edge without tying the checkout to one Windows installation path."""
-    configured = os.environ.get("DBA_EDGE_PATH", "").strip().strip('"')
-    if configured:
-        candidate = Path(configured)
-        return candidate if candidate.is_file() else None
-    discovered = shutil.which("msedge")
-    if discovered:
-        return Path(discovered)
-    candidates = []
-    for variable, suffix in (
-        ("PROGRAMFILES", ("Microsoft", "Edge", "Application", "msedge.exe")),
-        ("PROGRAMFILES(X86)", ("Microsoft", "Edge", "Application", "msedge.exe")),
-        ("LOCALAPPDATA", ("Microsoft", "Edge", "Application", "msedge.exe")),
-    ):
-        base = os.environ.get(variable)
-        if base:
-            candidates.append(Path(base).joinpath(*suffix))
-    return next((candidate for candidate in candidates if candidate.is_file()), None)
 
 
 EDGE_PATH = find_edge()
@@ -133,15 +112,7 @@ def main() -> None:
             raise SystemExit(f"DBA 工作台启动失败，请查看日志：{LOG_PATH}")
         return
 
-    if os.name == "nt" and EDGE_PATH is not None and EDGE_PATH.is_file():
-        subprocess.Popen(
-            [str(EDGE_PATH), "--new-window", URL],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
-    elif not webbrowser.open(URL, new=1):
+    if not open_workbench(URL, EDGE_PATH):
         raise SystemExit(f"无法打开默认浏览器，请手动访问：{URL}")
 
 

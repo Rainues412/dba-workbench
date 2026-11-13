@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from backend import browser_launch
 
 
 @pytest.fixture()
@@ -101,18 +102,22 @@ def test_running_service_is_reused_and_opened_in_edge(launcher, tmp_path, monkey
     monkeypatch.setattr(launcher, "EDGE_PATH", edge)
     monkeypatch.setattr(launcher, "probe_service", lambda: "dba")
     monkeypatch.setattr(launcher, "start_server", lambda: pytest.fail("must reuse the running service"))
+    monkeypatch.setattr(browser_launch, "_browser_windows", lambda: {101: "existing window"})
+    maximized = []
+    monkeypatch.setattr(browser_launch, "_maximize_new_workbench", maximized.append)
     calls = []
     monkeypatch.setattr(launcher.subprocess, "Popen", lambda command, **kwargs: calls.append(command))
 
     launcher.main()
-    assert calls == [[str(edge), "--new-window", launcher.URL]]
+    assert calls == [[str(edge), "--new-window", "--start-maximized", launcher.URL]]
+    assert maximized == [{101}]
 
 
 def test_new_server_owns_browser_and_tray_lifecycle(launcher, monkeypatch):
     monkeypatch.setattr(launcher, "probe_service", lambda: "down")
     monkeypatch.setattr(launcher, "start_server", lambda: True)
     monkeypatch.setattr(launcher.subprocess, "Popen", lambda *args, **kwargs: pytest.fail("launcher must not open a second browser"))
-    monkeypatch.setattr(launcher.webbrowser, "open", lambda *args, **kwargs: pytest.fail("launcher must not open a second browser"))
+    monkeypatch.setattr(launcher, "open_workbench", lambda *args: pytest.fail("launcher must not open a second browser"))
 
     launcher.main()
 
@@ -132,7 +137,9 @@ def test_missing_edge_uses_default_browser(launcher, tmp_path, monkeypatch):
     monkeypatch.setattr(launcher, "EDGE_PATH", tmp_path / "missing-edge.exe")
     monkeypatch.setattr(launcher, "probe_service", lambda: "dba")
     calls = []
-    monkeypatch.setattr(launcher.webbrowser, "open", lambda url, **kwargs: calls.append(url) or True)
+    monkeypatch.setattr(browser_launch, "_browser_windows", lambda: {})
+    monkeypatch.setattr(browser_launch, "_maximize_new_workbench", lambda existing: None)
+    monkeypatch.setattr(browser_launch.webbrowser, "open", lambda url, **kwargs: calls.append(url) or True)
 
     launcher.main()
     assert calls == [launcher.URL]
@@ -147,7 +154,7 @@ def test_edge_discovery_accepts_portable_environment_override(launcher, tmp_path
 
 def test_foreign_service_is_not_opened(launcher, monkeypatch):
     monkeypatch.setattr(launcher, "probe_service", lambda: "other")
-    monkeypatch.setattr(launcher.webbrowser, "open", lambda *args, **kwargs: pytest.fail("must not open a foreign service"))
+    monkeypatch.setattr(launcher, "open_workbench", lambda *args: pytest.fail("must not open a foreign service"))
 
     with pytest.raises(SystemExit, match="已被其他程序占用"):
         launcher.main()
