@@ -59,7 +59,7 @@
 | npm | 随 Node.js 安装 | 11.12.1 |
 | Python | 3.12.x x64 | 3.12.10 |
 
-前端直接依赖版本由 `frontend/package.json` 与 `frontend/package-lock.json` 锁定：React 19.3.1、React Router 7.18.4、TanStack Query 5.104.4、Lucide React 1.59.0、hash-wasm 4.12.0、Marked 18.1.1、DOMPurify 3.4.17、react-resizable-panels 4.14.8、Screenfull 6.0.2、Tocbot 4.36.8、marked-gfm-heading-id 4.1.4、Motion 14.6.0、react-highlight-words 1.0.0、Downshift 9.4.0；构建工具为 TypeScript 7.0.2、Vite 8.3.4、Vitest 5.0.5。测试依赖见 `server/requirements-dev.txt`：pytest 8.3.5、httpx 0.28.1、Playwright 1.48.0。
+前端直接依赖版本由 `frontend/package.json` 与 `frontend/package-lock.json` 锁定：React 19.3.1、React Router 7.18.4、TanStack Query 5.104.4、Lucide React 1.59.0、hash-wasm 4.12.0、Marked 18.1.1、DOMPurify 3.4.17、react-resizable-panels 4.14.8、Screenfull 6.0.2、Tocbot 4.36.8、marked-gfm-heading-id 4.1.4、Motion 14.6.0、react-highlight-words 1.0.0、Downshift 9.4.0、react-datepicker 9.1.0、date-fns 4.1.0；构建工具为 TypeScript 7.0.2、Vite 8.3.4、Vitest 5.0.5。测试依赖见 `server/requirements-dev.txt`：pytest 8.3.5、httpx 0.28.1、Playwright 1.48.0。
 
 ## 部署与启动
 
@@ -150,6 +150,8 @@ assets/                      桌面图标资源
 列表接口统一分页；更新和删除通过 `revision` 检测并发冲突。启动时自动执行尚未应用的数据库迁移，高于程序支持版本的数据库会被拒绝打开。保险箱在浏览器端使用 Argon2id 与 AES-256-GCM 加解密，服务端只保存密文和密钥信封。
 
 ## 任务保留与归档
+
+任务截止日期使用 [react-datepicker](https://github.com/Hacker0x01/react-datepicker)（MIT）提供中文日历、年月切换、键盘导航及可避让弹窗边界的浮层；支持手动输入 `YYYY-MM-DD`、清空与选择今天。未设置截止日期不会自动填入今天，提交时沿用本地日期字符串，不转换为 UTC。
 
 工作台的近期未完成任务按已逾期优先、优先级（高/中/低）、状态（进行中/待处理）、截止日期从早到晚排列；无截止日期排在同组有日期任务之后，其他条件相同时按 ID 从大到小排列。
 

@@ -15,6 +15,7 @@ import type { FileLinksConfig } from "./LocalFileLinks";
 import { ScanImport } from "./ScanImport";
 import { EntityDetails } from "./EntityDetails";
 import { CustomerDirectory, CustomerFields, CustomerProjectDrawer, projectInCustomerList, customerProfilePayload, makeCustomerDraft } from "./CustomerProjects";
+import { DateField } from "./DateField";
 import { EmptyState, ErrorState, LoadingState, TableSkeleton } from "./States";
 
 type Field = {
@@ -432,6 +433,7 @@ function FieldInput({ field, value }: { field: Field; value: unknown }) {
   const options = [...new Set([...(field.options ?? []), String(initial)])];
   return <label className={field.type === "textarea" ? "full" : undefined}>{field.label}
     {field.type === "textarea" ? <textarea name={field.name} aria-label={field.label} defaultValue={String(initial)} rows={field.name === "content" ? 12 : 4} required={field.required} />
+      : field.type === "date" ? <DateField name={field.name} label={field.label} initialValue={String(initial)} required={field.required} />
       : field.type === "select" ? <select name={field.name} aria-label={field.label} defaultValue={String(initial)} required={field.required} title={String(initial)} onChange={(event) => { event.currentTarget.title = event.currentTarget.value; }}>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select>
       : <><input name={field.name} aria-label={field.label} type={field.type ?? "text"} defaultValue={String(initial)} required={field.required} list={field.options?.length ? `field-${field.name}-options` : undefined} />{field.options?.length ? <datalist id={`field-${field.name}-options`}>{field.options.map((option) => <option key={option} value={option} />)}</datalist> : null}</>}
   </label>;
