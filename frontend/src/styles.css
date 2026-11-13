@@ -551,12 +551,13 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .detail-list { list-style: none; padding: 0; display: grid; gap: .6rem; }
 .detail-list li { display: flex; justify-content: space-between; gap: .75rem; padding: .75rem; border: 1px solid var(--border); border-radius: 10px; overflow-wrap: anywhere; }
 .detail-list p { margin: .25rem 0; white-space: pre-wrap; }
-.customer-directory { display: grid; gap: .55rem; padding: .15rem 1rem .75rem; margin: 0; list-style: none; }
-.customer-entry { min-width: 0; border: 1px solid var(--border); border-radius: 12px; }
+.customer-directory { --customer-hover-bg: #e7f0ff; display: grid; padding: .15rem 1rem .75rem; margin: 0; list-style: none; }
+:root[data-theme="dark"] .customer-directory { --customer-hover-bg: #1c3652; }
+.customer-entry { min-width: 0; }
+.customer-entry + .customer-entry { border-top: 1px solid var(--border); }
 .customer-entry-header { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2.4fr) auto auto; align-items: center; gap: .8rem; padding: .5rem .65rem; }
 .customer-heading { grid-column: 1; display: flex; align-items: center; min-width: 0; gap: .65rem; padding: .3rem; }
 .customer-disclosure { border: 0; border-radius: 8px; color: var(--text); background: transparent; text-align: left; font: inherit; cursor: pointer; }
-.customer-disclosure:hover, .customer-disclosure[aria-expanded="true"] { background: var(--surface-soft); }
 .customer-disclosure:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .customer-disclosure[aria-expanded="true"] .customer-identity svg { transform: rotate(90deg); }
 .customer-avatar { display: grid; place-items: center; flex: 0 0 38px; width: 38px; height: 38px; border: 1px solid var(--border); border-radius: 11px; color: var(--primary); background: var(--primary-soft); font-size: .95rem; font-weight: 750; }
@@ -587,10 +588,11 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .customer-owners { padding: 0; margin: 0; list-style: none; }
 .customer-owners li { display: flex; align-items: baseline; flex-wrap: wrap; gap: .3rem .45rem; min-width: 0; }
 .customer-owners .badge, .customer-chat .badge { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.customer-owners .badge { background: transparent; }
 .customer-owner-summary { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: .55rem; }
 .customer-owner-summary .customer-meta-label { margin: 0; }
 .customer-owner-summary .customer-owners { align-items: center; gap: .3rem; }
-.customer-owner-summary .customer-owners li { max-width: 100%; padding: .24rem .55rem; border-radius: 8px; background: var(--surface-soft); }
+.customer-owner-summary .customer-owners li { max-width: 100%; padding: .24rem .55rem; }
 .customer-owner-summary .customer-owners strong { min-width: 0; }
 .customer-owner-summary .customer-owners .badge { padding: 0; color: var(--muted); background: transparent; }
 .customer-shared .customer-platform { flex: 0 0 auto; max-width: 45%; }
@@ -602,14 +604,22 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 :root[data-theme="dark"] .customer-platform[data-platform="wecom"] { --platform-text: #d3b3ff; --platform-bg: #382853; }
 :root[data-theme="dark"] .customer-platform[data-platform="dingtalk"] { --platform-text: #9ebaff; --platform-bg: #22355b; }
 :root[data-theme="dark"] .customer-platform[data-platform="wechat"] { --platform-text: #74dfb4; --platform-bg: #193a30; }
-.customer-project-table { table-layout: fixed; width: 100%; min-width: 0; background: var(--surface); border-radius: 7px; }
-.customer-project-table th { background: var(--surface-tint); }
+.customer-project-table {
+  --project-heading-bg: #eef0f4; --project-location-bg: #f0e9ff; --project-location-line: #7346c2;
+  table-layout: fixed; width: 100%; min-width: 0; background: var(--surface);
+}
+:root[data-theme="dark"] .customer-project-table {
+  --project-heading-bg: #2a303a; --project-location-bg: #372749; --project-location-line: #bf9bf7;
+}
+.customer-project-table th { background: var(--project-heading-bg); border-radius: 0; }
 .customer-project-table th, .customer-project-table td { padding: .72rem .75rem; text-align: left; }
 .customer-project-table td { vertical-align: top; overflow-wrap: anywhere; }
 .customer-project-table tbody tr:not(:last-child) td { border-bottom-color: var(--border-strong); }
-.customer-project-table tbody tr:hover { background: color-mix(in srgb, var(--success-soft) 75%, var(--surface)); }
-.customer-project-table tbody tr[aria-current="true"] { --project-highlight-line: color-mix(in srgb, var(--warning) 62%, var(--surface)); background: color-mix(in srgb, var(--warning-soft) 90%, var(--surface)); }
-.customer-project-table tr[aria-current="true"] td:first-child { box-shadow: inset 3px 0 var(--project-highlight-line); }
+@media (hover: hover) {
+  .customer-entry-header:hover, .customer-project-table tbody tr:hover { background: var(--customer-hover-bg); }
+}
+.customer-project-table tbody tr[aria-current="true"] { background: var(--project-location-bg); }
+.customer-project-table tr[aria-current="true"] td:first-child { box-shadow: inset 3px 0 var(--project-location-line); }
 .customer-project-table th:first-child { width: 28%; }
 .customer-project-table th:nth-child(2) { width: 34%; }
 .customer-more { margin: .7rem 0 0; }
@@ -650,8 +660,8 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
   .customer-shared .customer-meta-label { margin: 0; }
   .customer-entry-details { margin: 0 .55rem .55rem .8rem; padding: .55rem; }
   .customer-project-table th:first-child, .customer-project-table th:nth-child(2) { width: auto; }
-  .customer-project-table tbody tr { border-color: var(--border-strong); }
-  .customer-project-table tbody tr[aria-current="true"] { border-color: var(--project-highlight-line); box-shadow: inset 3px 0 var(--project-highlight-line); }
+  .customer-project-table tbody tr { border: 0; border-top: 1px solid var(--border-strong); border-radius: 0; }
+  .customer-project-table tbody tr[aria-current="true"] { box-shadow: inset 3px 0 var(--project-location-line); }
   .customer-project-table tr[aria-current="true"] td:first-child { box-shadow: none; }
   .customer-project-table td { padding: .45rem 0; white-space: normal; }
   .customer-project-table tbody tr td:last-child { border-bottom: 0; }

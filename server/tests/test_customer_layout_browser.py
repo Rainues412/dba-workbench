@@ -42,6 +42,8 @@ def test_customer_directory_responsive_and_multi_owner_edit(live_server, tmp_pat
             expect(disclosure).to_have_count(0)
             expect(entry.get_by_text(group_name, exact=True)).to_be_visible()
             expect(entry.get_by_text("统一负责人甲", exact=True)).to_be_visible()
+            entry.locator(".customer-entry-header").hover()
+            expect(entry.locator(".customer-entry-header")).to_have_css("background-color", "rgb(231, 240, 255)")
             expect(entry.locator(".customer-entry-details")).to_have_count(0)
             expect(entry.get_by_text("0 个项目", exact=True)).to_have_count(0)
             entry.get_by_role("button", name="查看/编辑", exact=True).click()
@@ -102,7 +104,8 @@ def test_customer_directory_responsive_and_multi_owner_edit(live_server, tmp_pat
                 badges = page.locator(".customer-platform")
                 expect(badges).to_have_text(["企业微信", "钉钉", "飞书", "微信"])
                 colors = badges.evaluate_all("badges => badges.map(badge => getComputedStyle(badge).backgroundColor)")
-                assert len(set(colors)) == 4
+                assert len(set(colors)) == 4 and "rgba(0, 0, 0, 0)" not in colors
+                expect(entry.locator(".customer-entry-details")).to_have_css("border-top-left-radius", "9px")
                 expect(projects.nth(1).get_by_text("飞书", exact=True)).not_to_have_attribute("data-platform", re.compile(".+"))
                 page.screenshot(animations="disabled", path=str(tmp_path / f"customer-directory-{theme}-{width}.png"))
                 entry.get_by_role("button", name="查看/编辑", exact=True).click()
@@ -185,12 +188,23 @@ def test_customer_directory_responsive_and_multi_owner_edit(live_server, tmp_pat
             expect(page.get_by_role("button", name="取消高亮", exact=True)).to_have_count(0)
             nearby = projects.nth(4)
             nearby.hover()
-            for theme in ("light", "dark"):
+            for theme, hover_color, heading_color, location_color in [
+                ("light", "rgb(231, 240, 255)", "rgb(238, 240, 244)", "rgb(240, 233, 255)"),
+                ("dark", "rgb(28, 54, 82)", "rgb(42, 48, 58)", "rgb(55, 39, 73)"),
+            ]:
                 page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
-                colors = nearby.evaluate("""row => [
-                    row, row.closest('table').querySelector('th'), row.nextElementSibling
-                ].map(element => getComputedStyle(element).backgroundColor)""")
-                assert len(set(colors)) == 3
+                header = entry.locator(".customer-entry-header")
+                header.hover()
+                expect(header).to_have_css("background-color", hover_color)
+                page.screenshot(animations="disabled", path=str(tmp_path / f"customer-hover-{theme}-1440.png"))
+                nearby.hover()
+                expect(header).to_have_css("background-color", "rgba(0, 0, 0, 0)")
+                expect(nearby).to_have_css("background-color", hover_color)
+                expect(entry.get_by_role("columnheader", name="项目名")).to_have_css("background-color", heading_color)
+                located.hover()
+                expect(located).to_have_css("background-color", location_color)
+                nearby.hover()
+                expect(nearby).to_have_css("background-color", hover_color)
                 page.screenshot(animations="disabled", path=str(tmp_path / f"project-row-colors-{theme}-1440.png"))
             expect(located).to_have_attribute("aria-current", "true")
             nearby.get_by_text("项目 5", exact=True).click()
