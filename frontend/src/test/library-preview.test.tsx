@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -25,6 +25,27 @@ function list(items: object[], total = items.length) {
 }
 
 describe("library classification and read-only preview", () => {
+  it("cancels delayed search positioning when the user scrolls during the split animation", async () => {
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+    let finish = () => {};
+    const finished = new Promise<void>((resolve) => { finish = resolve; });
+    const previous = Element.prototype.getAnimations;
+    const animations = vi.fn(() => [{ effect: { target: document.querySelector("[data-panel]") }, finished }] as unknown as Animation[]);
+    Element.prototype.getAnimations = animations;
+    try {
+      const row = { id: 31, revision: 1, title: "目标文件" };
+      vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+        if (path.endsWith("facets")) return Response.json({ total: 1, items: [] });
+        return path === "/api/articles/31" ? Response.json(row) : list([row]);
+      }));
+      show(articlesConfig, "/?preview=31");
+      await screen.findByRole("button", { name: "预览：目标文件" });
+      await waitFor(() => expect(animations).toHaveBeenCalled());
+      fireEvent.wheel(window, { deltaY: -100 });
+      await act(async () => finish());
+      expect(scroll).not.toHaveBeenCalled();
+    } finally { Element.prototype.getAnimations = previous; }
+  });
   it.each([articlesConfig, scriptsConfig])("$key keeps preview closed on entry until a title is chosen", async (config) => {
     const row = { id: 1, revision: 1, title: "点击后阅读的文章", wb_db: "Oracle", category: "日常管理" };
     const fetch = vi.fn(async (path: string) => {
@@ -355,7 +376,7 @@ describe("library classification and read-only preview", () => {
     const frame = await within(preview).findByTitle("原文件预览：layout.pdf");
     expect(frame).toHaveAttribute("src", "http://127.0.0.1:8012/onlinePreview?url=signed");
     expect(frame).toHaveAttribute("sandbox", expect.stringContaining("allow-scripts"));
-    expect(within(preview).getByText("layout.pdf")).toHaveAttribute("title", "layout.pdf");
+    expect(within(preview).getByTitle("layout.pdf")).toHaveTextContent("layout.pdf");
     expect(reads).not.toContain(`${config.path}16/file-preview`);
     expect(within(preview).queryByText("知识库摘要")).not.toBeInTheDocument();
     if (config.key === "scripts") expect(within(preview).getByText("保留的脚本说明")).toBeInTheDocument();

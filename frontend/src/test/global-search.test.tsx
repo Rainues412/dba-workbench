@@ -14,6 +14,18 @@ function search(value: string) {
 const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
 
 describe("global search", () => {
+  it("scrolls only the result list when selecting a clipped result", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => response({ scripts: [{ id: 1, title: "巡检" }] })));
+    const outerScroll = vi.spyOn(Element.prototype, "scrollIntoView");
+    mount(); search("巡检");
+    const option = await screen.findByRole("option");
+    const list = screen.getByRole("listbox");
+    vi.spyOn(list, "getBoundingClientRect").mockReturnValue({ top: 100, bottom: 200 } as DOMRect);
+    vi.spyOn(option, "getBoundingClientRect").mockReturnValue({ top: 220, bottom: 274 } as DOMRect);
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "ArrowDown" });
+    expect(list.scrollTop).toBe(74);
+    expect(outerScroll).not.toHaveBeenCalled();
+  });
   it("focuses the inline input with Ctrl+K and closes the dropdown with Escape", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => response({ scripts: [{ id: 1, title: "巡检" }] })));
     mount();

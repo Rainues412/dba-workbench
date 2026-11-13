@@ -136,6 +136,14 @@ function CrudContent({ config }: { config: CrudConfig }) {
     const row = panelRef.current?.querySelector<HTMLElement>(".library-record.selected");
     if (!row) return;
     let active = true;
+    const cancelReveal = () => { active = false; setRevealId(null); };
+    const cancelOnKey = (event: KeyboardEvent) => {
+      if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) cancelReveal();
+    };
+    window.addEventListener("wheel", cancelReveal, { passive: true });
+    window.addEventListener("touchmove", cancelReveal, { passive: true });
+    window.addEventListener("pointerdown", cancelReveal);
+    window.addEventListener("keydown", cancelOnKey);
     const frame = requestAnimationFrame(async () => {
       // Wait for the list/preview split to settle before revealing a lower row.
       const group = panelRef.current?.closest(".library-panels");
@@ -148,7 +156,13 @@ function CrudContent({ config }: { config: CrudConfig }) {
       row.scrollIntoView?.({ block: "nearest", inline: "nearest", behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
       setRevealId(null);
     });
-    return () => { active = false; cancelAnimationFrame(frame); };
+    return () => {
+      active = false; cancelAnimationFrame(frame);
+      window.removeEventListener("wheel", cancelReveal);
+      window.removeEventListener("touchmove", cancelReveal);
+      window.removeEventListener("pointerdown", cancelReveal);
+      window.removeEventListener("keydown", cancelOnKey);
+    };
   }, [revealId, previewId, previewEnabled, locateId, list.data, list.isFetching, list.isPlaceholderData]);
   useLayoutEffect(() => {
     if (list.isPlaceholderData || paginationTop.current === null) return;
@@ -274,7 +288,7 @@ function CrudContent({ config }: { config: CrudConfig }) {
     <header className="page-header"><div className="page-title-group"><span className="page-title-icon"><PageIcon size={24} /></span><div><p className="eyebrow">DATA MODULE</p><h1>{taskArchive ? "归档任务" : config.title}</h1><p className="muted">{taskArchive ? "查看已归档的任务，可查看详情或恢复到任务列表。" : config.description}</p></div></div><div className="button-row">{hasFavorites && <ScanImport module={config.key as "scripts" | "articles" | "resources"} onImported={refresh} />}{isTask && <button className="button" onClick={changeTaskView}>{taskArchive ? <ArrowLeft size={17} /> : <Archive size={17} />}{taskArchive ? "返回任务列表" : "查看归档"}</button>}{!taskArchive && <button className="button primary" onClick={() => { setSelectedId(null); setCreating(true); }}><Plus size={17} />新增</button>}</div></header>
     <LibraryLayout module={config.key} enabled={hasFavorites}
       categories={config.classification ? (collapsed, onToggle) => <CategoryNavigation classification={config.classification!} data={facets.data} loading={facets.isLoading} error={!!facets.error} retry={() => void facets.refetch()} database={database} category={category} categoryOptions={config.fields.find((field) => field.name === config.classification?.categoryField)?.options} hideEmptyCategories={config.key === "articles"} onChange={changeClassification} collapsed={collapsed} onToggle={onToggle} /> : undefined}
-      previewOpen={previewEnabled}
+      previewOpen={previewEnabled} onPreviewClose={closePreview}
       preview={hasPreview && !creating && selectedId === null ? <LibraryPreview config={config} id={previewId} open={previewEnabled} onClose={closePreview} onEdit={editRecord} onNotice={setNotice} onRefresh={refresh} /> : undefined}>
     <section className="panel data-panel" ref={panelRef} aria-busy={list.isFetching}>
       <div className="toolbar"><label className="search-field"><Search size={17} aria-hidden="true" /><span className="sr-only">按标题搜索{config.title}</span><input value={keyword} onChange={(event) => { paginationTop.current = null; setKeyword(event.target.value); setPage(1); }} placeholder={`按标题搜索${config.title}`} /></label>

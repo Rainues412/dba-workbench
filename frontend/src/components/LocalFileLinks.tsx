@@ -1,3 +1,4 @@
+import { FileName } from "./FileName";
 import { useState } from "react";
 import { Copy, ExternalLink, FileCode2, FolderOpen } from "lucide-react";
 import { api, ApiError, Entity, jsonBody } from "../api/client";
@@ -50,7 +51,7 @@ export function LocalFileLinks({ row, label, config, disabled, onNotice, actionL
 
   return <span className={`record-links${compact ? " compact-file-links" : ""}`}>
     {href ? <a className="record-title-link" href={href} target="_blank" rel="noopener noreferrer" title={label} aria-label={`打开网址：${label}`}><span>{actionLabel ? "打开网址" : label}</span><ExternalLink size={14} /></a>
-      : path ? <button className="record-title-link" type="button" title={label} disabled={disabled || busy} onClick={() => void open(config.openMode)} aria-label={`${config.openLabel}：${label}`}><span>{actionLabel || label}</span><FileCode2 size={14} /></button>
+      : path ? <button className="record-title-link" type="button" title={label} disabled={disabled || busy} onClick={() => void open(config.openMode)} aria-label={`${config.openLabel}：${label}`}><span>{actionLabel || <FileName text={label} path={path} />}</span><FileCode2 size={14} /></button>
       : !actionLabel && <span>{label}</span>}
     {path && <span className="record-path-line">
       <button className="record-path-link" type="button" title={path} aria-label={`打开所在文件夹：${label}`} disabled={disabled || busy} onClick={() => void open("folder")}><FolderOpen size={13} /><span>{compact ? "所在文件夹" : path}</span></button>

@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { CrudPage } from "./components/CrudPage";
 import { LoadingState } from "./components/States";
 import { Shell } from "./components/Shell";
+import { InputProtection } from "./components/InputProtection";
 import { Dashboard } from "./pages/Dashboard";
 import { Vault } from "./pages/Vault";
 import { articlesConfig, customersConfig, resourcesConfig, scriptsConfig, tasksConfig } from "./pages/entityConfigs";
@@ -12,7 +13,7 @@ import { articlesConfig, customersConfig, resourcesConfig, scriptsConfig, tasksC
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 15_000 } } });
 
 export function App() {
-  return <QueryClientProvider client={queryClient}><AuthProvider><Gate /></AuthProvider></QueryClientProvider>;
+  return <InputProtection><QueryClientProvider client={queryClient}><AuthProvider><Gate /></AuthProvider></QueryClientProvider></InputProtection>;
 }
 
 function Gate() {

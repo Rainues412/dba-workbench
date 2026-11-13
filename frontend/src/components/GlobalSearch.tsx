@@ -18,6 +18,7 @@ export function GlobalSearch() {
   const listId = useId();
   const root = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [focused, setFocused] = useState(false);
   const [query, setQuery] = useState("");
@@ -71,7 +72,12 @@ export function GlobalSearch() {
 
   useEffect(() => {
     const item = itemRefs.current[activeIndex];
-    if (activeIndex >= 0 && typeof item?.scrollIntoView === "function") item.scrollIntoView({ block: "nearest" });
+    const container = list.current;
+    if (activeIndex < 0 || !item || !container) return;
+    const bounds = container.getBoundingClientRect();
+    const row = item.getBoundingClientRect();
+    if (row.top < bounds.top) container.scrollTop -= bounds.top - row.top;
+    else if (row.bottom > bounds.bottom) container.scrollTop += row.bottom - bounds.bottom;
   }, [activeIndex]);
 
   return <div ref={root} className="global-search">
@@ -101,7 +107,7 @@ export function GlobalSearch() {
       />
       <kbd>Ctrl K</kbd>
     </label>
-    {open && <div id={listId} className="global-search-dropdown" role="listbox" aria-label="全局搜索结果" aria-busy={loading}>
+    {open && <div ref={list} id={listId} className="global-search-dropdown" role="listbox" aria-label="全局搜索结果" aria-busy={loading}>
       {loading ? <div className="global-search-state" role="status">搜索中…</div>
         : error ? <div className="global-search-state error-text" role="alert">{error}</div>
         : !items.length ? <div className="global-search-state">没有匹配记录</div>

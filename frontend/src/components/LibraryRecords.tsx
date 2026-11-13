@@ -8,7 +8,7 @@ import { DatabaseLabel } from "./DatabaseLabel";
 import { EntityDetails } from "./EntityDetails";
 import { LocalFileLinks } from "./LocalFileLinks";
 import { EmptyState, ErrorState, LoadingState } from "./States";
-import { SearchHighlight } from "./SearchHighlight";
+import { FileName } from "./FileName";
 import { SelectionIndicator, SelectionMotion } from "./SelectionMotion";
 
 const MarkdownFilePreview = lazy(() => import("./MarkdownFilePreview").then((module) => ({ default: module.MarkdownFilePreview })));
@@ -56,8 +56,8 @@ export function LibraryRecords({ config, rows, selectedId, disabled, searchQuery
         <div className="library-record-copy">
           <div className="library-record-heading">
             <div className="library-record-summary">
-              {config.key === "resources" && config.fileLinks ? <div className="library-resource-links" title={title}><LocalFileLinks row={row} label={title} config={config.fileLinks} disabled={disabled} onNotice={onNotice} compact /></div> : <button type="button" className="library-record-title" title={title} aria-label={`预览：${title}`} aria-pressed={selectedId === row.id} disabled={disabled} onClick={() => onPreview(row.id)}><SearchHighlight text={title} query={searchQuery} /></button>}
-              {filePath ? <p className="library-record-path" title={filePath}><FolderOpen size={13} aria-hidden="true" /><span>{filePath}</span></p>
+              {config.key === "resources" && config.fileLinks ? <div className="library-resource-links" title={title}><LocalFileLinks row={row} label={title} config={config.fileLinks} disabled={disabled} onNotice={onNotice} compact /></div> : <button type="button" className="library-record-title" title={title} aria-label={`预览：${title}`} aria-pressed={selectedId === row.id} disabled={disabled} onClick={() => onPreview(row.id)}><FileName text={title} path={filePath} query={searchQuery} /></button>}
+              {filePath ? <p className="library-record-path" title={filePath}><FolderOpen size={13} aria-hidden="true" /><span><FileName text={filePath} path={filePath} /></span></p>
                 : description && <p className="library-record-description" title={description}>{description}</p>}
             </div>
             <div className="library-record-actions">
@@ -190,7 +190,7 @@ export function LibraryPreview({ config, id, open = true, onClose, onEdit, onNot
     catch { notify("复制失败，请手动选择正文复制"); }
   }
   const content = <div ref={readerRef} className={`library-reader${expanded ? " expanded" : ""}`}>
-    <header className="library-preview-heading"><h2 id={headingId} title={title}>{title}</h2><div>
+    <header className="library-preview-heading"><h2 id={headingId} title={title}><FileName text={title} path={linkedPath} /></h2><div>
       <button ref={fullscreenTrigger} type="button" className="icon-button" aria-label={expanded ? "退出大屏阅读" : "大屏阅读"} title={screenfull.isEnabled ? expanded ? "退出大屏阅读（Esc）" : "大屏阅读" : "当前浏览器不支持全屏阅读"} disabled={!row || !screenfull.isEnabled} onClick={() => void toggleReading()}>{expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button>
       <button type="button" className="button small" disabled={!row || detail.isLoading || !!detail.error} onClick={() => void editRecord()}><Pencil size={14} />编辑</button>
       <button type="button" className="icon-button" aria-label="关闭预览" title="关闭预览" onClick={closePreview}><X size={19} /></button>
@@ -215,7 +215,7 @@ export function LibraryPreview({ config, id, open = true, onClose, onEdit, onNot
               {showSummary && <p className="library-preview-summary">{summary}</p>}
               {hasLinkedFile && <section className="library-preview-section library-visual-preview" aria-label="原文件预览">
                 <div className="library-content-heading"><h3>原文件预览</h3>
-                  <span className="muted" title={visual.data?.filename}>{visual.data?.filename || "内置查看器"}</span>
+                  <span className="muted" title={visual.data?.filename}>{visual.data?.filename ? <FileName text={visual.data.filename} path={visual.data.filename} /> : "内置查看器"}</span>
                 </div>
                 {visual.isLoading ? <LoadingState label="正在准备原文件预览" />
                   : visual.error ? <ErrorState message={`原文件预览失败：${visual.error.message}`} retry={() => void visual.refetch()} />
