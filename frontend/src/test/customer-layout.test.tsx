@@ -56,6 +56,7 @@ describe("customer project directory", () => {
     expect(within(table).getAllByText("沿用客户负责人")).toHaveLength(4);
     fireEvent.click(screen.getByRole("button", { name: /查看更多/ }));
     expect(within(table).getAllByRole("row")).toHaveLength(8);
+    expect(within(table).getByRole("button", { name: "编辑项目 项目 7" })).toBeVisible();
     fireEvent.click(toggle);
     fireEvent.click(toggle);
     expect(screen.getByRole("table")).toBeVisible();

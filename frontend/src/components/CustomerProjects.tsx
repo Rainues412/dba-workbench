@@ -1,7 +1,7 @@
-import { useId, useLayoutEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type Dispatch, type FormEvent, type ReactNode, type RefObject, type SetStateAction } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, FolderOpen, MessageSquare, Pencil, Plus, Trash2, Users, X } from "lucide-react";
-import { entityApi, type Entity } from "../api/client";
+import { CheckCircle2, ChevronRight, FolderOpen, MessageSquare, Plus, SquarePen, Trash2, Users, X } from "lucide-react";
+import { ApiError, entityApi, type Entity } from "../api/client";
 import { SearchHighlight } from "./SearchHighlight";
 import { ErrorState, LoadingState } from "./States";
 
@@ -86,26 +86,29 @@ export function projectInCustomerList(item: Entity, name: string) {
 }
 
 type ProjectFocus = { name: string; key: string };
+export type ProjectSelection = { customerId: number; revision: number; index: number; name: string };
 
-export function CustomerDirectory({ rows, disabled, searchQuery, focus, onEdit, onRemove }: {
+export function CustomerDirectory({ rows, disabled, searchQuery, focus, onEdit, onEditProject, onRemove }: {
   rows: Entity[];
   disabled: boolean;
   searchQuery: string;
   focus: (ProjectFocus & { customerId: number }) | null;
   onEdit: (id: number) => void;
+  onEditProject: (selection: ProjectSelection) => void;
   onRemove: (item: Entity) => void;
 }) {
   return <ul className="customer-directory">{rows.map((item) => <CustomerEntry key={item.id} item={item}
     disabled={disabled} searchQuery={searchQuery} focus={!disabled && focus?.customerId === item.id ? focus : null}
-    onEdit={onEdit} onRemove={onRemove} />)}</ul>;
+    onEdit={onEdit} onEditProject={onEditProject} onRemove={onRemove} />)}</ul>;
 }
 
-function CustomerEntry({ item, disabled, searchQuery, focus, onEdit, onRemove }: {
+function CustomerEntry({ item, disabled, searchQuery, focus, onEdit, onEditProject, onRemove }: {
   item: Entity;
   disabled: boolean;
   searchQuery: string;
   focus: ProjectFocus | null;
   onEdit: (id: number) => void;
+  onEditProject: (selection: ProjectSelection) => void;
   onRemove: (item: Entity) => void;
 }) {
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null);
@@ -118,6 +121,7 @@ function CustomerEntry({ item, disabled, searchQuery, focus, onEdit, onRemove }:
   const profile = readProfile(item);
   const matching = !!(item.matched_projects as string[] | undefined)?.length;
   const projects = sortProjects(projectsInList(item));
+  const allProjects = matching ? sortProjects(profile.projects) : projects;
   const targetIndex = focus ? projects.findIndex((project) => project.name === focus.name) : -1;
   const focusKey = targetIndex >= 0 ? focus?.key : undefined;
   const needsAll = targetIndex >= PREVIEW_PROJECTS;
@@ -158,18 +162,20 @@ function CustomerEntry({ item, disabled, searchQuery, focus, onEdit, onRemove }:
       </div>}
       {status && <span className="badge customer-status" data-tone={customerStatusTones.get(status)}>{status}</span>}
       <div className="customer-entry-actions">
-        <button type="button" className="icon-button" aria-label="查看/编辑" title={`编辑 ${name}`} disabled={disabled} onClick={() => onEdit(item.id)}><Pencil size={16} /></button>
+        <button type="button" className="icon-button" aria-label="查看/编辑" title={`编辑 ${name}`} disabled={disabled} onClick={() => onEdit(item.id)}><SquarePen size={16} aria-hidden="true" /></button>
         <button type="button" className="icon-button danger" aria-label="删除" title={`删除 ${name}`} disabled={disabled} onClick={() => onRemove(item)}><Trash2 size={16} /></button>
       </div>
     </div>
     {hasProjects && <div id={region} hidden={!expanded} className="customer-entry-details">{expanded && <>
       <h3 className="customer-project-list-heading" id={`${region}-heading`}><FolderOpen size={16} aria-hidden="true" />项目清单</h3>
       <div className="table-wrap"><table className="customer-project-table" aria-labelledby={`${region}-heading`}>
-        <thead><tr><th scope="col">项目名</th><th scope="col">项目群聊</th><th scope="col">项目负责人</th></tr></thead>
+        <thead><tr><th scope="col">项目名</th><th scope="col">项目群聊</th><th scope="col">项目负责人</th><th scope="col" className="customer-project-action"><span className="sr-only">操作</span></th></tr></thead>
         <tbody>{visible.map((project, index) => <tr key={index} aria-current={index === targetIndex ? true : undefined} ref={index === targetIndex ? targetRow : undefined}>
           <td data-label="项目名"><strong title={project.name}><SearchHighlight text={project.name} query={searchQuery} /></strong></td>
           <td data-label="项目群聊"><ChatSummary chat={project.chat} /></td>
           <td data-label="项目负责人">{project.owners.length ? <Owners owners={project.owners} /> : <span className="muted">{profile.owners.length ? "沿用客户负责人" : "—"}</span>}</td>
+          <td className="customer-project-action"><button type="button" className="icon-button" aria-label={`编辑项目 ${project.name}`} title="编辑项目" disabled={disabled}
+            onClick={() => onEditProject({ customerId: item.id, revision: item.revision, index: allProjects.indexOf(project), name: project.name })}><SquarePen size={13} aria-hidden="true" /></button></td>
         </tr>)}</tbody>
       </table></div>
       {projects.length > PREVIEW_PROJECTS && <button type="button" className="button small customer-more" onClick={() => setShowAll(!showAll)}>{showAll ? "收起" : `查看更多（全部 ${projects.length} 个项目）`}</button>}
@@ -219,6 +225,90 @@ export function CustomerProjectDrawer({ customerId, projectName, returnFocus, on
   </dialog>;
 }
 
+export function CustomerProjectEditor({ selection, onClose, onRefresh, onSaved }: {
+  selection: ProjectSelection;
+  onClose: () => void;
+  onRefresh: () => void;
+  onSaved: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const heading = useId();
+  const detail = useQuery({
+    queryKey: ["customers", "edit-project", selection.customerId, selection.revision],
+    queryFn: () => entityApi.detail<Entity>("/api/customers/", selection.customerId),
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+  useLayoutEffect(() => {
+    const element = dialog.current!;
+    const root = document.documentElement;
+    const overflow = root.style.overflow;
+    const previousFocus = document.activeElement;
+    root.style.overflow = "hidden";
+    element.showModal();
+    return () => {
+      element.close();
+      root.style.overflow = overflow;
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus({ preventScroll: true });
+    };
+  }, []);
+  const item = detail.data;
+  const target = item && sortProjects(readProfile(item).projects)[selection.index];
+  return <dialog ref={dialog} className="modal customer-modal customer-project-modal" aria-labelledby={heading}
+    onCancel={(event) => { event.preventDefault(); onClose(); }}>
+    <header className="modal-header">
+      <div><h2 id={heading}>编辑项目</h2>{item && <small className="muted" title={String(item.name)}>{String(item.name)}</small>}</div>
+      <button type="button" className="icon-button modal-close" onClick={onClose} aria-label="关闭"><X size={19} /></button>
+    </header>
+    {detail.isPending ? <LoadingState /> : detail.isError ? <ErrorState message="客户资料加载失败" retry={() => void detail.refetch()} />
+      : item && item.revision === selection.revision && target?.name === selection.name
+        ? <CustomerProjectEditForm item={item} index={selection.index} onClose={onClose} onSaved={onSaved} />
+        : <div className="alert error" role="alert"><span>客户项目已更新，请重新选择。</span><button type="button" className="button small" onClick={onRefresh}>刷新清单</button></div>}
+  </dialog>;
+}
+
+function CustomerProjectEditForm({ item, index, onClose, onSaved }: { item: Entity; index: number; onClose: () => void; onSaved: () => void }) {
+  const [draft, setDraft] = useState(() => makeCustomerDraft(item));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const platformOptions = useId();
+  const contactOptions = useId();
+  const nameInput = useRef<HTMLInputElement>(null);
+  useEffect(() => { nameInput.current?.focus({ preventScroll: true }); }, []);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await entityApi.update("/api/customers/", item.id, item.revision, { project_profile: customerProfilePayload(draft) });
+      onSaved();
+    } catch (reason) {
+      setError(reason instanceof ApiError && reason.status === 409
+        ? "客户项目已在其他窗口更新。请关闭弹窗，刷新清单后重新编辑。"
+        : reason instanceof ApiError ? reason.message : "保存失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <form className="customer-edit-form" onSubmit={submit}>
+    <div className="customer-edit-content">
+      <CustomerFieldOptions item={item} owners={draft.owners} platformOptions={platformOptions} contactOptions={contactOptions} />
+      <fieldset className="customer-field-group" aria-label="项目信息">
+        <ProjectFields project={draft.projects[index]} platformOptions={platformOptions} contactOptions={contactOptions} nameInput={nameInput}
+          onChange={(change) => setDraft((current) => ({ ...current, projects: current.projects.map((project, position) => position === index ? { ...project, ...change } : project) }))} />
+      </fieldset>
+    </div>
+    <footer className="customer-edit-footer">
+      {error && <div className="alert error" role="alert">{error}</div>}
+      <div className="modal-actions"><button type="button" className="button" onClick={onClose}>取消</button><button className="button primary" disabled={busy}>{busy ? "保存中…" : <><CheckCircle2 size={17} />保存</>}</button></div>
+    </footer>
+  </form>;
+}
+
 export function CustomerFields({ item, draft, setDraft }: {
   item?: Entity;
   draft: Draft;
@@ -228,8 +318,6 @@ export function CustomerFields({ item, draft, setDraft }: {
   const contactOptions = useId();
   const [addedProjectKey, setAddedProjectKey] = useState<string | null>(null);
   const addedProjectName = useRef<HTMLInputElement>(null);
-  const contacts = (item?.contacts ?? []) as { name: string }[];
-  const knownOwners = [...contacts, ...draft.owners.filter(({ name }) => name.trim())];
   const status = String(item?.status ?? "活跃");
   useLayoutEffect(() => {
     const input = addedProjectName.current;
@@ -245,8 +333,7 @@ export function CustomerFields({ item, draft, setDraft }: {
     setDraft((current) => ({ ...current, projects: current.projects.map((project) => project.key === key ? { ...project, ...change } : project) }));
   }
   return <>
-    <datalist id={platformOptions}>{[...chatPlatformTones.keys()].map((platform) => <option key={platform} value={platform} />)}</datalist>
-    <datalist id={contactOptions}>{[...new Set(knownOwners.map(({ name }) => name))].map((name) => <option key={name} value={name} />)}</datalist>
+    <CustomerFieldOptions item={item} owners={draft.owners} platformOptions={platformOptions} contactOptions={contactOptions} />
     <fieldset className="customer-field-group full">
       <legend>客户信息</legend>
       <div className="form-grid">
@@ -261,18 +348,41 @@ export function CustomerFields({ item, draft, setDraft }: {
       {!draft.projects.length && <p className="muted">暂无项目，可先保存客户群聊和负责人。</p>}
       {draft.projects.map((project, index) => <fieldset className="customer-field-group" key={project.key}>
         <legend>项目 {index + 1}</legend>
-        <div className="customer-form-heading">
-          <label>项目名<input ref={project.key === addedProjectKey ? addedProjectName : undefined} value={project.name}
-            onChange={(event) => updateProject(project.key, { name: event.target.value })} required pattern={".*\\S.*"} /></label>
-          <button type="button" className="icon-button danger" aria-label={`移除项目 ${index + 1}`} title="移除项目" onClick={() => setDraft((current) => ({
+        <ProjectFields project={project} platformOptions={platformOptions} contactOptions={contactOptions}
+          nameInput={project.key === addedProjectKey ? addedProjectName : undefined} onChange={(change) => updateProject(project.key, change)}
+          nameAction={<button type="button" className="icon-button danger" aria-label={`移除项目 ${index + 1}`} title="移除项目" onClick={() => setDraft((current) => ({
             ...current, projects: current.projects.filter(({ key }) => key !== project.key),
-          }))}><Trash2 size={16} /></button>
-        </div>
-        <div className="form-grid"><ChatFields chat={project.chat} scope="项目" options={platformOptions} onChange={(chat) => updateProject(project.key, { chat })} /></div>
-        <OwnerFields owners={project.owners} title="项目负责人" contactOptions={contactOptions} onChange={(owners) => updateProject(project.key, { owners })} />
+          }))}><Trash2 size={16} /></button>} />
       </fieldset>)}
     </section>
     <label className="full">备注<textarea name="notes" defaultValue={String(item?.notes ?? "")} rows={3} /></label>
+  </>;
+}
+
+function CustomerFieldOptions({ item, owners, platformOptions, contactOptions }: { item?: Entity; owners: Owner[]; platformOptions: string; contactOptions: string }) {
+  const contacts = (item?.contacts ?? []) as { name: string }[];
+  const names = new Set([...contacts, ...owners].map(({ name }) => name).filter((name) => name.trim()));
+  return <>
+    <datalist id={platformOptions}>{[...chatPlatformTones.keys()].map((platform) => <option key={platform} value={platform} />)}</datalist>
+    <datalist id={contactOptions}>{[...names].map((name) => <option key={name} value={name} />)}</datalist>
+  </>;
+}
+
+function ProjectFields({ project, platformOptions, contactOptions, nameInput, nameAction, onChange }: {
+  project: DraftProject;
+  platformOptions: string;
+  contactOptions: string;
+  nameInput?: RefObject<HTMLInputElement | null>;
+  nameAction?: React.ReactNode;
+  onChange: (change: Partial<DraftProject>) => void;
+}) {
+  return <>
+    <div className="customer-form-heading">
+      <label>项目名<input ref={nameInput} value={project.name} onChange={(event) => onChange({ name: event.target.value })} required pattern={".*\\S.*"} /></label>
+      {nameAction}
+    </div>
+    <div className="form-grid"><ChatFields chat={project.chat} scope="项目" options={platformOptions} onChange={(chat) => onChange({ chat })} /></div>
+    <OwnerFields owners={project.owners} title="项目负责人" contactOptions={contactOptions} onChange={(owners) => onChange({ owners })} />
   </>;
 }
 
