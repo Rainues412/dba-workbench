@@ -94,6 +94,10 @@ def test_customer_directory_responsive_and_multi_owner_edit(live_server, tmp_pat
             expect(projects.nth(1)).to_contain_text("沿用客户负责人")
             entry.get_by_role("button", name=re.compile("查看更多")).click()
             expect(projects).to_have_count(7)
+            entry.get_by_role("button", name="收起", exact=True).click()
+            expect(projects).to_have_count(5)
+            entry.get_by_role("button", name=re.compile("查看更多")).click()
+            expect(projects).to_have_count(7)
             for theme, width in [("light", 1440), ("dark", 1024), ("light", 768), ("dark", 390)]:
                 page.set_viewport_size({"width": width, "height": 900})
                 page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
@@ -114,6 +118,12 @@ def test_customer_directory_responsive_and_multi_owner_edit(live_server, tmp_pat
                 expect(badges).to_have_text(["企业微信", "钉钉", "飞书", "微信"])
                 colors = badges.evaluate_all("badges => badges.map(badge => getComputedStyle(badge).backgroundColor)")
                 assert len(set(colors)) == 4 and "rgba(0, 0, 0, 0)" not in colors
+                role_badges = projects.first.locator(".customer-owner-role")
+                expect(role_badges).to_have_text(["资源开通", "技术支持"])
+                role_colors = role_badges.evaluate_all("badges => badges.map(badge => getComputedStyle(badge).backgroundColor)")
+                assert len(set(role_colors)) == 1 and role_colors[0] not in [*colors, "rgba(0, 0, 0, 0)"]
+                for badge in role_badges.all():
+                    expect(badge).to_have_css("border-radius", "999px")
                 expect(entry.locator(".customer-entry-details")).to_have_css("border-top-left-radius", "9px")
                 expect(projects.nth(1).get_by_text("飞书", exact=True)).not_to_have_attribute("data-platform", re.compile(".+"))
                 page.screenshot(animations="disabled", path=str(tmp_path / f"customer-directory-{theme}-{width}.png"))

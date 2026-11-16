@@ -616,7 +616,6 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .customer-owners { padding: 0; margin: 0; list-style: none; }
 .customer-owners li { display: flex; align-items: baseline; flex-wrap: wrap; gap: .3rem .45rem; min-width: 0; }
 .customer-owners .badge, .customer-chat .badge { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
-.customer-owners .badge { background: transparent; }
 .customer-owner-summary { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: .55rem; }
 .customer-owner-summary .customer-meta-label { margin: 0; }
 .customer-owner-summary .customer-owners { align-items: center; gap: .3rem; }
@@ -624,14 +623,15 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .customer-owner-summary .customer-owners strong { min-width: 0; }
 .customer-owner-summary .customer-owners .badge { padding: 0; color: var(--muted); background: transparent; }
 .customer-shared .customer-platform { flex: 0 0 auto; max-width: 45%; }
-.badge.customer-platform { color: var(--platform-text, var(--muted)); background: var(--platform-bg, var(--surface-soft)); }
-.customer-platform[data-platform="wecom"] { --platform-text: #6438a0; --platform-bg: #f0e8fc; }
-.customer-platform[data-platform="dingtalk"] { --platform-text: #234fba; --platform-bg: #e6efff; }
-.customer-platform[data-platform="wechat"] { --platform-text: #116648; --platform-bg: #e0f5e9; }
-:root[data-theme="dark"] .badge.customer-platform { color: var(--platform-text, var(--muted)); }
-:root[data-theme="dark"] .customer-platform[data-platform="wecom"] { --platform-text: #d3b3ff; --platform-bg: #382853; }
-:root[data-theme="dark"] .customer-platform[data-platform="dingtalk"] { --platform-text: #9ebaff; --platform-bg: #22355b; }
-:root[data-theme="dark"] .customer-platform[data-platform="wechat"] { --platform-text: #74dfb4; --platform-bg: #193a30; }
+.badge.customer-platform, .badge.customer-owner-role { color: var(--customer-badge-text, var(--muted)); background: var(--customer-badge-bg, var(--surface-soft)); }
+.customer-platform[data-platform="wecom"] { --customer-badge-text: #6438a0; --customer-badge-bg: #f0e8fc; }
+.customer-platform[data-platform="dingtalk"] { --customer-badge-text: #234fba; --customer-badge-bg: #e6efff; }
+.customer-platform[data-platform="wechat"] { --customer-badge-text: #116648; --customer-badge-bg: #e0f5e9; }
+.customer-owner-role { --customer-badge-text: #76365f; --customer-badge-bg: #f8edf5; }
+:root[data-theme="dark"] .customer-platform[data-platform="wecom"] { --customer-badge-text: #d3b3ff; --customer-badge-bg: #382853; }
+:root[data-theme="dark"] .customer-platform[data-platform="dingtalk"] { --customer-badge-text: #9ebaff; --customer-badge-bg: #22355b; }
+:root[data-theme="dark"] .customer-platform[data-platform="wechat"] { --customer-badge-text: #74dfb4; --customer-badge-bg: #193a30; }
+:root[data-theme="dark"] .customer-owner-role { --customer-badge-text: #efb9db; --customer-badge-bg: #3b2435; }
 .customer-project-table {
   --project-heading-bg: #eef0f4; --project-location-bg: #f0e9ff; --project-location-line: #7346c2;
   table-layout: fixed; width: 100%; min-width: 0; background: var(--surface);

@@ -71,7 +71,7 @@ function ChatSummary({ chat }: { chat: Chat }) {
 function Owners({ owners }: { owners: Owner[] }) {
   return <ul className="customer-owners">{owners.map((owner, index) => <li key={index}>
     <strong title={owner.name}>{owner.name}</strong>
-    {owner.label && <span className="badge" title={owner.label}>{owner.label}</span>}
+    {owner.label && <span className="badge customer-owner-role" title={owner.label}>{owner.label}</span>}
   </li>)}</ul>;
 }
 
@@ -172,7 +172,7 @@ function CustomerEntry({ item, disabled, searchQuery, focus, onEdit, onRemove }:
           <td data-label="项目负责人">{project.owners.length ? <Owners owners={project.owners} /> : <span className="muted">{profile.owners.length ? "沿用客户负责人" : "—"}</span>}</td>
         </tr>)}</tbody>
       </table></div>
-      {projects.length > PREVIEW_PROJECTS && <button type="button" className="button small customer-more" onClick={() => setShowAll(!showAll)}>{showAll ? "收起至 5 条" : `查看更多（全部 ${projects.length} 个项目）`}</button>}
+      {projects.length > PREVIEW_PROJECTS && <button type="button" className="button small customer-more" onClick={() => setShowAll(!showAll)}>{showAll ? "收起" : `查看更多（全部 ${projects.length} 个项目）`}</button>}
     </>}</div>}
   </li>;
 }
