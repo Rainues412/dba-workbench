@@ -228,6 +228,8 @@
 .library-preview-drawer[open] { opacity: 1; transform: translateX(0); }
 .library-preview-drawer:not([open]) { display: none; }
 .library-preview-drawer::backdrop { background: transparent; transition: background-color 220ms ease, display 220ms allow-discrete, overlay 220ms allow-discrete; }
+.library-editor-backdrop { width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; border: 0; color: inherit; }
+.library-editor-backdrop::backdrop { background: transparent; }
 .library-preview-drawer[open]::backdrop { background: rgb(5 12 26 / 45%); }
 @starting-style {
   .library-preview-drawer[open] { opacity: 0; transform: translateX(16px); }

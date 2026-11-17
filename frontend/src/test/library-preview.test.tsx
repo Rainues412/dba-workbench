@@ -550,11 +550,14 @@ describe("library classification and read-only preview", () => {
     expect(within(preview).queryByRole("region", { name: "正文预览" })).not.toBeInTheDocument();
     fireEvent.click(within(preview).getByRole("button", { name: "编辑" }));
     const dialog = await screen.findByRole("dialog");
+    expect(preview).toBeInTheDocument();
     expect(await within(dialog).findByLabelText("正文", { exact: true })).toHaveValue(content);
     expect(within(dialog).getByLabelText("摘要", { exact: true })).toHaveValue(row.summary);
     fireEvent.change(within(dialog).getByLabelText("标题", { exact: true }), { target: { value: "已修改标题" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
     await waitFor(() => expect(writes).toHaveLength(1));
+    await waitFor(() => expect(dialog).not.toBeInTheDocument());
+    expect(screen.getByRole("complementary", { name: "记录预览" })).toBe(preview);
     expect(new Headers(writes[0].headers).get("If-Match")).toBe("6");
     expect(JSON.parse(String(writes[0].body))).toMatchObject({ title: "已修改标题", content, summary: row.summary });
   });

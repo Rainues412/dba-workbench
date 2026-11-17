@@ -80,10 +80,11 @@ export function LibraryRecords({ config, rows, selectedId, disabled, searchQuery
   </ul></SelectionMotion>;
 }
 
-export function LibraryPreview({ config, id, open = true, onClose, onEdit, onNotice, onRefresh }: {
+export function LibraryPreview({ config, id, open = true, editorOpen, onClose, onEdit, onNotice, onRefresh }: {
   config: CrudConfig;
   id: number | null;
   open?: boolean;
+  editorOpen: boolean;
   onClose: () => void;
   onEdit: (id: number) => void;
   onNotice: (message: string) => void;
@@ -109,7 +110,7 @@ export function LibraryPreview({ config, id, open = true, onClose, onEdit, onNot
   const summary = String(row?.summary || row?.description || "").trim();
   const showSummary = config.key !== "articles" && summary && !(hasLinkedFile && /^来自\s/.test(summary));
   const visual = useQuery({
-    queryKey: [config.key, "visual-preview", id, linkedPath, row?.updated_at],
+    queryKey: [config.key, "visual-preview", id, linkedPath],
     queryFn: ({ signal }) => api<{ filename: string; viewer: string; viewer_version?: string; viewer_url: string; asset_url?: string }>(`${config.path}${id}/visual-preview`, { signal }),
     enabled: id !== null && hasLinkedFile,
     retry: false,
@@ -117,7 +118,7 @@ export function LibraryPreview({ config, id, open = true, onClose, onEdit, onNot
   });
   const needsFile = Boolean(config.key === "scripts" && row && !savedContent.trim() && linkedPath.trim() && visual.isError);
   const file = useQuery({
-    queryKey: [config.key, "file-preview", id, linkedPath, row?.updated_at],
+    queryKey: [config.key, "file-preview", id, linkedPath],
     queryFn: ({ signal }) => api<{ filename: string; content: string; truncated: boolean }>(`${config.path}${id}/file-preview`, { signal }),
     enabled: id !== null && needsFile,
     retry: false,
@@ -157,13 +158,16 @@ export function LibraryPreview({ config, id, open = true, onClose, onEdit, onNot
   }, [expanded]);
   useEffect(() => {
     const dialog = dialogRef.current;
-    if (!drawer || id === null || !dialog) return;
-    if (!open) { if (dialog.open) dialog.close(); return; }
+    if (!drawer || id === null || !dialog || !open) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    dialog.showModal();
     return () => { if (dialog.open) dialog.close(); document.body.style.overflow = previousOverflow; };
   }, [drawer, id, open]);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    // A drawer created when the window narrows must wait for the editor above it.
+    if (drawer && open && !editorOpen && dialog && !dialog.open) dialog.showModal();
+  }, [drawer, id, open, editorOpen]);
 
   const title = row ? recordTitle(config, row) : "记录预览";
   async function closePreview() {

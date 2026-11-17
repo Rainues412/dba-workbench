@@ -39,6 +39,8 @@ export type CrudConfig = {
   fileLinks?: FileLinksConfig;
 };
 
+type LibraryPreviewState = { id: number | null; open: boolean };
+
 export function CrudPage({ config }: { config: CrudConfig }) {
   return <CrudContent key={config.key} config={config} />;
 }
@@ -48,7 +50,8 @@ function CrudContent({ config }: { config: CrudConfig }) {
   const client = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
-  const handledPreview = useRef<string | null>(null);
+  const handledPreview = useRef<number | null>(null);
+  const currentPreview = useRef<LibraryPreviewState>({ id: null, open: false });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [keyword, setKeyword] = useState("");
@@ -60,10 +63,8 @@ function CrudContent({ config }: { config: CrudConfig }) {
   const [priority, setPriority] = useState("");
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [favoriteOnly, setFavoriteOnly] = useState(false);
-  const [previewId, setPreviewId] = useState<number | null>(null);
   const [locateId, setLocateId] = useState<number | null>(null);
   const [revealId, setRevealId] = useState<number | null>(null);
-  const [previewEnabled, setPreviewEnabled] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [projectEdit, setProjectEdit] = useState<ProjectSelection | null>(null);
   const [creating, setCreating] = useState(false);
@@ -77,7 +78,13 @@ function CrudContent({ config }: { config: CrudConfig }) {
   const isCustomer = config.key === "customers";
   const hasFavorites = ["scripts", "articles", "resources"].includes(config.key);
   const hasPreview = ["scripts", "articles"].includes(config.key);
-  const previewTarget = searchParams.get("preview");
+  const requestedPreview = Number(searchParams.get("preview"));
+  const previewTarget = hasPreview && Number.isSafeInteger(requestedPreview) && requestedPreview > 0 ? requestedPreview : null;
+  const libraryPreview: LibraryPreviewState | undefined = hasPreview ? location.state?.libraryPreview : undefined;
+  const previewId = previewTarget ?? libraryPreview?.id ?? null;
+  const previewEnabled = previewTarget !== null || libraryPreview?.open === true;
+  const previewSearch = location.state?.previewSearch === true;
+  useLayoutEffect(() => { currentPreview.current = { id: previewId, open: previewEnabled }; }, [location.key, previewId, previewEnabled]);
   const recordTarget = searchParams.get("record");
   const projectCustomer = Number(searchParams.get("customer"));
   const projectTarget = isCustomer && Number.isSafeInteger(projectCustomer) && projectCustomer > 0 ? searchParams.get("project") : null;
@@ -165,16 +172,13 @@ function CrudContent({ config }: { config: CrudConfig }) {
     if (list.data && !list.isPlaceholderData && page > Math.max(1, list.data.pages)) setPage(Math.max(1, list.data.pages));
   }, [list.data, list.isPlaceholderData, page]);
   useEffect(() => {
-    if (!previewTarget) { handledPreview.current = null; return; }
-    if (handledPreview.current === previewTarget && !location.state?.previewSearch) return;
+    if (previewTarget === null) { handledPreview.current = null; return; }
+    if (handledPreview.current === previewTarget && !previewSearch) return;
     handledPreview.current = previewTarget;
-    const id = Number(previewTarget);
-    if (hasPreview && Number.isSafeInteger(id) && id > 0) {
-      setCreating(false); setSelectedId(null); setPreviewId(id); setPreviewEnabled(true);
-      setLocateId(id); setRevealId(id); setPage(1); setKeyword(""); setDebouncedKeyword(""); setFavoriteOnly(false);
-    }
     // A new search also locates the exact row using the server's ordering.
-  }, [hasPreview, previewTarget, location.key, location.state]);
+    setCreating(false); setSelectedId(null);
+    setLocateId(previewTarget); setRevealId(previewTarget); setPage(1); setKeyword(""); setDebouncedKeyword(""); setFavoriteOnly(false);
+  }, [previewTarget, previewSearch, location.key]);
   useEffect(() => {
     if (locateId === null || list.isFetching || list.isPlaceholderData || !list.data) return;
     setPage(list.data.page);
@@ -242,7 +246,7 @@ function CrudContent({ config }: { config: CrudConfig }) {
       if (nextDatabase) next.set("database", nextDatabase); else next.delete("database");
       if (nextCategory) next.set("category", nextCategory); else next.delete("category");
       return next;
-    }, { replace: true });
+    }, { replace: true, state: { libraryPreview } });
     setPage(1);
   }
 
@@ -269,7 +273,7 @@ function CrudContent({ config }: { config: CrudConfig }) {
 
   function closeEditor() {
     setSelectedId(null); setCreating(false);
-    if (searchParams.has("record")) { const next = new URLSearchParams(searchParams); next.delete("record"); setSearchParams(next, { replace: true }); }
+    if (searchParams.has("record")) { const next = new URLSearchParams(searchParams); next.delete("record"); setSearchParams(next, { replace: true, state: { libraryPreview } }); }
   }
   function changeKeyword(value: string) {
     paginationTop.current = null;
@@ -277,20 +281,31 @@ function CrudContent({ config }: { config: CrudConfig }) {
     setPage(1);
     clearProjectTarget();
   }
-  function clearPreviewTarget() {
+  function changePreview(id: number | null, open: boolean) {
+    currentPreview.current = { id, open };
     setLocateId(null);
     setRevealId(null);
-    if (!searchParams.has("preview")) return;
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
       next.delete("preview");
       return next;
-    }, { replace: true });
+    }, { replace: true, state: { libraryPreview: { id, open } } });
   }
-  function closePreview() { clearPreviewTarget(); setPreviewEnabled(false); }
-  function editRecord(id: number) { clearPreviewTarget(); setCreating(false); setSelectedId(id); }
+  function togglePreview(id: number | null) {
+    const current = currentPreview.current;
+    changePreview(id, current.id !== id || !current.open);
+  }
+  function closePreview() { changePreview(previewId, false); }
+  function editRecord(id: number) {
+    if (previewTarget !== null) changePreview(previewId, previewEnabled);
+    setCreating(false); setSelectedId(id);
+  }
   async function refresh() {
-    await Promise.all([client.invalidateQueries({ queryKey: [config.key] }), client.invalidateQueries({ queryKey: ["dashboard"] })]);
+    await Promise.all([client.invalidateQueries({
+      queryKey: [config.key],
+      // File previews issue new viewer URLs on each read. Keep the active file in place while refreshing record metadata.
+      predicate: ({ queryKey: [, kind, id] }) => id !== previewId || (kind !== "visual-preview" && kind !== "file-preview"),
+    }), client.invalidateQueries({ queryKey: ["dashboard"] })]);
   }
 
   async function save(payload: Record<string, unknown>, current?: Entity) {
@@ -325,9 +340,7 @@ function CrudContent({ config }: { config: CrudConfig }) {
     if (!window.confirm(`确定删除“${String(row[config.columns[0].name] ?? "该记录")}”吗？`)) return;
     try {
       await entityApi.remove(config.path, row.id, row.revision);
-      if (previewId === row.id) {
-        clearPreviewTarget(); setPreviewId(null); setPreviewEnabled(false);
-      }
+      if (previewId === row.id) changePreview(null, false);
       setNotice("记录已删除");
       await refresh();
     } catch (reason) {
@@ -345,11 +358,11 @@ function CrudContent({ config }: { config: CrudConfig }) {
     <LibraryLayout module={config.key} enabled={hasFavorites}
       categories={config.classification ? (collapsed, onToggle) => <CategoryNavigation classification={config.classification!} data={facets.data} loading={facets.isLoading} error={!!facets.error} retry={() => void facets.refetch()} database={database} category={category} categoryOptions={config.fields.find((field) => field.name === config.classification?.categoryField)?.options} hideEmptyCategories={config.key === "articles"} onChange={changeClassification} collapsed={collapsed} onToggle={onToggle} /> : undefined}
       previewOpen={previewEnabled} onPreviewClose={closePreview}
-      preview={hasPreview && !creating && selectedId === null ? <LibraryPreview config={config} id={previewId} open={previewEnabled} onClose={closePreview} onEdit={editRecord} onNotice={setNotice} onRefresh={refresh} /> : undefined}>
+      preview={hasPreview ? <LibraryPreview config={config} id={previewId} open={previewEnabled} editorOpen={creating || selectedId !== null} onClose={closePreview} onEdit={editRecord} onNotice={setNotice} onRefresh={refresh} /> : undefined}>
     <section className="panel data-panel" ref={panelRef} aria-busy={list.isFetching}>
       <div className="toolbar"><label className="search-field"><Search size={17} aria-hidden="true" /><span className="sr-only">{searchLabel}</span><input ref={searchInput} value={keyword} onChange={(event) => changeKeyword(event.target.value)} placeholder={searchLabel} /></label>
         {hasFavorites && <div className="list-filters"><label className="checkbox-label"><input type="checkbox" checked={favoriteOnly} onChange={(event) => { paginationTop.current = null; setFavoriteOnly(event.target.checked); setPage(1); }} />只看收藏</label></div>}
-        {hasPreview && <button type="button" className={`button small preview-toggle${previewEnabled ? " active" : ""}`} aria-pressed={previewEnabled} disabled={previewId === null} title={previewId === null ? "点击标题打开预览" : "再次点击同一标题收起预览；文件通过快捷按钮打开"} onClick={() => { clearPreviewTarget(); setPreviewEnabled(!previewEnabled); }}><PanelRight size={16} />预览</button>}
+        {hasPreview && <button type="button" className={`button small preview-toggle${previewEnabled ? " active" : ""}`} aria-pressed={previewEnabled} disabled={previewId === null} title={previewId === null ? "点击标题打开预览" : "再次点击同一标题收起预览；文件通过快捷按钮打开"} onClick={() => togglePreview(previewId)}><PanelRight size={16} />预览</button>}
         <span className="result-count" aria-live="polite">{list.isPlaceholderData ? "正在加载…" : <>共 <strong>{list.data?.total ?? 0}</strong> {isCustomer ? "位客户" : "条记录"}</>}</span></div>
       {isTask && <div className="list-filters task-filters">{isTask && <>{!taskArchive && <label>状态<select aria-label="筛选任务状态" value={status} onChange={(event) => { paginationTop.current = null; setStatus(event.target.value); if (event.target.value === "已完成") setOverdueOnly(false); setPage(1); }}><option value="">全部状态</option>{["待处理", "进行中", "已完成"].map((value) => <option key={value}>{value}</option>)}</select></label>}<label>优先级<select aria-label="筛选任务优先级" value={priority} onChange={(event) => { paginationTop.current = null; setPriority(event.target.value); setPage(1); }}><option value="">全部优先级</option>{["高", "中", "低"].map((value) => <option key={value}>{value}</option>)}</select></label>{!taskArchive && <button className={`task-overdue-filter${overdueOnly ? " active" : ""}`} type="button" aria-pressed={overdueOnly} onClick={() => { paginationTop.current = null; setOverdueOnly((value) => !value); if (!overdueOnly && status === "已完成") setStatus(""); setPage(1); }}><AlertTriangle size={16} />仅看逾期</button>}<span className="muted task-retention-note">{taskArchive ? "归档任务按创建时间从新到旧排列，可查看详情或恢复到任务列表。" : "已完成任务按创建时间从新到旧排列，完成满 15 天自动归档，可通过“查看归档”查看或恢复。"}</span></>}</div>}
       {(database || category) && <div className="active-classification" role="group" aria-label="当前分类筛选">
@@ -361,7 +374,7 @@ function CrudContent({ config }: { config: CrudConfig }) {
       </div>}
       {notice && <div className="alert" role="status"><span><CheckCircle2 size={17} />{notice}</span><button className="icon-button" aria-label="关闭通知" onClick={() => setNotice("")}><X size={17} /></button></div>}
       {list.isLoading ? <TableSkeleton /> : list.error ? <ErrorState message="数据加载失败" retry={() => void list.refetch()} /> : !list.data?.items.length ? <EmptyState title={isTask && taskArchive ? "没有已归档任务" : `没有${config.title}数据`} description={isTask && taskArchive ? "已完成任务保留 15 天后自动归档，可在此查看或恢复。" : database || category || keyword ? "当前分类或搜索条件下没有记录，可切换分类、清空搜索或新增记录。" : "可通过右上角按钮创建第一条记录。"} /> : <>
-        {hasFavorites ? <LibraryRecords config={config} rows={list.data.items} selectedId={previewEnabled ? previewId : null} disabled={list.isPlaceholderData} searchQuery={debouncedKeyword} onPreview={(id) => { clearPreviewTarget(); setPreviewEnabled((enabled) => previewId !== id || !enabled); setPreviewId(id); }} onEdit={editRecord} onUpdate={quickUpdate} onRemove={remove} onNotice={setNotice} /> : isCustomer ? <CustomerDirectory key={debouncedKeyword} searchQuery={debouncedKeyword} focus={projectTarget && jumpMode === "list" ? { customerId: projectCustomer, name: projectTarget, key: location.key } : null} rows={list.data.items} disabled={list.isPlaceholderData} onEdit={editRecord} onEditProject={setProjectEdit} onRemove={remove} /> : <div className="table-wrap"><table className={isTask ? "task-table" : undefined}><thead><tr>{config.columns.map((column) => <th key={column.name}>{column.label}</th>)}<th className="actions-heading"><span className="sr-only">操作</span></th></tr></thead><tbody>{list.data.items.map((row) => <tr className={isTask ? taskRowClass(row) : undefined} key={row.id}>{config.columns.map((column, index) => <td key={column.name} data-label={column.label}><span className={index === 0 ? "primary-cell" : undefined}>{index === 0 && config.fileLinks ? <LocalFileLinks row={row} label={String(row[column.name] ?? "")} config={config.fileLinks} disabled={list.isPlaceholderData} onNotice={setNotice} /> : isTask ? formatTaskCell(row, column.name) : formatCell(row[column.name], column.name)}</span></td>)}<td className="row-actions" data-label="操作">{hasFavorites && <button className="icon-button" aria-label={row.is_favorite ? "取消收藏" : "收藏"} disabled={list.isPlaceholderData} onClick={() => void quickUpdate(row, { is_favorite: row.is_favorite ? 0 : 1 })}><Star size={15} fill={row.is_favorite ? "currentColor" : "none"} /></button>}{config.key === "articles" && <button className="icon-button" aria-label={row.is_pinned ? "取消置顶" : "置顶"} disabled={list.isPlaceholderData} onClick={() => void quickUpdate(row, { is_pinned: row.is_pinned ? 0 : 1 })}><Pin size={15} fill={row.is_pinned ? "currentColor" : "none"} /></button>}{isTask && <button className="button small" disabled={list.isPlaceholderData} onClick={() => void quickUpdate(row, { status: row.status === "已完成" ? "待处理" : "已完成" })}>{row.status === "已完成" ? <><Undo2 size={14} />恢复</> : <><CheckCircle2 size={14} />完成</>}</button>}<button className="button small" disabled={list.isPlaceholderData} onClick={() => { setCreating(false); setSelectedId(row.id); }}><Pencil size={14} />查看/编辑</button><button className="button small danger" disabled={list.isPlaceholderData} onClick={() => void remove(row)}><Trash2 size={14} />删除</button></td></tr>)}</tbody></table></div>}
+        {hasFavorites ? <LibraryRecords config={config} rows={list.data.items} selectedId={previewEnabled ? previewId : null} disabled={list.isPlaceholderData} searchQuery={debouncedKeyword} onPreview={togglePreview} onEdit={editRecord} onUpdate={quickUpdate} onRemove={remove} onNotice={setNotice} /> : isCustomer ? <CustomerDirectory key={debouncedKeyword} searchQuery={debouncedKeyword} focus={projectTarget && jumpMode === "list" ? { customerId: projectCustomer, name: projectTarget, key: location.key } : null} rows={list.data.items} disabled={list.isPlaceholderData} onEdit={editRecord} onEditProject={setProjectEdit} onRemove={remove} /> : <div className="table-wrap"><table className={isTask ? "task-table" : undefined}><thead><tr>{config.columns.map((column) => <th key={column.name}>{column.label}</th>)}<th className="actions-heading"><span className="sr-only">操作</span></th></tr></thead><tbody>{list.data.items.map((row) => <tr className={isTask ? taskRowClass(row) : undefined} key={row.id}>{config.columns.map((column, index) => <td key={column.name} data-label={column.label}><span className={index === 0 ? "primary-cell" : undefined}>{index === 0 && config.fileLinks ? <LocalFileLinks row={row} label={String(row[column.name] ?? "")} config={config.fileLinks} disabled={list.isPlaceholderData} onNotice={setNotice} /> : isTask ? formatTaskCell(row, column.name) : formatCell(row[column.name], column.name)}</span></td>)}<td className="row-actions" data-label="操作">{hasFavorites && <button className="icon-button" aria-label={row.is_favorite ? "取消收藏" : "收藏"} disabled={list.isPlaceholderData} onClick={() => void quickUpdate(row, { is_favorite: row.is_favorite ? 0 : 1 })}><Star size={15} fill={row.is_favorite ? "currentColor" : "none"} /></button>}{config.key === "articles" && <button className="icon-button" aria-label={row.is_pinned ? "取消置顶" : "置顶"} disabled={list.isPlaceholderData} onClick={() => void quickUpdate(row, { is_pinned: row.is_pinned ? 0 : 1 })}><Pin size={15} fill={row.is_pinned ? "currentColor" : "none"} /></button>}{isTask && <button className="button small" disabled={list.isPlaceholderData} onClick={() => void quickUpdate(row, { status: row.status === "已完成" ? "待处理" : "已完成" })}>{row.status === "已完成" ? <><Undo2 size={14} />恢复</> : <><CheckCircle2 size={14} />完成</>}</button>}<button className="button small" disabled={list.isPlaceholderData} onClick={() => { setCreating(false); setSelectedId(row.id); }}><Pencil size={14} />查看/编辑</button><button className="button small danger" disabled={list.isPlaceholderData} onClick={() => void remove(row)}><Trash2 size={14} />删除</button></td></tr>)}</tbody></table></div>}
       </>}
       {list.data && !list.error && <Pagination page={list.data.page} pages={list.data.pages} total={list.data.total} pageSize={pageSize} onChange={changePage} onPageSizeChange={(size) => { clearProjectTarget(); paginationTop.current = null; setPageSize(size); setPage(1); }} />}
     </section>
@@ -382,6 +395,7 @@ function CrudContent({ config }: { config: CrudConfig }) {
       item={creating ? undefined : detail.data}
       loading={!creating && detail.isLoading}
       editing={!creating}
+      useNativeDialog={hasPreview}
       loadError={!creating && !!detail.error}
       onRetry={() => void detail.refetch()}
       onRefresh={refresh}
@@ -391,11 +405,12 @@ function CrudContent({ config }: { config: CrudConfig }) {
   </div>;
 }
 
-function Editor({ config, item, loading, editing, loadError, onRetry, onRefresh, onClose, onSave }: {
+function Editor({ config, item, loading, editing, useNativeDialog, loadError, onRetry, onRefresh, onClose, onSave }: {
   config: CrudConfig;
   item?: Entity;
   loading: boolean;
   editing: boolean;
+  useNativeDialog: boolean;
   loadError: boolean;
   onRetry: () => void;
   onRefresh: () => Promise<void>;
@@ -404,8 +419,16 @@ function Editor({ config, item, loading, editing, loadError, onRetry, onRefresh,
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const isCustomer = config.key === "customers";
   const [draft, setDraft] = useState(() => makeCustomerDraft(isCustomer ? item : undefined));
+  const native = useNativeDialog && typeof HTMLDialogElement.prototype.showModal === "function";
+  useLayoutEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    dialog.showModal();
+    return () => dialog.close();
+  }, [native]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true); setError("");
@@ -422,8 +445,7 @@ function Editor({ config, item, loading, editing, loadError, onRetry, onRefresh,
   }
   const saveError = error && <div className="alert error full" role="alert">{error}</div>;
   const actions = <div className="modal-actions full"><button type="button" className="button" onClick={onClose}>取消</button><button className="button primary" disabled={busy}>{busy ? "保存中…" : <><CheckCircle2 size={17} />保存</>}</button></div>;
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className={`modal${isCustomer ? " customer-modal" : ""}`} role="dialog" aria-modal="true" aria-labelledby="editor-title">
+  const content = <section className={`modal${isCustomer ? " customer-modal" : ""}`} role={native ? undefined : "dialog"} aria-modal={native ? undefined : true} aria-labelledby={native ? undefined : "editor-title"}>
       <div className="modal-header"><div><p className="eyebrow">{editing ? "EDIT RECORD" : "CREATE RECORD"}</p><h2 id="editor-title">{editing ? `编辑${config.title}` : `新增${config.title}`}</h2></div><button className="icon-button modal-close" onClick={onClose} aria-label="关闭"><X size={19} /></button></div>
       {loading ? <LoadingState /> : loadError || (editing && !item) ? <ErrorState message="详情加载失败，未进入新增模式，请重试" retry={onRetry} /> : isCustomer ? <form className="customer-edit-form" onSubmit={submit}>
         <div className="customer-edit-content form-grid"><CustomerFields item={item} draft={draft} setDraft={setDraft} /></div>
@@ -433,8 +455,11 @@ function Editor({ config, item, loading, editing, loadError, onRetry, onRefresh,
         {saveError}{actions}
       </form>}
       {item && !loading && !loadError && <EntityDetails module={config.key} item={item} onRefresh={onRefresh} />}
-    </section>
-  </div>;
+    </section>;
+  return native ? <dialog ref={dialogRef} className="modal-backdrop library-editor-backdrop" aria-labelledby="editor-title"
+    onCancel={(event) => { event.preventDefault(); onClose(); }}
+    onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>{content}</dialog>
+    : <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>{content}</div>;
 }
 
 function FieldInput({ field, value }: { field: Field; value: unknown }) {

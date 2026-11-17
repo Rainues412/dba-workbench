@@ -89,7 +89,7 @@ export function LibraryLayout({ module, enabled, categories, preview, previewOpe
   }, [open]);
   useEffect(() => {
     if (!enabled || !wide || !preview) return;
-    // Panel registration must finish before applying a layout (e.g. after closing the editor).
+    // Panel registration must finish before applying a layout.
     const frame = requestAnimationFrame(() => groupRef.current?.setLayout(open ? { list: 50, preview: 50 } : { list: 100, preview: 0 }));
     return () => cancelAnimationFrame(frame);
   }, [enabled, wide, Boolean(preview), open, groupRef]);
