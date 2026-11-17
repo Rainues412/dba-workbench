@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { FolderOpen, Import, X } from "lucide-react";
+import { FolderInput, FolderOpen, Import, ScanSearch, X } from "lucide-react";
 import { api, ApiError, jsonBody } from "../api/client";
 
 type Module = "scripts" | "articles" | "resources";
@@ -9,79 +9,234 @@ type Proposal = {
 };
 const kinds = { scripts: "script", articles: "article", resources: "resource" } as const;
 const labels = { scripts: "脚本", articles: "文档", resources: "资源" } as const;
+const moduleNames = { scripts: "脚本库", articles: "知识库", resources: "资源中心" } as const;
+type ScanResult = { items: Proposal[]; already_indexed?: Record<Proposal["kind"], number> };
+type Preview = { items: Proposal[]; alreadyIndexed: number | undefined; elsewhere: string[] };
+type Action = "picker" | "scan" | "import";
 
 export function ScanImport({ module, onImported }: { module: Module; onImported?: () => void | Promise<void> }) {
   const titleId = useId();
+  const directoryId = useId();
   const trigger = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLElement>(null);
   const input = useRef<HTMLInputElement>(null);
+  const scanButton = useRef<HTMLButtonElement>(null);
   const request = useRef<AbortController | null>(null);
   const [open, setOpen] = useState(false);
   const [path, setPath] = useState("");
-  const [items, setItems] = useState<Proposal[]>([]);
+  const [preview, setPreview] = useState<Preview | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [busy, setBusy] = useState<"" | "picker" | "scan" | "import">("");
+  const [busy, setBusy] = useState<Action | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const items = preview?.items ?? [];
+  const label = labels[module];
+  const kind = kinds[module];
+  const closeDisabled = busy === "import" || busy === "picker";
+
+  let scanSummary = "";
+  let scanDetails = "";
+  if (preview) {
+    if (items.length) {
+      scanSummary = `${items.length} 个${label}可导入`;
+      if (preview.alreadyIndexed) scanDetails = `已入库 ${preview.alreadyIndexed} 个${label}。`;
+    } else if (preview.alreadyIndexed === undefined) {
+      scanSummary = `没有可导入的${label}`;
+    } else {
+      scanSummary = preview.alreadyIndexed
+        ? `${preview.alreadyIndexed} 个${label}均已入库`
+        : `扫描范围内没有支持的${label}`;
+    }
+    if (preview.elsewhere.length) scanDetails += `同一目录可在${preview.elsewhere.join("，在")}。`;
+  }
 
   useEffect(() => {
     if (!open) return;
     input.current?.focus();
-    return () => { request.current?.abort(); trigger.current?.focus(); };
+    return () => {
+      request.current?.abort();
+      request.current = null;
+      trigger.current?.focus();
+    };
   }, [open]);
+
+  useEffect(() => {
+    if (open && !busy && document.activeElement === dialog.current) {
+      const next = scanButton.current?.disabled ? input.current : scanButton.current;
+      next?.focus();
+    }
+  }, [open, busy]);
+
   function close() {
-    if (busy === "import" || busy === "picker") return;
-    request.current?.abort(); setBusy(""); setOpen(false);
+    if (closeDisabled) return;
+    request.current?.abort();
+    request.current = null;
+    setBusy(null);
+    changePath(path);
+    setOpen(false);
   }
-  function changePath(value: string) { setPath(value); setItems([]); setSelected(new Set()); setError(""); setNotice(""); }
-  function failure(reason: unknown) {
-    const detail = reason instanceof Error ? reason.message : "请求失败，请重试";
-    setError(reason instanceof ApiError && reason.status === 403 ? `本机目录操作未获许可：${detail}。请由管理员配置允许目录及对应扫描或目录选择权限；不会自动扩大权限。` : detail);
+
+  function changePath(value: string) {
+    setPath(value);
+    setPreview(null);
+    setSelected(new Set());
+    setError("");
+    setNotice("");
   }
-  async function run(action: "picker" | "scan" | "import") {
-    const controller = new AbortController(); request.current = controller;
-    setBusy(action); setError(""); setNotice("");
+
+  function selectFile(path: string, checked: boolean) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (checked) next.add(path);
+      else next.delete(path);
+      return next;
+    });
+  }
+
+  async function run(action: Action) {
+    if (request.current) return;
+    const controller = new AbortController();
+    const { signal } = controller;
+    request.current = controller;
+    dialog.current?.focus();
+    setBusy(action);
+    setError("");
+    if (action !== "picker") setNotice("");
+
     try {
       if (action === "picker") {
-        const picked = await api<{ ok: boolean; path: string }>("/api/launcher/pick-folder", { method: "POST", body: jsonBody({ title: `选择${labels[module]}导入目录`, initial_dir: path.trim() }), signal: controller.signal });
-        if (picked.ok) changePath(picked.path);
+        const picked = await api<{ ok: boolean; path: string }>("/api/launcher/pick-folder", {
+          method: "POST", body: jsonBody({ title: `选择${label}导入目录`, initial_dir: path.trim() }), signal,
+        });
+        if (!signal.aborted && picked.ok && picked.path !== path) changePath(picked.path);
       } else if (action === "scan") {
-        setItems([]); setSelected(new Set());
-        const result = await api<{ items: Proposal[]; proposed: number }>("/api/scan/run", { method: "POST", body: jsonBody({ paths: [path.trim()] }), signal: controller.signal });
-        if (controller.signal.aborted) return;
-        const matching = result.items.filter((item) => item.kind === kinds[module]);
-        setItems(matching); setSelected(new Set(matching.map((item) => item.path)));
-        setNotice(`发现 ${result.proposed} 个未入库文件，其中 ${matching.length} 个${labels[module]}可导入当前模块。已有路径不会重复导入。`);
+        setPreview(null);
+        setSelected(new Set());
+        const result = await api<ScanResult>("/api/scan/run", {
+          method: "POST", body: jsonBody({ paths: [path.trim()] }), signal,
+        });
+        if (signal.aborted) return;
+        const candidates: Proposal[] = [];
+        const counts = { article: 0, script: 0, resource: 0 };
+        for (const item of result.items) {
+          counts[item.kind] += 1;
+          if (item.kind === kind) candidates.push(item);
+        }
+        const elsewhere = (Object.keys(kinds) as Module[])
+          .filter((key) => key !== module && counts[kinds[key]] > 0)
+          .map((key) => `${moduleNames[key]}导入 ${counts[kinds[key]]} 项`);
+        setPreview({ items: candidates, alreadyIndexed: result.already_indexed?.[kind], elsewhere });
+        setSelected(new Set(candidates.map((item) => item.path)));
       } else {
-        const result = await api<{ imported: Record<string, number> }>("/api/scan/commit", { method: "POST", body: jsonBody({ items: items.filter((item) => selected.has(item.path)) }), signal: controller.signal });
-        setItems((current) => current.filter((item) => !selected.has(item.path))); setSelected(new Set());
-        setNotice(`已导入 ${result.imported[kinds[module]] ?? 0} 条，跳过重复 ${result.imported.skipped ?? 0} 条。`);
+        const result = await api<{ imported: Record<string, number> }>("/api/scan/commit", {
+          method: "POST", body: jsonBody({ items: items.filter((item) => selected.has(item.path)) }), signal,
+        });
+        if (signal.aborted) return;
+        const added = result.imported[kind] ?? 0;
+        const skipped = result.imported.skipped ?? 0;
+        setPreview((current) => current && {
+          ...current,
+          items: current.items.filter((item) => !selected.has(item.path)),
+          alreadyIndexed: current.alreadyIndexed === undefined ? undefined : current.alreadyIndexed + added + skipped,
+        });
+        setSelected(new Set());
+        setNotice(`已导入 ${added} 条，跳过重复 ${skipped} 条。`);
         try { await onImported?.(); }
-        catch { setError("导入已成功，但列表刷新失败，请关闭后刷新页面；不要重复提交。"); }
+        catch { if (!signal.aborted) setError("导入已成功，但列表刷新失败。请关闭弹窗后刷新页面。"); }
       }
-    } catch (reason) { if (!controller.signal.aborted) failure(reason); }
-    finally { if (request.current === controller) setBusy(""); }
+    } catch (reason) {
+      if (signal.aborted) return;
+      const detail = reason instanceof Error ? reason.message : "请求失败，请重试";
+      if (reason instanceof ApiError && reason.status === 403) {
+        const hint = action === "picker" ? "可以手动输入已授权的目录路径。" : "可通过「选择目录」授权后重试。";
+        setError(`本机目录操作未获许可（${detail}）。${hint}`);
+      } else {
+        setError(detail);
+      }
+    } finally {
+      if (request.current === controller) {
+        request.current = null;
+        setBusy(null);
+      }
+    }
   }
 
   return <>
     <button ref={trigger} className="button" onClick={() => setOpen(true)}><Import size={17} />目录批量导入</button>
     {open && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
-      <section ref={dialog} className="modal scan-import-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={(event) => {
+      <section ref={dialog} tabIndex={-1} className="modal scan-import-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={(event) => {
         if (event.key === "Escape") { event.preventDefault(); close(); }
         if (event.key === "Tab") {
           const controls = dialog.current?.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled)");
           const first = controls?.[0]; const last = controls?.[controls.length - 1];
-          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
-          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+          const atDialog = document.activeElement === dialog.current;
+          if (atDialog || document.activeElement === (event.shiftKey ? first : last)) {
+            event.preventDefault();
+            (event.shiftKey ? last : first)?.focus();
+          }
         }
       }}>
-        <div className="modal-header"><h2 id={titleId}>批量导入{labels[module]}</h2><button className="icon-button" aria-label="关闭批量导入" disabled={busy === "import" || busy === "picker"} onClick={close}><X size={19} /></button></div>
-        <p className="muted">仅扫描管理员允许的本机目录；只建立索引，不移动文件、不执行脚本。预览后勾选确认才会写入。</p>
-        <div className="form-grid"><label className="full">扫描目录<input ref={input} value={path} onChange={(event) => changePath(event.target.value)} placeholder="输入已获许可的绝对目录路径" disabled={!!busy} /></label><div className="button-row full"><button className="button" disabled={!!busy} onClick={() => void run("picker")}><FolderOpen size={17} />选择目录</button><button className="button primary" disabled={!!busy || !path.trim()} onClick={() => void run("scan")}>{busy === "scan" ? "扫描中…" : "扫描预览"}</button></div></div>
-        {error && <div className="alert error" role="alert">{error}</div>}
-        {notice && <p role="status">{notice}</p>}
-        {!!items.length && <div className="scan-preview"><label className="scan-select-all"><input type="checkbox" aria-label="全选导入文件" checked={selected.size === items.length} disabled={!!busy} onChange={(event) => setSelected(new Set(event.target.checked ? items.map((item) => item.path) : []))} /><span>全选（已选 {selected.size} / {items.length}）</span></label>{items.map((item) => <label key={item.path} className="scan-preview-item"><input type="checkbox" aria-label={`导入：${item.name}`} checked={selected.has(item.path)} disabled={!!busy} onChange={(event) => setSelected((current) => { const next = new Set(current); if (event.target.checked) next.add(item.path); else next.delete(item.path); return next; })} /><span><strong>{item.name}</strong><small>{item.db_type || "其他"}{item.category ? ` / ${item.category}` : ""}</small><small className="muted">{item.path}</small></span></label>)}</div>}
-        <div className="modal-actions"><button className="button" onClick={close} disabled={busy === "import" || busy === "picker"}>关闭</button><button className="button primary" disabled={!!busy || !selected.size} onClick={() => void run("import")}>{busy === "import" ? "导入中…" : `导入所选（${selected.size}）`}</button></div>
+        <header className="modal-header">
+          <span className="scan-import-icon"><FolderInput size={18} aria-hidden="true" /></span>
+          <h2 id={titleId}>批量导入{label}</h2>
+          <button type="button" className="icon-button scan-import-close" aria-label="关闭批量导入" title="关闭"
+            disabled={closeDisabled} onClick={close}><X size={18} aria-hidden="true" /></button>
+        </header>
+        <div className="scan-import-body">
+          <div className="scan-directory">
+            <label htmlFor={directoryId}>扫描目录</label>
+            <div className="scan-directory-controls">
+              <input id={directoryId} ref={input} value={path} onChange={(event) => changePath(event.target.value)}
+                placeholder="输入文件夹路径" title={path || undefined} spellCheck={false} disabled={!!busy} />
+              <button type="button" className="button" disabled={!!busy} onClick={() => void run("picker")}>
+                <FolderOpen size={16} aria-hidden="true" />{busy === "picker" ? "选择中…" : "选择目录"}
+              </button>
+              <button type="button" ref={scanButton} className={preview ? "button" : "button primary"}
+                disabled={!!busy || !path.trim()} onClick={() => void run("scan")}>
+                {busy === "scan" ? "扫描中…" : preview ? "重新扫描" : "扫描预览"}
+              </button>
+            </div>
+          </div>
+          {error && <div className="alert error" role="alert">{error}</div>}
+          {(preview || notice) && <div className="scan-summary" role="status">
+            <ScanSearch size={16} aria-hidden="true" />
+            <div>
+              {notice && <p className="scan-import-notice">{notice}</p>}
+              {scanSummary && <strong>{scanSummary}</strong>}
+              {scanDetails && <p className="muted">{scanDetails}</p>}
+            </div>
+          </div>}
+          {items.length > 0 && <div className="scan-preview">
+            <div className="scan-preview-header">
+              <label className="scan-select-all">
+                <input type="checkbox" aria-label="全选导入文件" checked={selected.size === items.length}
+                  ref={(checkbox) => { if (checkbox) checkbox.indeterminate = selected.size > 0 && selected.size < items.length; }}
+                  disabled={!!busy} onChange={(event) => setSelected(new Set(event.target.checked ? items.map((item) => item.path) : []))} />
+                <span>全选</span>
+              </label>
+              <span className="muted">{module === "articles" ? "数据库 / 分类" : "数据库"}</span>
+            </div>
+            <div className="scan-preview-list">
+              {items.map((item) => {
+                const filename = item.path.split(/[\\/]/).at(-1) || item.name;
+                return <label key={item.path} className="scan-preview-item">
+                  <input type="checkbox" aria-label={`导入：${filename}`} checked={selected.has(item.path)}
+                    disabled={!!busy} onChange={(event) => selectFile(item.path, event.target.checked)} />
+                  <span className="scan-file-copy">
+                    <strong title={filename}>{filename}</strong>
+                    <small className="muted" title={item.path}>{item.path}</small>
+                  </span>
+                  <span className="scan-file-meta muted">{item.db_type || "其他"}{item.category && ` / ${item.category}`}</span>
+                </label>;
+              })}
+            </div>
+          </div>}
+        </div>
+        {items.length > 0 && <footer className="modal-actions scan-import-footer">
+          <button type="button" className="button primary" disabled={!!busy || !selected.size} onClick={() => void run("import")}>
+            {busy === "import" ? "导入中…" : `导入所选（${selected.size}）`}
+          </button>
+        </footer>}
       </section>
     </div>}
   </>;

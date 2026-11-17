@@ -56,13 +56,14 @@ def test_scan_preview_commit_and_search_roundtrip(client, tmp_path, monkeypatch)
     resource.write_bytes(b"test-index-only")
     monkeypatch.setattr(local_capabilities, "settings", Settings.from_env({
         "DBA_LOCAL_CAPABILITIES": "true",
-        "DBA_ALLOWED_ROOTS": str(allowed),
+        "DBA_ALLOWED_ROOTS": str(allowed.parent),
         "DBA_ALLOWED_LOCAL_ACTIONS": "scan",
     }))
 
     preview = client.post("/api/scan/run", json={"paths": [str(allowed)]})
     assert preview.status_code == 200, preview.text
     items = preview.json()["items"]
+    assert preview.json()["already_indexed"] == {"script": 0, "article": 0, "resource": 0}
     assert {item["kind"] for item in items} == {"script", "article", "resource"}
     assert all(item["db_type"] == "MySQL" for item in items)
     assert client.get("/api/search/", params={"q": "roundtrip"}).json()["scripts"] == []
@@ -72,7 +73,10 @@ def test_scan_preview_commit_and_search_roundtrip(client, tmp_path, monkeypatch)
     assert committed.json()["imported"] == {"script": 1, "article": 1, "resource": 1, "skipped": 0}
     repeated = client.post("/api/scan/commit", json={"items": items})
     assert repeated.json()["imported"] == {"script": 0, "article": 0, "resource": 0, "skipped": 3}
-    assert client.post("/api/scan/run", json={"paths": [str(allowed)]}).json()["items"] == []
+    rescanned = client.post("/api/scan/run", json={"paths": [str(allowed.parent), str(allowed)]})
+    assert rescanned.status_code == 200, rescanned.text
+    assert rescanned.json()["items"] == []
+    assert rescanned.json()["already_indexed"] == {"script": 1, "article": 1, "resource": 1}
 
     found = client.get("/api/search/", params={"q": "roundtrip"}).json()
     for module in ("scripts", "articles", "resources"):

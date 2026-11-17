@@ -84,8 +84,9 @@ def test_scan_disabled_by_default_reports_permission_error_without_writes(live_s
                 with page.expect_response(lambda response: "/api/scan/run" in response.url) as scanned:
                     dialog.get_by_role("button", name="扫描预览").click()
                 assert scanned.value.status == 403
-                expect(dialog.get_by_role("alert")).to_contain_text("不会自动扩大权限")
-                expect(dialog.get_by_role("button", name="导入所选（0）")).to_be_disabled()
+                expect(dialog.get_by_role("alert")).to_contain_text("可通过「选择目录」授权后重试")
+                expect(dialog.get_by_role("button", name=re.compile("^导入所选"))).to_have_count(0)
+                expect(dialog.get_by_role("button", name=re.compile("^关闭"))).to_have_count(1)
                 assert client.get("/api/scripts/").json()["total"] == 0
                 assert (source / "must-not-import.sql").read_text(encoding="utf-8") == "SELECT 1;"
             finally:
@@ -122,25 +123,44 @@ def test_allowed_directory_preview_imports_only_checked_current_module_files(
         with sync_playwright() as playwright:
             browser = _edge(playwright)
             try:
-                page = browser.new_page(viewport={"width": 390, "height": 844})
+                touch = module == "scripts"
+                page = browser.new_page(viewport={"width": 1120, "height": 844}, has_touch=touch)
                 page.set_default_timeout(10_000)
                 _login(page, live_server)
+                if touch:
+                    page.get_by_role("button", name="切换到深色模式").click()
+                    expect(page.locator("html")).to_have_attribute("data-theme", "dark")
                 page.get_by_role("navigation", name="主导航").get_by_role("link", name=nav).click()
                 page.get_by_role("button", name="目录批量导入").click()
                 dialog = page.get_by_role("dialog", name=f"批量导入{kind}", exact=True)
                 dialog.get_by_role("textbox", name="扫描目录").fill(str(source))
                 dialog.get_by_role("button", name="扫描预览").click()
-                selected = dialog.get_by_role("checkbox", name=f"导入：{included.stem}", exact=True)
+                selected = dialog.get_by_role("checkbox", name=f"导入：{included.name}", exact=True)
                 expect(selected).to_be_checked()
+                expect(dialog.get_by_role("status")).to_contain_text(f"2 个{kind}可导入")
                 expect(dialog.get_by_role("checkbox", name=re.compile("^导入："))).to_have_count(2)
-                expect(dialog.get_by_text(unrelated.stem, exact=True)).to_have_count(0)
+                expect(dialog.get_by_role("checkbox", name=f"导入：{unrelated.name}", exact=True)).to_have_count(0)
+                directory = dialog.get_by_role("textbox", name="扫描目录")
+                choose = dialog.get_by_role("button", name="选择目录")
+                rescan = dialog.get_by_role("button", name="重新扫描")
+                assert abs(directory.bounding_box()["y"] - choose.bounding_box()["y"]) < 2
+                assert abs(choose.bounding_box()["y"] - rescan.bounding_box()["y"]) < 2
+                page.set_viewport_size({"width": 390, "height": 844})
+                assert directory.bounding_box()["y"] < choose.bounding_box()["y"]
+                assert abs(choose.bounding_box()["y"] - rescan.bounding_box()["y"]) < 2
+                expect(dialog).to_have_css("padding-left", "0px")
+                assert dialog.evaluate("(node) => node.scrollWidth <= node.clientWidth + 1")
+                if touch:
+                    assert choose.evaluate("(button) => button.offsetHeight") >= 44
+                    assert dialog.get_by_role("button", name="关闭批量导入").evaluate("(button) => button.offsetWidth") >= 44
                 assert client.get(f"/api/{module}/").json()["total"] == 0
-                dialog.get_by_role("checkbox", name=f"导入：{excluded.stem}", exact=True).uncheck()
+                dialog.get_by_role("checkbox", name=f"导入：{excluded.name}", exact=True).uncheck()
                 with page.expect_response(lambda response: "/api/scan/commit" in response.url) as committed:
                     dialog.get_by_role("button", name="导入所选（1）", exact=True).click()
                 assert committed.value.status == 200
-                expect(dialog.get_by_role("status")).to_have_text("已导入 1 条，跳过重复 0 条。")
-                dialog.get_by_role("button", name="关闭", exact=True).click()
+                expect(dialog.get_by_role("status")).to_contain_text("已导入 1 条，跳过重复 0 条。")
+                expect(dialog.get_by_role("status")).to_contain_text(f"已入库 1 个{kind}")
+                dialog.get_by_role("button", name="关闭批量导入", exact=True).click()
                 expect(page.locator(".library-record-list")).to_contain_text(included.stem)
                 assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1")
                 stored = client.get(f"/api/{module}/").json()

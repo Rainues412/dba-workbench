@@ -201,15 +201,12 @@ class ScanRequest(BaseModel):
     paths: list[str] = Field(min_length=1)
 
 
-def _existing_paths(conn) -> set:
+def _existing_paths(conn) -> set[str]:
     """All absolute paths already indexed (lowercased for comparison)."""
     paths = set()
     for table, col in [("resources", "path"), ("articles", "file_path"), ("scripts", "file_path")]:
-        try:
-            for (p,) in conn.execute(f"SELECT {col} FROM {table} WHERE {col} != ''").fetchall():
-                paths.add(os.path.normpath(p).lower())
-        except Exception as e:
-            logger.warning("Failed to load existing paths from %s: %s", table, e)
+        for (path,) in conn.execute(f"SELECT {col} FROM {table} WHERE {col} != ''"):
+            paths.add(os.path.normpath(path).lower())
     return paths
 
 
@@ -226,8 +223,8 @@ def _walk(base: Path):
             yield Path(root) / f
 
 
-def scan_dir(base: Path, known: set) -> list:
-    """Return proposed entries (dicts) for un-indexed files in base."""
+def _scan_dir(base: Path, known: set[str], seen: set[str], already_indexed: dict[str, int]) -> list:
+    """Return new proposals and count indexed files once across the scanned roots."""
     proposals = []
     if not base.exists():
         return proposals
@@ -239,9 +236,12 @@ def scan_dir(base: Path, known: set) -> list:
         if not kind:
             continue
         norm = os.path.normpath(str(fp)).lower()
-        if norm in known:
+        if norm in seen:
             continue
-        known.add(norm)
+        seen.add(norm)
+        if norm in known:
+            already_indexed[kind] += 1
+            continue
         try:
             size_mb = round(fp.stat().st_size / (1024 * 1024), 2)
         except OSError:
@@ -291,13 +291,16 @@ def run_scan(req: ScanRequest):
             raise
 
     proposals = []
+    seen: set[str] = set()
+    already_indexed = {"resource": 0, "article": 0, "script": 0}
     for directory in allowed_dirs:
-        proposals.extend(scan_dir(directory, known))
+        proposals.extend(_scan_dir(directory, known, seen, already_indexed))
     audit_local_action("scan", "completed")
     return {
         "scanned_dirs": [str(directory) for directory in allowed_dirs],
         "proposed": len(proposals),
         "items": proposals,
+        "already_indexed": already_indexed,
     }
 
 
@@ -334,12 +337,10 @@ def commit_scan(req: CommitRequest):
             raise HTTPException(400, "文件类型与导入类型不匹配")
         checked_items.append((item, path))
 
-    # 预加载已知路径；客户端回传的每个文件已在上方重新执行边界和类型校验。
     with get_db_ctx() as conn:
-        known_paths = set()
-        for table, col in [("resources", "path"), ("articles", "file_path"), ("scripts", "file_path")]:
-            for (p,) in conn.execute(f"SELECT {col} FROM {table} WHERE {col} != ''").fetchall():
-                known_paths.add(os.path.normpath(p).lower())
+        # Serialize the duplicate check and insert across concurrent imports.
+        conn.execute("BEGIN IMMEDIATE")
+        known_paths = _existing_paths(conn)
 
         counts = {"resource": 0, "article": 0, "script": 0, "skipped": 0}
         for it, path in checked_items:
