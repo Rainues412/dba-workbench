@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import ctypes
+import ctypes.wintypes
+import os
+
+import pytest
+
 from backend import windows_dialog
 
 
@@ -15,3 +21,19 @@ def test_folder_picker_uses_the_current_foreground_window_as_owner(monkeypatch) 
 
     assert windows_dialog.pick_folder("选择文档目录", r"D:\Note") == r"D:\Note"
     assert calls == [("选择文档目录", r"D:\Note", 2468)]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows COM calling convention")
+@pytest.mark.parametrize(("hresult", "accepted"), [(0, True), (0x800704C7, False), (0x80004005, None)])
+def test_folder_picker_show_distinguishes_cancellation_from_failure(hresult, accepted) -> None:
+    method = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.wintypes.HWND)(
+        lambda *_: ctypes.c_long(hresult).value,
+    )
+    address = ctypes.cast(method, ctypes.c_void_p).value
+    assert address is not None
+    if accepted is None:
+        with pytest.raises(OSError) as exc:
+            windows_dialog._show_dialog(ctypes.c_void_p(), address, 0)
+        assert (exc.value.winerror & 0xFFFFFFFF) == hresult
+    else:
+        assert windows_dialog._show_dialog(ctypes.c_void_p(), address, 0) is accepted

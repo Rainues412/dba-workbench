@@ -8,6 +8,9 @@ import queue
 import threading
 
 
+_CANCELLED_HRESULT = 0x800704C7  # HRESULT_FROM_WIN32(ERROR_CANCELLED)
+
+
 class GUID(ctypes.Structure):
     _fields_ = [
         ("Data1", ctypes.c_ulong),
@@ -43,6 +46,17 @@ def _foreground_window() -> int:
     user32.GetForegroundWindow.argtypes = []
     user32.GetForegroundWindow.restype = ctypes.wintypes.HWND
     return int(user32.GetForegroundWindow() or 0)
+
+
+def _show_dialog(dialog: ctypes.c_void_p, show_address: int, owner_hwnd: int) -> bool:
+    # Read the raw HRESULT so ctypes does not turn cancellation into an exception.
+    show = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.wintypes.HWND)(show_address)
+    result = show(dialog, owner_hwnd or None)
+    if (result & 0xFFFFFFFF) == _CANCELLED_HRESULT:
+        return False
+    if result != 0:
+        raise ctypes.WinError(result)
+    return True
 
 
 def _pick_folder_sta(title: str, initial_dir: str, owner_hwnd: int = 0) -> str:
@@ -94,16 +108,12 @@ def _pick_folder_sta(title: str, initial_dir: str, owner_hwnd: int = 0) -> str:
             )(table[17])
             set_title(dialog, title)
 
-        show = ctypes.WINFUNCTYPE(
-            ctypes.HRESULT, ctypes.c_void_p, ctypes.wintypes.HWND
-        )(table[3])
         if owner_hwnd:
             user32 = ctypes.windll.user32
             user32.SetForegroundWindow.argtypes = [ctypes.wintypes.HWND]
             user32.SetForegroundWindow.restype = ctypes.wintypes.BOOL
             user32.SetForegroundWindow(ctypes.wintypes.HWND(owner_hwnd))
-        owner = ctypes.wintypes.HWND(owner_hwnd) if owner_hwnd else None
-        if show(dialog, owner) != 0:
+        if not _show_dialog(dialog, table[3], owner_hwnd):
             return ""
 
         get_result = ctypes.WINFUNCTYPE(
