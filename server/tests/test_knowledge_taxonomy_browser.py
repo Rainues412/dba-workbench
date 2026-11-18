@@ -69,6 +69,8 @@ def test_knowledge_topics_platforms_and_preview(live_server, tmp_path, monkeypat
             expect(preview.locator(".library-markdown")).to_contain_text("原文件预览保持正常。")
             expect(preview.get_by_role("button", name="打开文档：高可用与同步验证记录", exact=True)).to_be_visible()
             expect(preview.get_by_role("button", name="打开所在文件夹：高可用与同步验证记录", exact=True)).to_be_visible()
+            preview.get_by_role("button", name="关闭预览", exact=True).click()
+            expect(preview).to_have_count(0)
 
             for theme, width in [("light", 1440), ("dark", 1440), ("light", 390), ("dark", 390)]:
                 page.set_viewport_size({"width": width, "height": 1000})
