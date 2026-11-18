@@ -107,7 +107,7 @@ code { font-family: "Cascadia Code", Consolas, monospace; }
 .brand-copy { font-weight: 750; }
 .brand-mark { flex: 0 0 auto; display: grid; place-items: center; width: 60px; height: 60px; border-radius: 19px; color: #fff; background: linear-gradient(145deg, #4078f1, #5b50e6); box-shadow: 0 14px 32px rgb(53 106 230 / 28%); }
 .brand-mark.small { width: 42px; height: 42px; border-radius: 13px; }
-.brand .brand-mark { width: 34px; height: 34px; border-radius: var(--radius-sm); }
+.brand .brand-mark { width: 34px; height: 34px; border-radius: var(--radius-sm); background: #1762f5; box-shadow: none; }
 .sidebar-toggle, .sidebar .sidebar-action { flex: 0 0 auto; display: grid; place-items: center; width: var(--sidebar-hit-size); height: var(--sidebar-hit-size); padding: 0; border: 1px solid transparent; border-radius: var(--radius-sm); color: #8290a7; background: transparent; cursor: pointer; }
 .sidebar-toggle:hover { color: #fff; background: rgb(255 255 255 / 7%); border-color: rgb(255 255 255 / 7%); }
 .nav-section-label { padding-inline: var(--sidebar-inset); color: #9ba8ba; font-size: .75rem; font-weight: 650; }

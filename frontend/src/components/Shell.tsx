@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import {
-  BookOpenText, Building2, HardDrive, LayoutDashboard,
+  BookOpenText, Building2, Database, LayoutDashboard,
   ListTodo, LogOut, Moon, PackageOpen, PanelLeftClose, PanelLeftOpen,
   ScrollText, ShieldCheck, Sun,
 } from "lucide-react";
@@ -47,7 +47,7 @@ export function Shell() {
       <aside className="sidebar">
         <div className="brand-row">
           <NavLink to="/" className="brand" aria-label="返回工作台" title={collapsed ? "返回工作台" : undefined}>
-            <span className="brand-mark small"><HardDrive size={14} strokeWidth={2} /></span>
+            <span className="brand-mark small" aria-hidden="true"><Database size={18} /></span>
             <span className="brand-copy">DBA 工作台</span>
           </NavLink>
           <button type="button" className="sidebar-toggle" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? "展开侧栏" : "收起侧栏"} title={collapsed ? "展开侧栏" : "收起侧栏"}>
