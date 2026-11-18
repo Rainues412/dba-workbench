@@ -178,17 +178,20 @@ def _exit_from_tray(server, icon) -> None:
 
 def _run_tray(server) -> None:
     import pystray
-    from PIL import Image
 
-    icon = pystray.Icon(
-        "dba-workbench",
-        Image.open(_tray_icon_path()),
-        APP_TITLE,
-        pystray.Menu(
-            pystray.MenuItem("打开工作台", lambda *_: _open_workbench(), default=True),
-            pystray.MenuItem("退出", lambda tray, _: _exit_from_tray(server, tray)),
-        ),
+    menu = pystray.Menu(
+        pystray.MenuItem("打开工作台", lambda *_: _open_workbench(), default=True),
+        pystray.MenuItem("退出", lambda tray, _: _exit_from_tray(server, tray)),
     )
+    if sys.platform == "win32":
+        from backend.windows_tray import WorkbenchTrayIcon
+
+        icon = WorkbenchTrayIcon(_tray_icon_path(), APP_TITLE, menu)
+    else:
+        from PIL import Image
+
+        with Image.open(_tray_icon_path()) as source:
+            icon = pystray.Icon("dba-workbench", source.copy(), APP_TITLE, menu)
     icon.run()
 
 

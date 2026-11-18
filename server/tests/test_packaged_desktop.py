@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import json
 import os
+import sys
 
 import desktop
 import file_viewer_runtime
@@ -60,6 +61,33 @@ def test_tray_exit_stops_server_and_icon() -> None:
 
     assert server.should_exit is True
     assert icon.stopped is True
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows notification area")
+def test_tray_loads_the_desktop_icon_at_small_size_and_uses_a_stable_shell_guid(monkeypatch) -> None:
+    import ctypes
+
+    from backend.windows_tray import WorkbenchTrayIcon, win32
+
+    loads = []
+    messages = []
+    monkeypatch.setattr(WorkbenchTrayIcon, "_register_class", lambda self: None)
+    monkeypatch.setattr(win32, "LoadImage", lambda *args: loads.append(args) or 123)
+    monkeypatch.setattr(win32, "DestroyIcon", lambda _: True)
+    monkeypatch.setattr(win32, "Shell_NotifyIcon", lambda action, data: messages.append((action, data.uFlags, bytes(data.guidItem))))
+    path = desktop._tray_icon_path().resolve()
+    icon = WorkbenchTrayIcon(path, desktop.APP_TITLE, None)
+    icon.visible = True
+    icon.visible = False
+    icon._release_icon()
+    WorkbenchTrayIcon(path, desktop.APP_TITLE, None)._hide()
+
+    metrics = ctypes.windll.user32.GetSystemMetrics
+    assert loads == [(None, str(path), win32.IMAGE_ICON, metrics(49), metrics(50), win32.LR_LOADFROMFILE)]
+    assert [action for action, _, _ in messages] == [win32.NIM_ADD, win32.NIM_DELETE, win32.NIM_DELETE]
+    assert all(flags & win32.NIF_GUID for _, flags, _ in messages)
+    assert messages[0][2] != bytes(16)
+    assert len({guid for _, _, guid in messages}) == 1
 
 
 def test_desktop_bounds_shutdown_and_cleans_up_viewer(monkeypatch, tmp_path: Path) -> None:
