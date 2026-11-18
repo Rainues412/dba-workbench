@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ctypes
+import os
 import subprocess
 import sys
 from ctypes import wintypes
@@ -26,12 +27,15 @@ class _StringPropVariant(ctypes.Structure):
     ]
 
 
-def _relaunch_command(icon_path: Path) -> str:
+def _relaunch_command(icon_path: Path, desktop_host: str | None = None) -> str:
     exe = Path(sys.executable)
     launcher = icon_path.parents[1] / "tools" / "windows" / "launch_dba_workbench.py"
     if launcher.is_file():
         pythonw = exe.with_name("pythonw.exe")
-        return subprocess.list2cmdline([str(pythonw if pythonw.is_file() else exe), str(launcher)])
+        command = [str(pythonw if pythonw.is_file() else exe), str(launcher)]
+        if desktop_host:
+            command.extend(["--desktop-host", desktop_host])
+        return subprocess.list2cmdline(command)
     return subprocess.list2cmdline([str(exe)])
 
 
@@ -51,10 +55,11 @@ def set_window_identity(hwnd: int, title: str, icon_path: Path) -> None:
             ctypes.HRESULT, ctypes.c_void_p, ctypes.POINTER(_PropertyKey), ctypes.POINTER(_StringPropVariant),
         )(table[6])
         app_model = _guid("{9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3}")
+        desktop_host = os.environ.get("DBA_SOURCE_DESKTOP_HOST")
         # The Shell reads the relaunch metadata as soon as the AppUserModelID is set.
         for property_id, value in (
-            (2, _relaunch_command(icon_path)),
-            (3, f"{icon_path},0"),
+            (2, _relaunch_command(icon_path, desktop_host)),
+            (3, f"{desktop_host or icon_path},0"),
             (4, title),
             (5, APP_USER_MODEL_ID),
         ):

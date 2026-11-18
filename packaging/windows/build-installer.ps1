@@ -71,6 +71,10 @@ try {
         --assume-yes-for-downloads `
         --windows-console-mode=disable `
         --windows-icon-from-ico=$iconPath `
+        --product-name="DBA工作台" `
+        --file-description="DBA工作台" `
+        --file-version=$Version `
+        --product-version=$Version `
         --output-dir=$nuitkaRoot `
         --output-filename="DBA工作台.exe" `
         --include-data-dir="frontend_dist=frontend_dist" `

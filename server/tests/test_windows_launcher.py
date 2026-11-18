@@ -63,6 +63,27 @@ def test_local_opening_configuration_is_scoped_and_does_not_enable_execution(lau
     assert environment["DBA_ALLOWED_LOCAL_ACTIONS"] == "edit,folder,open"
 
 
+def test_native_host_uses_the_launchers_python_environment(launcher, tmp_path, monkeypatch):
+    host = tmp_path / "DBA工作台.exe"
+    host.touch()
+    version = launcher.sys.version_info
+    runtime = tmp_path / f"python{version.major}{version.minor}.dll"
+    runtime.touch()
+    monkeypatch.setattr(launcher.sys, "base_prefix", str(tmp_path))
+    monkeypatch.setattr(launcher, "LOG_DIR", tmp_path)
+    monkeypatch.setattr(launcher, "LOG_PATH", tmp_path / "server.log")
+    monkeypatch.setattr(launcher.time, "sleep", lambda _: None)
+    monkeypatch.setattr(launcher, "probe_service", lambda: "dba")
+    calls = []
+    monkeypatch.setattr(launcher.subprocess, "Popen", lambda command, **kwargs: calls.append((command, kwargs)))
+
+    assert launcher.start_server(host)
+    command, options = calls[0]
+    assert command == [str(host), str(runtime), launcher.sys.executable, "desktop.py"]
+    assert options["env"]["DBA_SOURCE_DESKTOP_HOST"] == str(host)
+    assert options["env"]["DBA_DATA_DIR"] == str(launcher.SERVER_DIR)
+
+
 def test_empty_local_opening_configuration_is_rejected(launcher):
     launcher.LOCAL_CONFIG.write_text('{"allowed_roots": []}', encoding="utf-8")
     with pytest.raises(ValueError, match="allowed_roots"):

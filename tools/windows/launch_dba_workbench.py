@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import socket
@@ -47,7 +48,7 @@ def probe_service() -> str:
             return "down"
 
 
-def start_server() -> bool:
+def start_server(desktop_host: Path | None = None) -> bool:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     if LOCAL_CONFIG.is_file():
@@ -76,12 +77,25 @@ def start_server() -> bool:
     if EDGE_PATH is not None and EDGE_PATH.is_file():
         env["DBA_BROWSER_PATH"] = str(EDGE_PATH)
 
+    python = VENV_PYTHON if VENV_PYTHON.is_file() else Path(sys.executable)
+    command = [str(python), "desktop.py"]
+    if desktop_host is not None:
+        desktop_host = desktop_host.resolve(strict=True)
+        if not desktop_host.is_file():
+            raise ValueError(f"无效的桌面启动宿主：{desktop_host}")
+        # The shortcut launches this helper with the same Python environment the host will use.
+        python_dll = Path(sys.base_prefix) / f"python{sys.version_info.major}{sys.version_info.minor}.dll"
+        if not python_dll.is_file():
+            raise ValueError(f"未找到 Python 运行库：{python_dll}")
+        command = [str(desktop_host), str(python_dll), sys.executable, "desktop.py"]
+        env["DBA_SOURCE_DESKTOP_HOST"] = str(desktop_host)
+
     with LOG_PATH.open("ab", buffering=0) as log_file:
         log_file.write(
             f"\n[{datetime.now().isoformat(timespec='seconds')}] starting DBA Workbench\n".encode()
         )
         subprocess.Popen(
-            [str(VENV_PYTHON) if VENV_PYTHON.is_file() else sys.executable, "desktop.py"],
+            command,
             cwd=SERVER_DIR,
             env=env,
             stdin=subprocess.DEVNULL,
@@ -102,7 +116,7 @@ def start_server() -> bool:
     return False
 
 
-def main() -> None:
+def main(desktop_host: Path | None = None) -> None:
     if not (SERVER_DIR / "main.py").is_file():
         raise SystemExit(f"找不到服务入口：{SERVER_DIR / 'main.py'}")
 
@@ -110,7 +124,8 @@ def main() -> None:
     if state == "other":
         raise SystemExit(f"端口 {PORT} 已被其他程序占用。")
     if state == "down":
-        if not start_server():
+        started = start_server() if desktop_host is None else start_server(desktop_host)
+        if not started:
             raise SystemExit(f"DBA 工作台启动失败，请查看日志：{LOG_PATH}")
         return
 
@@ -120,7 +135,9 @@ def main() -> None:
 
 if __name__ == "__main__":
     try:
-        main()
+        parser = argparse.ArgumentParser(description="启动 DBA 工作台")
+        parser.add_argument("--desktop-host", type=Path, help="使用指定的 DBA 工作台源码启动宿主")
+        main(parser.parse_args().desktop_host)
     except (OSError, ValueError, SystemExit) as error:
         if os.name == "nt":
             import ctypes
