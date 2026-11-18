@@ -1,4 +1,4 @@
-"""Start DBA Workbench from this checkout and open it in Microsoft Edge."""
+"""Start DBA Workbench from this checkout and open its desktop window."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from pathlib import Path
 REPO_DIR = Path(__file__).resolve().parents[2]
 SERVER_DIR = REPO_DIR / "server"
 sys.path.insert(0, str(SERVER_DIR))
+from backend import desktop_window
 from backend.browser_launch import find_edge, open_workbench
 LOCAL_CONFIG = REPO_DIR / ".runtime" / "local-capabilities.json"
 VENV_PYTHON = REPO_DIR / ".runtime" / ".venv" / "Scripts" / "python.exe"
@@ -69,6 +70,7 @@ def start_server() -> bool:
             "DBA_DATA_DIR": str(SERVER_DIR),
             "DBA_LOG_DIR": str(LOG_DIR),
             "DBA_FILE_VIEWER_DATA_DIR": str(REPO_DIR / ".runtime" / "file-viewer-data"),
+            "DBA_WEBVIEW_PROFILE": str(REPO_DIR / ".runtime" / "webview"),
         }
     )
     if EDGE_PATH is not None and EDGE_PATH.is_file():
@@ -112,7 +114,7 @@ def main() -> None:
             raise SystemExit(f"DBA 工作台启动失败，请查看日志：{LOG_PATH}")
         return
 
-    if not open_workbench(URL, EDGE_PATH):
+    if not desktop_window.activate(PORT) and not open_workbench(URL, EDGE_PATH):
         raise SystemExit(f"无法打开默认浏览器，请手动访问：{URL}")
 
 

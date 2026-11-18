@@ -40,8 +40,8 @@ Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: 
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\DBA 工作台"; Filename: "{app}\DBA工作台.exe"; WorkingDir: "{app}"
-Name: "{autodesktop}\DBA 工作台"; Filename: "{app}\DBA工作台.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autoprograms}\DBA 工作台"; Filename: "{app}\DBA工作台.exe"; WorkingDir: "{app}"; AppUserModelID: "DBAWorkbench.Desktop"
+Name: "{autodesktop}\DBA 工作台"; Filename: "{app}\DBA工作台.exe"; WorkingDir: "{app}"; AppUserModelID: "DBAWorkbench.Desktop"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\DBA工作台.exe"; Description: "启动 DBA 工作台"; Flags: nowait postinstall skipifsilent

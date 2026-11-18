@@ -10,8 +10,10 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import Future
 from pathlib import Path
 
+from backend import desktop_window
 from backend.browser_launch import find_edge, open_workbench
 
 APP_TITLE = "DBA 工作台"
@@ -96,6 +98,8 @@ def _probe_service() -> str:
 
 
 def _open_workbench() -> None:
+    if desktop_window.activate(PORT):
+        return
     browser_path = os.environ.get("DBA_BROWSER_PATH", "").strip().strip('"')
     browser = Path(browser_path) if browser_path and Path(browser_path).is_file() else find_edge()
     open_workbench(URL, browser)
@@ -107,6 +111,42 @@ def _open_browser_when_ready() -> None:
             _open_workbench()
             return
         time.sleep(0.25)
+
+
+def _show_window_when_ready(server, window) -> None:
+    while not server.should_exit:
+        if server.started:
+            window.load_url(URL)
+            window.show()
+            window.maximize()
+            return
+        time.sleep(0.05)
+
+
+def _run_webview(server, window) -> None:
+    import webview
+
+    result: Future[None] = Future()
+
+    def serve():
+        try:
+            if not window.events.loaded.wait(15):
+                raise RuntimeError("WebView2 初始化超时。")
+            _start_tray(server)
+            threading.Thread(target=_show_window_when_ready, args=(server, window), daemon=True).start()
+            server.run()
+        except Exception as error:
+            result.set_exception(error)
+        else:
+            result.set_result(None)
+        finally:
+            server.should_exit = True
+            window.destroy()
+
+    profile = os.environ.get("DBA_WEBVIEW_PROFILE") or str(_data_directory() / "webview")
+    webview.start(serve, gui="edgechromium", private_mode=False, storage_path=profile)
+    server.should_exit = True
+    result.result(timeout=20)
 
 
 def _show_error(message: str) -> None:
@@ -172,7 +212,6 @@ def main() -> None:
 
     viewer = start_file_viewer(_data_directory(), log_dir)
     try:
-        threading.Thread(target=_open_browser_when_ready, daemon=True).start()
         config = uvicorn.Config(
             app,
             host=HOST,
@@ -184,8 +223,13 @@ def main() -> None:
             timeout_graceful_shutdown=10,
         )
         server = uvicorn.Server(config)
-        _start_tray(server)
-        server.run()
+        window = desktop_window.create(APP_TITLE, PORT, _tray_icon_path(), lambda: server.should_exit)
+        if window is None:
+            threading.Thread(target=_open_browser_when_ready, daemon=True).start()
+            _start_tray(server)
+            server.run()
+        else:
+            _run_webview(server, window)
     except Exception as error:
         raise RuntimeError(f"启动失败，请查看日志：{log_dir / 'server.log'}") from error
     finally:

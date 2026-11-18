@@ -100,6 +100,7 @@ def test_running_service_is_reused_and_opened_in_edge(launcher, tmp_path, monkey
     edge = tmp_path / "msedge.exe"
     edge.touch()
     monkeypatch.setattr(launcher, "EDGE_PATH", edge)
+    monkeypatch.setattr(launcher.desktop_window, "activate", lambda _: False)
     monkeypatch.setattr(launcher, "probe_service", lambda: "dba")
     monkeypatch.setattr(launcher, "start_server", lambda: pytest.fail("must reuse the running service"))
     monkeypatch.setattr(browser_launch, "_browser_windows", lambda: {101: "existing window"})
@@ -135,6 +136,7 @@ def test_server_waits_for_http_readiness_after_port_opens(launcher, tmp_path, mo
 
 def test_missing_edge_uses_default_browser(launcher, tmp_path, monkeypatch):
     monkeypatch.setattr(launcher, "EDGE_PATH", tmp_path / "missing-edge.exe")
+    monkeypatch.setattr(launcher.desktop_window, "activate", lambda _: False)
     monkeypatch.setattr(launcher, "probe_service", lambda: "dba")
     calls = []
     monkeypatch.setattr(browser_launch, "_browser_windows", lambda: {})

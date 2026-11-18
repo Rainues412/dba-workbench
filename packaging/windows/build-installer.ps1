@@ -78,6 +78,8 @@ try {
         --include-data-files="backend/migrations/*.sql=backend/migrations/" `
         --include-module=main `
         --include-package=backend `
+        --include-module=webview.platforms.winforms `
+        --include-module=webview.platforms.edgechromium `
         --include-module=h11 `
         --nofollow-import-to=pytest `
         desktop.py

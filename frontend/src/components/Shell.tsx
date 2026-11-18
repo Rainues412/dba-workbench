@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import {
-  BookOpenText, Building2, Database, LayoutDashboard,
+  BookOpenText, Building2, LayoutDashboard,
   ListTodo, LogOut, Moon, PackageOpen, PanelLeftClose, PanelLeftOpen,
   ScrollText, ShieldCheck, Sun,
 } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import brandIcon from "../../../assets/dba-workbench-icon.svg";
+import { DesktopDragRegion, DesktopWindowControls, useDesktopWindow } from "./DesktopWindowControls";
 import { GlobalSearch } from "./GlobalSearch";
 import { SelectionIndicator, SelectionMotion } from "./SelectionMotion";
 
@@ -29,6 +31,7 @@ const navigation = navigationGroups.flatMap(({ items }) => items);
 
 export function Shell() {
   const { session, logout } = useAuth();
+  const desktopWindow = useDesktopWindow();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">(() =>
@@ -42,11 +45,11 @@ export function Shell() {
   }, [theme]);
 
   return (
-    <div className={`app-shell${collapsed ? " sidebar-collapsed" : ""}`}>
+    <div className={`app-shell${desktopWindow ? " desktop-shell" : ""}${collapsed ? " sidebar-collapsed" : ""}`}>
       <aside className="sidebar">
         <div className="brand-row">
-          <NavLink to="/" className="brand" aria-label="返回工作台" title={collapsed ? "返回工作台" : undefined}>
-            <span className="brand-mark small" aria-hidden="true"><Database size={18} /></span>
+          <NavLink to="/" className="brand" aria-label="返回工作台" title="返回工作台">
+            <img className="brand-mark small" src={brandIcon} alt="" />
             <span className="brand-copy">DBA 工作台</span>
           </NavLink>
           <button type="button" className="sidebar-toggle" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? "展开侧栏" : "收起侧栏"} title={collapsed ? "展开侧栏" : "收起侧栏"}>
@@ -83,14 +86,15 @@ export function Shell() {
       </aside>
 
       <div className="workspace">
-        <header className="topbar">
-          <div className="topbar-title"><span>{current.label}</span><small>{current.description}</small></div>
+        <header className={desktopWindow ? "topbar desktop-topbar" : "topbar"}>
+          <DesktopDragRegion actions={desktopWindow}><span title={current.label}>{current.label}</span><small>{current.description}</small></DesktopDragRegion>
           <div className="topbar-actions">
             <GlobalSearch />
             <span className="local-status"><span className="status-dot" />本机安全模式</span>
             <button className="icon-button topbar-button" onClick={() => setTheme((value) => value === "light" ? "dark" : "light")} aria-label={theme === "light" ? "切换到深色模式" : "切换到浅色模式"} title={theme === "light" ? "深色模式" : "浅色模式"}>
               {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
             </button>
+            {desktopWindow && <DesktopWindowControls actions={desktopWindow} />}
           </div>
         </header>
         <main className="main-content"><Outlet /></main>

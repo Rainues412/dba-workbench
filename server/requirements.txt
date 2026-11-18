@@ -4,3 +4,4 @@ cryptography==43.0.1
 argon2-cffi==25.1.0
 Pillow==11.3.0
 pystray==0.19.5
+pywebview==6.1; sys_platform == "win32"

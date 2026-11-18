@@ -67,6 +67,7 @@ def test_desktop_bounds_shutdown_and_cleans_up_viewer(monkeypatch, tmp_path: Pat
     monkeypatch.setattr(desktop, "_configure_runtime", lambda: tmp_path)
     monkeypatch.setattr(desktop, "_probe_service", lambda: "down")
     monkeypatch.setattr(desktop, "_data_directory", lambda: tmp_path)
+    monkeypatch.setattr(desktop.desktop_window, "create", lambda *_: None)
     monkeypatch.setattr(desktop, "_open_browser_when_ready", lambda: None)
     monkeypatch.setattr(file_viewer_runtime, "start_file_viewer", lambda *_: viewer)
     monkeypatch.setattr(file_viewer_runtime, "stop_file_viewer", stopped.append)
@@ -88,6 +89,7 @@ def test_configured_browser_is_used_for_source_launcher(monkeypatch, tmp_path: P
     browser = tmp_path / "msedge.exe"
     browser.touch()
     calls = []
+    monkeypatch.setattr(desktop.desktop_window, "activate", lambda _: False)
     monkeypatch.setenv("DBA_BROWSER_PATH", str(browser))
     monkeypatch.setattr(browser_launch, "_browser_windows", lambda: {})
     monkeypatch.setattr(browser_launch, "_maximize_new_workbench", lambda existing: None)
@@ -96,6 +98,16 @@ def test_configured_browser_is_used_for_source_launcher(monkeypatch, tmp_path: P
     desktop._open_workbench()
 
     assert calls[0][0] == [str(browser), "--new-window", "--start-maximized", desktop.URL]
+
+
+def test_tray_reopens_existing_desktop_window(monkeypatch) -> None:
+    activated = []
+    monkeypatch.setattr(desktop.desktop_window, "activate", lambda port: activated.append(port) or True)
+    monkeypatch.setattr(desktop, "open_workbench", lambda *_: pytest.fail("must reuse the desktop window"))
+
+    desktop._open_workbench()
+
+    assert activated == [desktop.PORT]
 
 
 def test_runtime_honors_source_log_directory(monkeypatch, tmp_path: Path) -> None:
