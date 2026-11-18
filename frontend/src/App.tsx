@@ -18,8 +18,9 @@ export function App() {
 }
 
 function Gate() {
-  const { session, loading } = useAuth();
+  const { session, loading, refreshError } = useAuth();
   if (loading) return <DesktopStartup><main className="auth-layout"><LoadingState label="检查本机会话" /></main></DesktopStartup>;
+  if (!session && refreshError) return <DesktopStartup><main className="auth-layout"><p role="alert">无法建立本机会话。请重新打开工作台。</p></main></DesktopStartup>;
   if (!session?.authenticated) return <DesktopStartup><AuthPage /></DesktopStartup>;
   return <BrowserRouter><Routes><Route element={<Shell />}><Route index element={<Dashboard />} /><Route path="scripts" element={<CrudPage config={scriptsConfig} />} /><Route path="articles" element={<CrudPage config={articlesConfig} />} /><Route path="resources" element={<CrudPage config={resourcesConfig} />} /><Route path="tasks" element={<CrudPage config={tasksConfig} />} /><Route path="customers" element={<CrudPage config={customersConfig} />} /><Route path="vault" element={<Vault />} /><Route path="*" element={<Navigate to="/" replace />} /></Route></Routes></BrowserRouter>;
 }

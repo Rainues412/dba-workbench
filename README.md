@@ -64,7 +64,7 @@ py -3.12 -m venv .runtime\.venv
 .\.runtime\.venv\Scripts\pythonw.exe tools\windows\launch_dba_workbench.py
 ```
 
-源码启动器使用系统的 Microsoft Edge WebView2 Runtime，关闭窗口后仍可从系统托盘重新打开。WebView2 不可用时回退到浏览器。
+源码启动器使用系统的 Microsoft Edge WebView2 Runtime，关闭窗口后仍可从系统托盘重新打开。WebView2 不可用时回退到浏览器。从启动器打开时会自动进入工作台。已有用户可继续使用原登录密码验证保险箱的敏感操作。首次使用保险箱时，如尚未设置敏感操作密码，则按提示设置。保险箱主密码单独设置。
 
 如需在源码模式预览 Office、PDF 等文件，可通过 `DBA_FILE_VIEWER_HOME` 指向已构建的查看器目录。[查看器构建脚本](packaging/windows/build-file-viewer.ps1)
 

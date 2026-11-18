@@ -59,6 +59,8 @@ export function jsonBody(value: unknown): string {
 export type Session = {
   authenticated: boolean;
   setup_required: boolean;
+  desktop?: boolean;
+  password_setup_required?: boolean;
   csrf_token?: string;
   reauthenticated_until?: string | null;
   reauth_minutes?: number;
@@ -77,17 +79,32 @@ export type Page<T> = {
 
 export type Entity = Record<string, unknown> & { id: number; revision: number };
 
+async function sessionStatus(signal?: AbortSignal): Promise<Session> {
+  const token = new URLSearchParams(window.location.hash.slice(1)).get("desktop");
+  if (token) {
+    window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search);
+    window.sessionStorage.setItem("dba-desktop-token", token);
+  }
+  const desktopToken = token || window.sessionStorage.getItem("dba-desktop-token");
+  let session = await api<Session>("/api/auth/status", { signal });
+  if (desktopToken && !session.authenticated) {
+    await api<void>("/api/auth/desktop", { method: "POST", headers: { "X-DBA-Desktop-Token": desktopToken }, signal });
+    session = await api<Session>("/api/auth/status", { signal });
+  }
+  return desktopToken ? { ...session, desktop: true } : session;
+}
+
 export const authApi = {
-  status: (signal?: AbortSignal) => api<Session>("/api/auth/status", { signal }),
+  status: sessionStatus,
   setup: (username: string, password: string) =>
     api<Session>("/api/auth/setup", { method: "POST", body: jsonBody({ username, password }) }),
   login: (username: string, password: string) =>
     api<Session>("/api/auth/login", { method: "POST", body: jsonBody({ username, password }) }),
   logout: () => api<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
-  reauthenticate: (password: string) =>
+  reauthenticate: (password: string, initializePassword = false) =>
     api<{ reauthenticated_until: string }>("/api/auth/reauthenticate", {
       method: "POST",
-      body: jsonBody({ password }),
+      body: jsonBody(initializePassword ? { password, initialize_password: true } : { password }),
     }),
 };
 

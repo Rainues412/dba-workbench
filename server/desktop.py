@@ -20,6 +20,7 @@ APP_TITLE = "DBA 工作台"
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("DBA_PORT", "8686"))
 URL = f"http://{HOST}:{PORT}/"
+_launch_url = URL
 
 
 def _data_directory() -> Path:
@@ -102,7 +103,7 @@ def _open_workbench() -> None:
         return
     browser_path = os.environ.get("DBA_BROWSER_PATH", "").strip().strip('"')
     browser = Path(browser_path) if browser_path and Path(browser_path).is_file() else find_edge()
-    open_workbench(URL, browser)
+    open_workbench(_launch_url, browser)
 
 
 def _open_browser_when_ready() -> None:
@@ -116,7 +117,7 @@ def _open_browser_when_ready() -> None:
 def _show_window_when_ready(server, window) -> None:
     while not server.should_exit:
         if server.started:
-            window.load_url(URL)
+            window.load_url(_launch_url)
             window.show()
             window.maximize()
             return
@@ -198,6 +199,7 @@ def _start_tray(server) -> threading.Thread:
 
 
 def main() -> None:
+    global _launch_url
     log_dir = _configure_runtime()
     state = _probe_service()
     if state == "dba":
@@ -207,11 +209,13 @@ def main() -> None:
         raise RuntimeError(f"端口 {PORT} 已被其他程序占用。")
 
     import uvicorn
+    from backend.auth import enable_desktop_login
     from file_viewer_runtime import start_file_viewer, stop_file_viewer
     from main import app
 
     viewer = start_file_viewer(_data_directory(), log_dir)
     try:
+        _launch_url = f"{URL}#desktop={enable_desktop_login()}"
         config = uvicorn.Config(
             app,
             host=HOST,

@@ -80,7 +80,7 @@ export function Shell() {
           <div className="user-card">
             <span className="avatar" aria-hidden="true">{session?.user?.username?.slice(0, 1).toUpperCase()}</span>
             <span className="user-copy"><strong title={session?.user?.username}>{session?.user?.username}</strong><small>本机 Owner</small></span>
-            <button className="icon-button sidebar-action" onClick={() => void logout()} aria-label="退出登录" title="退出登录"><LogOut size={14} /></button>
+            {!session?.desktop && <button className="icon-button sidebar-action" onClick={() => void logout()} aria-label="退出登录" title="退出登录"><LogOut size={14} /></button>}
           </div>
         </div>
       </aside>

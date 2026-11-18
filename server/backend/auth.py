@@ -17,12 +17,28 @@ SESSION_COOKIE = "dba_session"
 SESSION_HOURS = 12
 REAUTH_MINUTES = 30
 MIN_PASSWORD_LENGTH = 9
+UNSET_PASSWORD_HASH = "!"
 PUBLIC_API_PATHS = {
     "/api/auth/status",
+    "/api/auth/desktop",
     "/api/auth/setup",
     "/api/auth/login",
-    "/api/health",
 }
+_desktop_token: str | None = None
+
+
+def enable_desktop_login() -> str:
+    global _desktop_token
+    _desktop_token = secrets.token_urlsafe(32)
+    return _desktop_token
+
+
+def desktop_login_enabled() -> bool:
+    return _desktop_token is not None
+
+
+def verify_desktop_login(token: str | None) -> bool:
+    return bool(_desktop_token and token and hmac.compare_digest(_desktop_token.encode(), token.encode()))
 
 _hasher = PasswordHasher(
     time_cost=3,
@@ -94,10 +110,42 @@ def owner_exists() -> bool:
         return bool(conn.execute("SELECT 1 FROM users LIMIT 1").fetchone())
 
 
+def insert_owner(conn, username: str, password_hash: str) -> int:
+    cursor = conn.execute(
+        "INSERT INTO users(username, password_hash) VALUES (?, ?)",
+        (username, password_hash),
+    )
+    conn.execute(
+        "INSERT INTO memberships(user_id, role_id) SELECT ?, id FROM roles WHERE name = 'owner'",
+        (cursor.lastrowid,),
+    )
+    return int(cursor.lastrowid)
+
+
+def desktop_owner_id() -> int:
+    with get_db_ctx() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            """SELECT users.id FROM users
+               JOIN memberships ON memberships.user_id = users.id
+               JOIN roles ON roles.id = memberships.role_id
+               WHERE roles.name = 'owner' AND users.is_active = 1
+               ORDER BY users.id LIMIT 1"""
+        ).fetchone()
+        if row:
+            return int(row["id"])
+        if conn.execute("SELECT 1 FROM users LIMIT 1").fetchone():
+            raise HTTPException(403, "No active local owner")
+        user_id = insert_owner(conn, "本机用户", UNSET_PASSWORD_HASH)
+        conn.commit()
+        return user_id
+
+
 def _session_row(token: str):
     with get_db_ctx() as conn:
         row = conn.execute(
             """SELECT sessions.*, users.username, users.is_active,
+                      users.password_hash = ? AS password_setup_required,
                       GROUP_CONCAT(roles.name) AS roles
                FROM sessions
                JOIN users ON users.id = sessions.user_id
@@ -105,7 +153,7 @@ def _session_row(token: str):
                JOIN roles ON roles.id = memberships.role_id
                WHERE sessions.token_hash = ?
                GROUP BY sessions.id""",
-            (digest(token),),
+            (UNSET_PASSWORD_HASH, digest(token)),
         ).fetchone()
         if not row:
             return None

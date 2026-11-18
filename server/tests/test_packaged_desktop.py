@@ -8,6 +8,7 @@ import desktop
 import file_viewer_runtime
 import pytest
 import uvicorn
+from backend import auth
 from backend import browser_launch
 
 
@@ -65,6 +66,8 @@ def test_desktop_bounds_shutdown_and_cleans_up_viewer(monkeypatch, tmp_path: Pat
     viewer = object()
     stopped = []
     monkeypatch.setattr(desktop, "_configure_runtime", lambda: tmp_path)
+    monkeypatch.setattr(desktop, "_launch_url", desktop.URL)
+    monkeypatch.setattr(auth, "enable_desktop_login", lambda: "test-only-token")
     monkeypatch.setattr(desktop, "_probe_service", lambda: "down")
     monkeypatch.setattr(desktop, "_data_directory", lambda: tmp_path)
     monkeypatch.setattr(desktop.desktop_window, "create", lambda *_: None)

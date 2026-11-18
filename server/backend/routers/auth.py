@@ -11,10 +11,14 @@ from backend.auth import (
     REAUTH_MINUTES,
     SESSION_COOKIE,
     SESSION_HOURS,
+    UNSET_PASSWORD_HASH,
     attempt_identifier,
     clear_attempts,
     create_session,
+    desktop_login_enabled,
+    desktop_owner_id,
     hash_password,
+    insert_owner,
     load_session,
     mark_reauthenticated,
     owner_exists,
@@ -23,6 +27,7 @@ from backend.auth import (
     retry_after,
     revoke_session,
     validate_password,
+    verify_desktop_login,
     verify_password,
 )
 from backend.config import settings
@@ -39,6 +44,7 @@ class Credentials(BaseModel):
 
 class Reauthenticate(BaseModel):
     password: Annotated[str, Field(min_length=MIN_PASSWORD_LENGTH, max_length=256)]
+    initialize_password: bool = False
 
 
 def _username(value: str) -> str:
@@ -72,20 +78,22 @@ def _session_payload(session: dict, csrf: str | None = None) -> dict:
         "csrf_token": csrf,
         "reauthenticated_until": session.get("reauthenticated_until"),
         "reauth_minutes": REAUTH_MINUTES,
+        "password_setup_required": bool(session["password_setup_required"]),
     }
 
 
 @router.get("/status")
 def status(request: Request):
-    setup_required = not owner_exists()
     session = load_session(request)
     if not session:
-        return {"authenticated": False, "setup_required": setup_required}
+        return {"authenticated": False, "setup_required": not desktop_login_enabled() and not owner_exists()}
     return _session_payload(session, session["csrf_token"])
 
 
 @router.post("/setup", status_code=201)
 def setup(data: Credentials, response: Response):
+    if desktop_login_enabled():
+        raise HTTPException(403, "Manual owner setup is disabled in desktop mode")
     if owner_exists():
         raise HTTPException(409, "Owner already exists")
     username = _username(data.username)
@@ -96,22 +104,11 @@ def setup(data: Credentials, response: Response):
             conn.execute("BEGIN IMMEDIATE")
             if conn.execute("SELECT 1 FROM users LIMIT 1").fetchone():
                 raise HTTPException(409, "Owner already exists")
-            cursor = conn.execute(
-                "INSERT INTO users(username, password_hash) VALUES (?, ?)",
-                (username, password_hash),
-            )
-            owner_role = conn.execute(
-                "SELECT id FROM roles WHERE name = 'owner'"
-            ).fetchone()
-            conn.execute(
-                "INSERT INTO memberships(user_id, role_id) VALUES (?, ?)",
-                (cursor.lastrowid, owner_role["id"]),
-            )
+            user_id = insert_owner(conn, username, password_hash)
             conn.commit()
         except Exception:
             conn.rollback()
             raise
-        user_id = int(cursor.lastrowid)
     token, csrf = create_session(user_id)
     _set_cookie(response, token)
     return {
@@ -122,6 +119,16 @@ def setup(data: Credentials, response: Response):
         "reauthenticated_until": None,
         "reauth_minutes": REAUTH_MINUTES,
     }
+
+
+@router.post("/desktop", status_code=204)
+def desktop_login(request: Request, response: Response):
+    if settings.mode != "local" or not verify_desktop_login(request.headers.get("X-DBA-Desktop-Token")):
+        raise HTTPException(401, "Invalid desktop launch token")
+    user_id = desktop_owner_id()
+    revoke_session(request.cookies.get(SESSION_COOKIE))
+    token, _ = create_session(user_id)
+    _set_cookie(response, token)
 
 
 @router.post("/login")
@@ -181,7 +188,17 @@ def reauthenticate(data: Reauthenticate, request: Request):
             "SELECT password_hash FROM users WHERE id = ? AND is_active = 1",
             (session["user_id"],),
         ).fetchone()
-    if not row or not verify_password(row["password_hash"], data.password):
+        if row and data.initialize_password:
+            if row["password_hash"] != UNSET_PASSWORD_HASH:
+                raise HTTPException(409, "敏感操作密码已设置，请刷新后验证。")
+            cursor = conn.execute(
+                "UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND password_hash = ? AND is_active = 1",
+                (hash_password(data.password), session["user_id"], UNSET_PASSWORD_HASH),
+            )
+            if cursor.rowcount != 1:
+                raise HTTPException(409, "敏感操作密码已设置，请刷新后验证。")
+            conn.commit()
+    if not row or (not data.initialize_password and not verify_password(row["password_hash"], data.password)):
         record_failed_attempt(identifier)
         raise HTTPException(401, "Invalid password")
     clear_attempts(identifier)

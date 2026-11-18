@@ -446,6 +446,7 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .reauth-panel { display: grid; grid-template-columns: 48px minmax(220px, 1fr) minmax(280px, .85fr) auto; align-items: center; gap: 1rem; }
 .reauth-panel h2, .reauth-panel p { margin-bottom: .22rem; }
 .reauth-panel form { display: flex; gap: .55rem; }
+.reauth-panel .reauth-setup { flex-direction: column; }
 .reauth-panel form .button { min-width: 104px; white-space: nowrap; }
 .reauth-icon, .vault-gate-icon, .callout-icon, .vault-item-icon { display: grid; place-items: center; color: var(--primary); background: var(--primary-soft); }
 .reauth-icon { width: 44px; height: 44px; border-radius: 13px; }
