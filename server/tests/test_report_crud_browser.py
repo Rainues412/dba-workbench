@@ -1,5 +1,4 @@
 import re
-import json
 
 import pytest
 from playwright.sync_api import sync_playwright
@@ -69,41 +68,18 @@ def test_tasks_filters_complete_restore(live_server):
 
 
 @pytest.mark.browser
-def test_backup_dialog_append_and_atomic_error(live_server):
-    client, csrf = _api_client(live_server)
-    client.post("/api/scripts/", json={"title": "分类备份测试", "wb_type": "备份", "db_type": "Oracle"}, headers={"X-CSRF-Token": csrf}).raise_for_status()
+def test_topbar_has_no_ordinary_backup_entry(live_server):
+    client, _ = _api_client(live_server)
+    client.close()
     with sync_playwright() as playwright:
         browser = _edge(playwright)
-        context = browser.new_context(accept_downloads=True)
         try:
-            page = context.new_page()
+            page = browser.new_page()
             page.set_default_timeout(10_000)
             _login(page, live_server)
-            page.get_by_role("button", name="普通数据备份", exact=True).click()
-            dialog = page.get_by_role("dialog")
-            dialog.get_by_role("heading", name="普通模块备份与导入", exact=True).wait_for()
-            assert dialog.bounding_box()["height"] > 300
-            # Download logic has a dedicated frontend unit test. Use the real
-            # export endpoint for this import fixture: Playwright 1.48 crashes
-            # its Node driver while tearing down current Edge blob downloads.
-            backup = client.get("/api/export/all").json()
-            assert backup["scripts"][0]["wb_type"] == "备份"
-            assert "vault_items" not in backup and "users" not in backup
-            page.on("dialog", lambda alert: alert.accept())
-            upload = dialog.get_by_label("选择备份文件")
-            upload.set_input_files({"name": "roundtrip.json", "mimeType": "application/json", "buffer": json.dumps(backup).encode()})
-            dialog.get_by_text(re.compile("待追加：脚本 1 条")).wait_for()
-            dialog.get_by_role("button", name="确认追加导入", exact=True).click()
-            dialog.get_by_text(re.compile("追加导入完成：.*脚本 1 条")).wait_for()
-            rows = client.get("/api/scripts/").json()["items"]
-            assert len(rows) == 2 and all(row["wb_type"] == "备份" for row in rows)
-            invalid = {"scripts": [{"title": "不得保留"}, {"title": None}]}
-            upload.set_input_files({"name": "invalid.json", "mimeType": "application/json", "buffer": json.dumps(invalid).encode()})
-            dialog.get_by_text(re.compile("待追加：脚本 2 条")).wait_for()
-            dialog.get_by_role("button", name="确认追加导入", exact=True).click()
-            dialog.get_by_role("alert").filter(has_text="未写入任何记录").wait_for()
-            assert client.get("/api/scripts/").json()["total"] == 2
+            topbar = page.get_by_role("banner")
+            topbar.get_by_placeholder("全局搜索标题", exact=True).wait_for()
+            assert topbar.get_by_role("button", name="普通数据备份", exact=True).count() == 0
+            assert topbar.get_by_role("button", name=re.compile("切换到.*模式")).count() == 1
         finally:
-            context.close()
             browser.close()
-            client.close()

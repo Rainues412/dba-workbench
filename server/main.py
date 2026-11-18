@@ -23,7 +23,7 @@ from backend.auth import PUBLIC_API_PATHS, load_session, verify_csrf
 from backend.errors import (error_response, http_exception_handler, unhandled_exception_handler,
                             validation_exception_handler)
 from backend.observability import (logger, record_audit, request_id_var)
-from backend.routers import (articles, auth, customers, dashboard, export_import,
+from backend.routers import (articles, auth, customers, dashboard,
                              launcher, resources, scan, scripts, search,
                              tasks, vault)
 
@@ -174,7 +174,6 @@ app.include_router(scripts.router, prefix="/api/scripts", tags=["scripts"])
 app.include_router(articles.router, prefix="/api/articles", tags=["articles"])
 app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
 app.include_router(search.router, prefix="/api/search", tags=["search"])
-app.include_router(export_import.router, prefix="/api/export", tags=["export"])
 app.include_router(customers.router, prefix="/api/customers", tags=["customers"])
 app.include_router(resources.router, prefix="/api/resources", tags=["resources"])
 app.include_router(vault.router, prefix="/api/vault", tags=["vault"])

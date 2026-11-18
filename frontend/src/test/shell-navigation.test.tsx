@@ -6,7 +6,6 @@ import { Shell } from "../components/Shell";
 vi.mock("../auth/AuthContext", () => ({
   useAuth: () => ({ session: { user: { username: "owner" } }, logout: vi.fn() }),
 }));
-vi.mock("../components/DataBackup", () => ({ DataBackup: () => null }));
 afterEach(cleanup);
 
 describe("sidebar navigation", () => {

@@ -146,13 +146,11 @@ def test_customer_directory_responsive_and_multi_owner_edit(live_server, tmp_pat
             saved = client.get(base).json()
             assert all(saved[field] == value for field, value in legacy.items())
             assert [contact["name"] for contact in saved["contacts"]] == ["资源对接人"]
-            backup = client.get("/api/export/all").raise_for_status().json()
-            assert [(row["customer_id"], row["content"]) for row in backup["communications"]] == [
-                (customer["id"], "历史沟通"),
-            ]
-            assert [(row["customer_id"], row["title"]) for row in backup["tasks"]] == [
-                (customer["id"], "已有巡检"),
-            ]
+            with get_db_ctx() as conn:
+                communications = conn.execute("SELECT customer_id, content FROM communications").fetchall()
+            assert [tuple(row) for row in communications] == [(customer["id"], "历史沟通")]
+            tasks = client.get("/api/tasks/").raise_for_status().json()["items"]
+            assert [(row["customer_id"], row["title"]) for row in tasks] == [(customer["id"], "已有巡检")]
             assert [project["name"] for project in saved["project_profile"]["projects"]] == [f"项目 {n}" for n in range(1, 8)]
 
             search = page.get_by_role("textbox", name="搜索客户名或项目名")

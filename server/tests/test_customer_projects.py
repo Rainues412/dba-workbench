@@ -28,7 +28,7 @@ def test_customer_upgrade_keeps_legacy_fields_and_relations(tmp_path, monkeypatc
         assert conn.execute("SELECT customer_id, title FROM tasks").fetchall() == [(1, "已有任务")]
 
 
-def test_profile_save_revision_and_backup_round_trip(client):
+def test_profile_save_respects_revision_and_preserves_existing_data(client):
     legacy = {"name": "示例客户", "group_name": "客户公共群", "wb_contact": "企业微信", "wb_person": "王经理", "notes": "原始备注"}
     created = client.post("/api/customers/", json=legacy).json()
     profile = created["project_profile"]
@@ -57,16 +57,10 @@ def test_profile_save_revision_and_backup_round_trip(client):
     saved = client.get(url).json()
     assert all(saved[key] == value for key, value in legacy.items())
     assert "communications" not in saved and "tasks" not in saved
-    backup = client.get("/api/export/all").json()
-    assert backup["communications"][0]["content"] == "历史记录"
-    client.post("/api/export/import", json={"data": backup}).raise_for_status()
-    restored = next(row for row in client.get("/api/customers/").json()["items"] if row["id"] != cid)
-    assert restored["project_profile"] == profile
-    restored_backup = client.get("/api/export/all").json()
-    assert any(
-        row["customer_id"] == restored["id"] and row["content"] == "历史记录"
-        for row in restored_backup["communications"]
-    )
+    assert saved["project_profile"] == profile
+    with get_db_ctx() as conn:
+        rows = conn.execute("SELECT content FROM communications WHERE customer_id = ?", (cid,)).fetchall()
+    assert [row["content"] for row in rows] == ["历史记录"]
 
 
 def test_search_finds_current_project_names_and_preserves_customer_pagination(client):

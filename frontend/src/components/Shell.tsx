@@ -8,7 +8,6 @@ import {
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { GlobalSearch } from "./GlobalSearch";
-import { DataBackup } from "./DataBackup";
 import { SelectionIndicator, SelectionMotion } from "./SelectionMotion";
 
 const navigationGroups = [
@@ -88,7 +87,6 @@ export function Shell() {
           <div className="topbar-title"><span>{current.label}</span><small>{current.description}</small></div>
           <div className="topbar-actions">
             <GlobalSearch />
-            <DataBackup />
             <span className="local-status"><span className="status-dot" />本机安全模式</span>
             <button className="icon-button topbar-button" onClick={() => setTheme((value) => value === "light" ? "dark" : "light")} aria-label={theme === "light" ? "切换到深色模式" : "切换到浅色模式"} title={theme === "light" ? "深色模式" : "浅色模式"}>
               {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}

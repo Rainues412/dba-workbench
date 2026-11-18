@@ -49,7 +49,6 @@ def test_archive_boundary_is_fifteen_days_since_completion_and_preserves_data(cl
     detail = client.get(f"/api/tasks/{boundary['id']}").json()
     assert detail["description"] == "完整说明"
     assert detail["revision"] == boundary["revision"]  # Archiving reads never mutate rows.
-    assert len(client.get("/api/export/all").json()["tasks"]) == 4
 
 
 def test_completed_edits_do_not_restart_retention_and_restore_respects_revision(client):
@@ -86,24 +85,10 @@ def test_archive_filters_and_pagination_apply_before_limit(client):
     assert client.get("/api/tasks/", params={"archived": True, "priority": "低"}).json()["total"] == 0
 
 
-def test_backup_import_preserves_aged_completions_and_dates_missing_start_now(client):
-    response = client.post("/api/export/import", json={"data": {"tasks": [
-        {"title": "无完成时间", "status": "已完成", "created_at": "2000-01-01"},
-        {"title": "有完成时间", "status": "已完成", "completed_at": "2000-01-01", "created_at": "1999-01-01"},
-    ]}})
-    assert response.status_code == 200, response.text
-    assert client.get("/api/tasks/").json()["items"][0]["title"] == "无完成时间"
-    assert client.get("/api/tasks/", params={"archived": True}).json()["items"][0]["title"] == "有完成时间"
-    backup = client.get("/api/export/all").json()
-    assert client.post("/api/export/import", json={"data": backup}).status_code == 200
-    assert client.get("/api/tasks/").json()["total"] == 2
-    assert client.get("/api/tasks/", params={"archived": True}).json()["total"] == 2
-
-
 def test_removed_legacy_import_does_not_modify_existing_tasks(client):
     original = task(client, "保留原任务")
-    before = client.get("/api/export/all").json()["tasks"]
+    before = client.get("/api/tasks/").json()
     response = client.post("/api/tasks/legacy-archive", json={"items": [{"title": "不再导入"}]})
     assert response.status_code == 405
-    assert client.get("/api/export/all").json()["tasks"] == before
+    assert client.get("/api/tasks/").json() == before
     assert client.get(f"/api/tasks/{original['id']}").json()["title"] == "保留原任务"
