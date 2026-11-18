@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight, BookOpenText, Building2, CheckCircle2, Clock3, Database, KeyRound,
@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, entityApi } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { DatabaseLabel, databaseMeta } from "../components/DatabaseLabel";
 
@@ -15,6 +16,7 @@ type DatabaseDistribution = { name: DatabaseName; count: number }[];
 type DatabaseName = "Oracle" | "MySQL" | "PostgreSQL" | "SQL Server" | "Linux" | "Redis" | "MongoDB" | "其他";
 
 const numberFormat = new Intl.NumberFormat("zh-CN");
+const dateFormat = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" });
 
 export function Dashboard() {
   const client = useQueryClient();
@@ -36,7 +38,6 @@ export function Dashboard() {
     { label: "保险箱条目", value: data.password_count, hint: "客户端加密保存", to: "/vault", icon: KeyRound, tone: "rose" },
   ];
   const largestDatabaseCount = Math.max(1, ...(distribution.data ?? []).map((item) => item.count));
-  const date = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" }).format(new Date());
 
   async function completeTask(task: Task) {
     setQuickError("");
@@ -52,14 +53,7 @@ export function Dashboard() {
   }
 
   return <Page>
-    <section className="dashboard-hero">
-      <div>
-        <div className="hero-kicker"><Sparkles size={15} /> {date}</div>
-        <h1>今天的工作台</h1>
-        <p>集中查看 DBA 资产、待办工作和安全状态。</p>
-      </div>
-      <div className="hero-security"><ShieldCheck size={22} /><span><strong>本机数据受保护</strong><small>仅回环地址 · 已启用身份验证</small></span></div>
-    </section>
+    <DashboardHero />
 
     <section className="stat-grid" aria-label="数据摘要">
       {cards.map(({ label, value, hint, to, icon: Icon, tone }) => <Link className={`stat-card tone-${tone}`} to={to} key={label}>
@@ -107,20 +101,35 @@ export function Dashboard() {
       </section>
     </div>
 
-    <section className="quick-section">
-      <div className="section-heading"><div><p className="eyebrow">QUICK ACCESS</p><h2>常用入口</h2></div><p className="muted">快速进入高频工作模块</p></div>
-      <div className="quick-grid">
-        <QuickLink to="/scripts" icon={ScrollText} title="管理脚本" detail="检索和维护运维脚本" />
-        <QuickLink to="/articles" icon={BookOpenText} title="查阅知识" detail="沉淀排障与实施经验" />
-        <QuickLink to="/tasks" icon={ListTodo} title="安排任务" detail="跟踪计划、优先级与截止时间" />
-        <QuickLink to="/vault" icon={ShieldCheck} title="打开保险箱" detail="管理客户端加密凭据" />
-      </div>
-    </section>
   </Page>;
 }
 
-function QuickLink({ to, icon: Icon, title, detail }: { to: string; icon: typeof ScrollText; title: string; detail: string }) {
-  return <Link className="quick-link" to={to}><span><Icon size={20} /></span><span><strong>{title}</strong><small>{detail}</small></span><ArrowRight size={17} /></Link>;
+function DashboardHero() {
+  const { session } = useAuth();
+  const username = session?.user?.username;
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const greeting = greetingForHour(now.getHours());
+  return <section className="dashboard-hero">
+    <div className="hero-copy">
+      <div className="hero-kicker"><Sparkles size={15} /> {dateFormat.format(now)}</div>
+      <h1>{username ? `${greeting}，${username}` : greeting}</h1>
+      <p>集中查看 DBA 资产、待办工作和安全状态。</p>
+    </div>
+    <div className="hero-security"><ShieldCheck size={22} /><span><strong>本机数据受保护</strong><small>仅回环地址 · 已启用身份验证</small></span></div>
+  </section>;
+}
+
+function greetingForHour(hour: number) {
+  if (hour < 5 || hour >= 18) return "晚上好";
+  if (hour < 11) return "早上好";
+  if (hour < 13) return "中午好";
+  return "下午好";
 }
 
 function getPriorityMeta(priority: string) {

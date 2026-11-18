@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import {
-  BookOpenText, Building2, ChevronRight, HardDrive, LayoutDashboard,
+  BookOpenText, Building2, HardDrive, LayoutDashboard,
   ListTodo, LogOut, Moon, PackageOpen, PanelLeftClose, PanelLeftOpen,
   ScrollText, ShieldCheck, Sun,
 } from "lucide-react";
@@ -11,15 +11,22 @@ import { GlobalSearch } from "./GlobalSearch";
 import { DataBackup } from "./DataBackup";
 import { SelectionIndicator, SelectionMotion } from "./SelectionMotion";
 
-const navigation = [
-  { to: "/", label: "工作台", description: "数据概览", icon: LayoutDashboard },
-  { to: "/articles", label: "知识库", description: "文档沉淀", icon: BookOpenText },
-  { to: "/scripts", label: "脚本库", description: "运维脚本", icon: ScrollText },
-  { to: "/resources", label: "资源中心", description: "工具与入口", icon: PackageOpen },
-  { to: "/tasks", label: "任务管理", description: "计划与进度", icon: ListTodo },
-  { to: "/customers", label: "客户项目", description: "客户与联系人", icon: Building2 },
-  { to: "/vault", label: "密码保险箱", description: "客户端加密", icon: ShieldCheck },
+const navigationGroups = [
+  { label: "工作区", items: [
+    { to: "/", label: "工作台", description: "数据概览", icon: LayoutDashboard },
+    { to: "/tasks", label: "任务管理", description: "计划与进度", icon: ListTodo },
+    { to: "/customers", label: "客户项目", description: "客户与联系人", icon: Building2 },
+  ] },
+  { label: "资料", items: [
+    { to: "/articles", label: "知识库", description: "文档沉淀", icon: BookOpenText },
+    { to: "/scripts", label: "脚本库", description: "运维脚本", icon: ScrollText },
+    { to: "/resources", label: "资源中心", description: "工具与入口", icon: PackageOpen },
+  ] },
+  { label: "安全", items: [
+    { to: "/vault", label: "密码保险箱", description: "客户端加密", icon: ShieldCheck },
+  ] },
 ];
+const navigation = navigationGroups.flatMap(({ items }) => items);
 
 export function Shell() {
   const { session, logout } = useAuth();
@@ -40,35 +47,38 @@ export function Shell() {
       <aside className="sidebar">
         <div className="brand-row">
           <NavLink to="/" className="brand" aria-label="返回工作台" title={collapsed ? "返回工作台" : undefined}>
-            <span className="brand-mark small"><HardDrive size={20} strokeWidth={2.2} /></span>
-            <span className="brand-copy"><strong>DBA 工作台</strong><small>LOCAL OPERATIONS</small></span>
+            <span className="brand-mark small"><HardDrive size={14} strokeWidth={2} /></span>
+            <span className="brand-copy">DBA 工作台</span>
           </NavLink>
-          <button className="sidebar-toggle" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? "展开侧栏" : "收起侧栏"} title={collapsed ? "展开侧栏" : "收起侧栏"}>
-            {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+          <button type="button" className="sidebar-toggle" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? "展开侧栏" : "收起侧栏"} title={collapsed ? "展开侧栏" : "收起侧栏"}>
+            {collapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
           </button>
         </div>
 
-        <div className="nav-section-label">工作区</div>
         <SelectionMotion>
-        <motion.nav layoutScroll aria-label="主导航">
-          {navigation.map(({ to, label, description, icon: Icon }) => (
-            <NavLink key={to} to={to} end={to === "/"} aria-label={label} title={collapsed ? `${label}：${description}` : undefined} className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>
-              {({ isActive }) => <>
-              {isActive && <SelectionIndicator className="nav-active-indicator" radius={12} />}
-              <span className="nav-icon" aria-hidden="true"><Icon size={19} strokeWidth={1.9} /></span>
-              <span className="nav-copy"><strong>{label}</strong><small>{description}</small></span>
-              <ChevronRight className="nav-chevron" size={15} aria-hidden="true" />
-              </>}
-            </NavLink>
-          ))}
-        </motion.nav>
+          <motion.nav layoutScroll aria-label="主导航">
+            {navigationGroups.map(({ label: groupLabel, items }) => (
+              <div className="nav-group" role="group" aria-label={groupLabel} key={groupLabel}>
+                <div className="nav-section-label" aria-hidden="true">{groupLabel}</div>
+                {items.map(({ to, label, icon: Icon }) => (
+                  <NavLink key={to} to={to} end={to === "/"} aria-label={label} title={collapsed ? label : undefined} className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>
+                    {({ isActive }) => <>
+                      {isActive && <SelectionIndicator className="nav-active-indicator" radius="inherit" />}
+                      <Icon className="nav-icon" size={14} strokeWidth={1.9} aria-hidden="true" />
+                      <span className="nav-copy">{label}</span>
+                    </>}
+                  </NavLink>
+                ))}
+              </div>
+            ))}
+          </motion.nav>
         </SelectionMotion>
 
         <div className="sidebar-footer">
           <div className="user-card">
             <span className="avatar" aria-hidden="true">{session?.user?.username?.slice(0, 1).toUpperCase()}</span>
-            <span className="user-copy"><strong>{session?.user?.username}</strong><small>本机 Owner</small></span>
-            <button className="icon-button sidebar-action" onClick={() => void logout()} aria-label="退出登录" title="退出登录"><LogOut size={18} /></button>
+            <span className="user-copy"><strong title={session?.user?.username}>{session?.user?.username}</strong><small>本机 Owner</small></span>
+            <button className="icon-button sidebar-action" onClick={() => void logout()} aria-label="退出登录" title="退出登录"><LogOut size={14} /></button>
           </div>
         </div>
       </aside>

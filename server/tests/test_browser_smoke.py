@@ -10,6 +10,7 @@ from playwright.sync_api import Page, sync_playwright
 
 
 OWNER = {"username": "browser-owner", "password": "test-only-browser-passphrase"}
+WORKBENCH_GREETING = re.compile(rf"^(早上好|中午好|下午好|晚上好)，{re.escape(OWNER['username'])}$")
 
 
 def _api_client(base_url: str) -> tuple[httpx.Client, str]:
@@ -24,7 +25,7 @@ def _login(page: Page, base_url: str) -> None:
     page.get_by_label("用户名").fill(OWNER["username"])
     page.get_by_label("登录密码").fill(OWNER["password"])
     page.get_by_role("button", name="登录", exact=True).click()
-    page.get_by_role("heading", name="今天的工作台").wait_for()
+    page.get_by_role("heading", name=WORKBENCH_GREETING, level=1).wait_for()
 
 
 def _edge(playwright):
@@ -53,7 +54,7 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
             assert page.get_by_label("登录密码").get_attribute("minlength") == "9"
             page.get_by_label("确认密码").fill(OWNER["password"])
             page.get_by_role("button", name="创建并登录").click()
-            page.get_by_role("heading", name="今天的工作台").wait_for()
+            page.get_by_role("heading", name=WORKBENCH_GREETING, level=1).wait_for()
 
             page.get_by_role("navigation", name="主导航").get_by_role("link", name="脚本库").click()
             page.get_by_role("button", name="新增").click()

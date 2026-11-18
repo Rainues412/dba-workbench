@@ -10,19 +10,25 @@ vi.mock("../components/DataBackup", () => ({ DataBackup: () => null }));
 afterEach(cleanup);
 
 describe("sidebar navigation", () => {
-  it("places the knowledge base after the dashboard and labels collapsed controls", () => {
+  it("groups single-line links and labels collapsed controls", () => {
     render(<MemoryRouter><Routes><Route element={<Shell />}><Route index element={<div>首页</div>} /></Route></Routes></MemoryRouter>);
 
     const navigation = screen.getByRole("navigation", { name: "主导航" });
-    expect(within(navigation).getAllByRole("link").slice(0, 3).map((link) => link.getAttribute("aria-label")))
-      .toEqual(["工作台", "知识库", "脚本库"]);
+    for (const [name, labels] of [
+      ["工作区", ["工作台", "任务管理", "客户项目"]],
+      ["资料", ["知识库", "脚本库", "资源中心"]],
+      ["安全", ["密码保险箱"]],
+    ] as const) {
+      const group = within(navigation).getByRole("group", { name });
+      expect(within(group).getAllByRole("link").map((link) => link.textContent)).toEqual(labels);
+    }
 
     const toggle = screen.getByRole("button", { name: "收起侧栏" });
     expect(toggle).toHaveAttribute("title", "收起侧栏");
     fireEvent.click(toggle);
 
     expect(screen.getByRole("button", { name: "展开侧栏" })).toHaveAttribute("title", "展开侧栏");
-    expect(within(navigation).getByRole("link", { name: "知识库" })).toHaveAttribute("title", "知识库：文档沉淀");
+    expect(within(navigation).getByRole("link", { name: "知识库" })).toHaveAttribute("title", "知识库");
     expect(screen.getByRole("link", { name: "返回工作台" })).toHaveAttribute("title", "返回工作台");
   });
 
@@ -30,6 +36,7 @@ describe("sidebar navigation", () => {
     render(<MemoryRouter><Routes><Route element={<Shell />}><Route path="*" element={<div>内容</div>} /></Route></Routes></MemoryRouter>);
     const navigation = screen.getByRole("navigation", { name: "主导航" });
     const articles = within(navigation).getByRole("link", { name: "知识库" });
+    expect(within(navigation).getByRole("link", { name: "工作台", current: "page" })).toBeInTheDocument();
     fireEvent.click(articles);
     expect(articles).toHaveAttribute("aria-current", "page");
     expect(navigation.querySelectorAll(".nav-active-indicator")).toHaveLength(1);

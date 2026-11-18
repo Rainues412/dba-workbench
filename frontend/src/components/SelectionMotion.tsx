@@ -8,6 +8,6 @@ export function SelectionMotion({ children }: { children: ReactNode }) {
   return <MotionConfig reducedMotion="user"><LayoutGroup id={id}>{children}</LayoutGroup></MotionConfig>;
 }
 
-export function SelectionIndicator({ className, radius = 8 }: { className: string; radius?: number }) {
+export function SelectionIndicator({ className, radius = 8 }: { className: string; radius?: number | string }) {
   return <motion.span className={`selection-indicator ${className}`} aria-hidden="true" layout layoutId="selection" initial={false} transition={selectionSpring} style={{ borderRadius: radius }} />;
 }

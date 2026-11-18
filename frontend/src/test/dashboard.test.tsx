@@ -1,10 +1,32 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Dashboard } from "../pages/Dashboard";
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+vi.mock("../auth/AuthContext", () => ({
+  useAuth: () => ({ session: { user: { username: "dba-owner" } } }),
+}));
+
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+it("greets the signed-in user and updates across local time periods", () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date(2026, 10, 18, 4, 59));
+  const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, gcTime: 0 } } });
+  client.setQueryData(["dashboard", "stats"], { script_count: 0, article_count: 0, task_total: 0, task_pending: 0, task_overdue: 0, customer_count: 0, resource_count: 0, password_count: 0 });
+  client.setQueryData(["dashboard", "tasks"], []);
+  client.setQueryData(["dashboard", "database-distribution"], []);
+  render(<MemoryRouter><QueryClientProvider client={client}><Dashboard /></QueryClientProvider></MemoryRouter>);
+
+  expect(screen.getByRole("heading", { level: 1, name: "晚上好，dba-owner" })).toBeInTheDocument();
+  for (const [hour, greeting] of [[5, "早上好"], [11, "中午好"], [13, "下午好"], [18, "晚上好"]] as const) {
+    vi.setSystemTime(new Date(2026, 10, 18, hour - 1, 59));
+    act(() => { vi.advanceTimersByTime(60_000); });
+    expect(screen.getByRole("heading", { level: 1, name: `${greeting}，dba-owner` })).toBeInTheDocument();
+  }
+  expect(screen.queryByRole("heading", { name: "常用入口" })).not.toBeInTheDocument();
+});
 
 describe("dashboard task queue", () => {
   it("renders MongoDB as its own database distribution item", async () => {

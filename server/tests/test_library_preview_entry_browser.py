@@ -2,7 +2,7 @@
 import pytest
 from playwright.sync_api import expect, sync_playwright
 
-from test_browser_smoke import _api_client, _edge, _login
+from test_browser_smoke import WORKBENCH_GREETING, _api_client, _edge, _login
 
 
 @pytest.mark.browser
@@ -75,7 +75,7 @@ def test_dashboard_to_library_waits_for_a_title(live_server, tmp_path, monkeypat
             if width < 1400:
                 page.get_by_role("button", name="关闭预览", exact=True).click()
             nav.get_by_role("link", name="工作台", exact=True).click()
-            expect(page.get_by_role("heading", name="今天的工作台")).to_be_visible()
+            expect(page.get_by_role("heading", name=WORKBENCH_GREETING, level=1)).to_be_visible()
             enter_closed()
             page.reload()
             expect(page.get_by_role("button", name="预览：按需展开文件预览", exact=True)).to_be_visible()
