@@ -153,7 +153,7 @@ code { font-family: "Cascadia Code", Consolas, monospace; }
 .desktop-topbar .topbar-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .desktop-window-controls { display: flex; flex: 0 0 auto; padding-left: .45rem; border-left: 1px solid var(--border); }
 .desktop-window-controls button { display: grid; place-items: center; width: 2.1rem; height: 2.1rem; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--text); }
-.desktop-window-controls button:hover { background: var(--surface-tint); }
+.desktop-window-controls button:hover { color: var(--text-strong); background: color-mix(in srgb, var(--text-strong) 16%, var(--surface)); }
 .desktop-window-controls .desktop-window-close:hover { background: #c42b1c; color: white; }
 .desktop-startup-controls { position: fixed; top: .5rem; right: .55rem; z-index: 10; }
 .desktop-startup-controls .desktop-window-controls { background: var(--surface); padding-left: 0; border: 1px solid var(--border); border-radius: 7px; }
