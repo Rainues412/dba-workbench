@@ -7,6 +7,7 @@ import {
 import { Link } from "react-router-dom";
 import { api, entityApi } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { useProfile } from "../auth/profile";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { DatabaseLabel, databaseMeta } from "../components/DatabaseLabel";
 
@@ -106,7 +107,8 @@ export function Dashboard() {
 
 function DashboardHero() {
   const { session } = useAuth();
-  const username = session?.user?.username;
+  const { data: profile } = useProfile(session?.user?.id);
+  const displayName = profile?.display_name || session?.user?.username;
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -118,7 +120,7 @@ function DashboardHero() {
   return <section className="dashboard-hero">
     <div className="hero-copy">
       <div className="hero-kicker"><Sparkles size={15} /> {dateFormat.format(now)}</div>
-      <h1>{username ? `${greeting}，${username}` : greeting}</h1>
+      <h1>{displayName ? `${greeting}，${displayName}` : greeting}</h1>
       <p>集中查看 DBA 资产、待办工作和安全状态。</p>
     </div>
     <div className="hero-security"><ShieldCheck size={22} /><span><strong>本机数据受保护</strong><small>仅回环地址 · 已启用身份验证</small></span></div>

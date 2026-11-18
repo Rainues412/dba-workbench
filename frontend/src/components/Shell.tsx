@@ -2,12 +2,13 @@ import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import {
   BookOpenText, Building2, LayoutDashboard,
-  ListTodo, LogOut, Moon, PackageOpen, PanelLeftClose, PanelLeftOpen,
+  ListTodo, Moon, PackageOpen, PanelLeftClose, PanelLeftOpen,
   ScrollText, ShieldCheck, Sun,
 } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import brandIcon from "../../../assets/dba-workbench-icon.svg";
+import { AccountProfile } from "./AccountProfile";
 import { DesktopDragRegion, DesktopWindowControls, useDesktopWindow } from "./DesktopWindowControls";
 import { GlobalSearch } from "./GlobalSearch";
 import { SelectionIndicator, SelectionMotion } from "./SelectionMotion";
@@ -76,13 +77,8 @@ export function Shell() {
           </motion.nav>
         </SelectionMotion>
 
-        <div className="sidebar-footer">
-          <div className="user-card">
-            <span className="avatar" aria-hidden="true">{session?.user?.username?.slice(0, 1).toUpperCase()}</span>
-            <span className="user-copy"><strong title={session?.user?.username}>{session?.user?.username}</strong><small>本机 Owner</small></span>
-            {!session?.desktop && <button className="icon-button sidebar-action" onClick={() => void logout()} aria-label="退出登录" title="退出登录"><LogOut size={14} /></button>}
-          </div>
-        </div>
+        {session?.user?.id !== undefined && <AccountProfile key={session.user.id} userId={session.user.id}
+          username={session.user.username} logout={session.desktop ? undefined : logout} />}
       </aside>
 
       <div className="workspace">

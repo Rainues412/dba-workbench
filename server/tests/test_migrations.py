@@ -37,6 +37,28 @@ def test_stage_one_legacy_schema_is_baselined_then_upgraded(tmp_path: Path) -> N
         assert conn.execute("SELECT COUNT(*) FROM roles").fetchone()[0] == 4
 
 
+def test_user_profile_upgrade_preserves_existing_accounts_and_sessions(tmp_path, monkeypatch):
+    path = tmp_path / "pre-profile.db"
+    files = migration_module._migration_files()
+    with monkeypatch.context() as patch:
+        patch.setattr(migration_module, "_migration_files", lambda: files[:8])
+        migrate(path)
+    with sqlite3.connect(path) as conn:
+        conn.execute("""INSERT INTO users(id, username, password_hash, display_name, avatar_png, profile_revision)
+                        VALUES (3, 'local-owner', 'pre-upgrade-hash', '值班 DBA', X'010203', 4)""")
+        conn.execute("INSERT INTO memberships(user_id, role_id) SELECT 3, id FROM roles WHERE name = 'owner'")
+        conn.execute("""INSERT INTO sessions(user_id, token_hash, csrf_hash, expires_at, last_seen_at)
+                        VALUES (3, 'existing-session', 'existing-csrf', '2099-01-01', '2026-11-18')""")
+    migrate(path)
+    with sqlite3.connect(path) as conn:
+        assert conn.execute("SELECT id, username, password_hash, display_name, avatar_png, profile_revision, work_role, specialties, bio FROM users").fetchone() == (
+            3, "local-owner", "pre-upgrade-hash", "值班 DBA", b"\x01\x02\x03", 4, "", "[]", "",
+        )
+        assert conn.execute("SELECT user_id, token_hash, csrf_hash FROM sessions").fetchone() == (3, "existing-session", "existing-csrf")
+        assert conn.execute("SELECT roles.name FROM roles JOIN memberships ON memberships.role_id = roles.id WHERE user_id = 3").fetchone() == ("owner",)
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
 def test_query_plan_uses_filter_indexes(tmp_path: Path) -> None:
     path = tmp_path / "plans.db"
     migrate(path)

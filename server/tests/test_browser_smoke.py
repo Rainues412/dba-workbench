@@ -5,8 +5,9 @@ import re
 
 import httpx
 import pytest
+from PIL import Image
 from playwright.sync_api import Error as PlaywrightError
-from playwright.sync_api import Page, sync_playwright
+from playwright.sync_api import Page, expect, sync_playwright
 
 
 OWNER = {"username": "browser-owner", "password": "test-only-browser-passphrase"}
@@ -38,6 +39,92 @@ def _edge(playwright):
 def _select_database(page: Page, name: str) -> None:
     page.get_by_role("combobox", name="筛选数据库").click()
     page.get_by_role("option", name=re.compile(r"^" + re.escape(name) + "（")).click()
+
+
+@pytest.mark.browser
+def test_profile_links_sidebar_and_dashboard_across_browser_and_desktop_sessions(live_server, tmp_path, monkeypatch):
+    from backend import auth
+
+    client, _ = _api_client(live_server)
+    client.close()
+    avatar = tmp_path / "avatar.png"
+    Image.new("RGB", (280, 160), "navy").save(avatar)
+    with sync_playwright() as playwright:
+        browser = _edge(playwright)
+        try:
+            page = browser.new_page(viewport={"width": 1200, "height": 780})
+            _login(page, live_server)
+            page.get_by_role("button", name="收起侧栏").click()
+            account = page.get_by_role("button", name=f"个人资料：{OWNER['username']}")
+            expect(account).not_to_contain_text("本机管理员")
+            expect(page.get_by_role("button", name="退出登录")).to_be_visible()
+            account.focus()
+            page.keyboard.press("Enter")
+            dialog = page.get_by_role("dialog", name="个人资料")
+            name = dialog.get_by_label("用户名")
+            expect(name).to_be_focused()
+            assert dialog.locator(".profile-photo").bounding_box()["x"] < dialog.locator(".profile-details").bounding_box()["x"]
+            overlay = page.locator(".profile-overlay")
+            assert page.locator(".profile-backdrop").evaluate("el => getComputedStyle(el).backdropFilter") == "blur(5px)"
+            overlay.click(position={"x": 120, "y": 100})
+            expect(dialog).to_have_count(0)
+            expect(account).to_be_focused()
+            account.click()
+            name.fill("夜班巡检 DBA")
+            overlay.click(position={"x": 120, "y": 100})
+            discard = dialog.get_by_role("alertdialog", name="放弃修改？")
+            discard.get_by_role("button", name="继续编辑").click()
+            expect(name).to_have_value("夜班巡检 DBA")
+            dialog.get_by_label("工作角色").fill("Oracle DBA")
+            dialog.get_by_label("个人简介").fill("巡检与恢复验证")
+            dialog.get_by_role("button", name="添加", exact=True).click()
+            specialty = dialog.get_by_role("textbox", name="添加擅长方向")
+            specialty.fill("Oracle 恢复")
+            specialty.press("Enter")
+            expect(dialog.get_by_role("button", name="移除擅长方向：Oracle 恢复")).to_be_visible()
+            dialog.get_by_label("头像图片").set_input_files(avatar)
+            expect(dialog.locator(".avatar img")).to_be_visible()
+            expect(page.locator(".dashboard-hero h1")).to_have_text(WORKBENCH_GREETING)
+            dialog.get_by_role("button", name="保存", exact=True).click()
+            expect(dialog).to_have_count(0)
+            saved_account = page.get_by_role("button", name="个人资料：夜班巡检 DBA")
+            expect(saved_account).to_be_focused()
+            expect(saved_account.locator("img")).to_be_visible()
+            expect(page.get_by_role("heading", level=1, name=re.compile(r"好，夜班巡检 DBA$"))).to_be_visible()
+            page.reload()
+            expect(saved_account).to_be_visible()
+
+            token = "test-only-profile-desktop"
+            monkeypatch.setattr(auth, "_desktop_token", token)
+            desktop = browser.new_page(viewport={"width": 390, "height": 780})
+            desktop.goto(live_server + "/#desktop=" + token)
+            desktop.get_by_role("button", name="切换到深色模式").click()
+            saved_account = desktop.get_by_role("button", name="个人资料：夜班巡检 DBA")
+            saved_account.click()
+            expect(desktop.get_by_role("button", name="退出登录")).to_have_count(0)
+            dialog = desktop.get_by_role("dialog", name="个人资料")
+            expect(dialog).to_be_visible()
+            assert dialog.evaluate("el => el.scrollWidth <= el.clientWidth + 1")
+            assert dialog.locator(".profile-photo").bounding_box()["y"] < dialog.locator(".profile-details").bounding_box()["y"]
+            expect(dialog.get_by_label("工作角色")).to_have_value("Oracle DBA")
+            expect(dialog.get_by_label("个人简介")).to_have_value("巡检与恢复验证")
+            expect(dialog.get_by_role("button", name="移除擅长方向：Oracle 恢复")).to_be_visible()
+            dialog.get_by_label("用户名").fill("临时名称")
+            desktop.keyboard.press("Escape")
+            dialog.get_by_role("alertdialog", name="放弃修改？").get_by_role("button", name="放弃修改").click()
+            expect(saved_account).to_be_focused()
+            expect(desktop.get_by_role("heading", level=1, name=re.compile(r"好，夜班巡检 DBA$"))).to_be_visible()
+
+            saved_account.click()
+            expect(dialog.get_by_label("用户名")).to_have_value("夜班巡检 DBA")
+            dialog.get_by_label("用户名").fill("")
+            dialog.get_by_role("button", name="移除头像").click()
+            dialog.get_by_role("button", name="移除擅长方向：Oracle 恢复").click()
+            dialog.get_by_role("button", name="保存", exact=True).click()
+            expect(desktop.get_by_role("heading", level=1, name=WORKBENCH_GREETING)).to_be_visible()
+            expect(desktop.get_by_role("button", name=f"个人资料：{OWNER['username']}").locator("img")).to_have_count(0)
+        finally:
+            browser.close()
 
 
 @pytest.mark.browser

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import base64
 import sqlite3
 from datetime import datetime, timedelta, timezone
+from io import BytesIO
 
 from fastapi.testclient import TestClient
+from PIL import Image
 
 
 OWNER = {"username": "test-owner", "password": "test-only-owner-passphrase"}
@@ -53,6 +56,53 @@ def test_password_minimum_is_nine_characters(raw_client: TestClient) -> None:
         json={"username": "owner", "password": "123456789"},
     )
     assert accepted.status_code == 201
+
+
+def test_profile_is_session_scoped_versioned_and_saves_a_thumbnail(raw_client: TestClient) -> None:
+    path = "/api/auth/profile"
+    assert raw_client.get(path).status_code == 401
+    setup = raw_client.post("/api/auth/setup", json=OWNER).json()
+    empty = {"display_name": "", "avatar": None, "revision": 1, "work_role": "", "specialties": [], "bio": ""}
+    assert raw_client.get(path).json() == empty
+    avatar = BytesIO()
+    Image.new("RGB", (480, 240), "navy").save(avatar, format="JPEG")
+    draft = {
+        "display_name": "  值班 DBA  ",
+        "avatar": "data:image/jpeg;base64," + base64.b64encode(avatar.getvalue()).decode(),
+        "work_role": " Oracle DBA ",
+        "specialties": ["Oracle", "oracle", " 恢复 ", " "],
+        "bio": " 巡检与备份\n恢复验证 ",
+    }
+    assert raw_client.put(path, json=draft, headers={"If-Match": "1"}).status_code == 403
+    raw_client.headers["X-CSRF-Token"] = setup["csrf_token"]
+    assert raw_client.put(path, json=draft).status_code == 428
+    headers = {"If-Match": '"1"'}
+    assert raw_client.put(path, json={**draft, "user_id": 999}, headers=headers).status_code == 422
+    assert raw_client.put(path, json={**draft, "avatar": "data:image/png;base64,AAAA"}, headers=headers).status_code == 422
+    assert raw_client.put(path, json={**draft, "display_name": "超" * 41}, headers=headers).status_code == 422
+
+    response = raw_client.put(path, json=draft, headers=headers)
+    assert response.status_code == 200
+    profile = response.json()
+    assert profile["display_name"] == "值班 DBA"
+    assert profile["revision"] == 2
+    assert (profile["work_role"], profile["specialties"], profile["bio"]) == ("Oracle DBA", ["Oracle", "恢复"], "巡检与备份\n恢复验证")
+    mime, payload = profile["avatar"].split(",", 1)
+    assert mime == "data:image/png;base64"
+    with Image.open(BytesIO(base64.b64decode(payload))) as thumbnail:
+        assert thumbnail.size == (192, 192)
+    assert raw_client.put(path, json=draft, headers=headers).status_code == 409
+
+    assert raw_client.post("/api/auth/logout").status_code == 200
+    login = raw_client.post("/api/auth/login", json=OWNER)
+    assert login.status_code == 200
+    assert login.json()["user"]["username"] == OWNER["username"]
+    assert raw_client.get(path).json() == profile
+    raw_client.headers["X-CSRF-Token"] = login.json()["csrf_token"]
+    reset = raw_client.put(path, json={"display_name": "", "avatar": None}, headers={"If-Match": "2"})
+    assert reset.json() == {**profile, "display_name": "", "avatar": None, "revision": 3}
+    cleared = raw_client.put(path, json={key: value for key, value in empty.items() if key != "revision"}, headers={"If-Match": "3"})
+    assert cleared.json() == {**empty, "revision": 4}
 
 
 def test_desktop_login_requires_launch_token_and_sets_up_vault_verification(raw_client, monkeypatch) -> None:

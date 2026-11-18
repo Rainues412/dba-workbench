@@ -1,9 +1,10 @@
 """First-owner setup and local cookie-session authentication."""
 from __future__ import annotations
 
+import json
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Header, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from backend.auth import (
@@ -30,8 +31,10 @@ from backend.auth import (
     verify_desktop_login,
     verify_password,
 )
+from backend.concurrency import expected_revision, raise_write_conflict
 from backend.config import settings
 from backend.database import get_db_ctx
+from backend.user_profile import PROFILE_COLUMNS, ProfileUpdate, avatar_thumbnail, normalize_display_name, profile_payload
 
 
 router = APIRouter()
@@ -174,6 +177,40 @@ def logout(request: Request, response: Response):
     revoke_session(request.cookies.get(SESSION_COOKIE))
     response.delete_cookie(SESSION_COOKIE, path="/")
     return {"ok": True}
+
+
+@router.get("/profile")
+def get_profile(request: Request, response: Response):
+    with get_db_ctx() as conn:
+        row = conn.execute(
+            f"SELECT {PROFILE_COLUMNS} FROM users WHERE id = ? AND is_active = 1",
+            (request.state.session["user_id"],),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(404, "找不到当前账号的个人资料。")
+    response.headers["Cache-Control"] = "no-store"
+    return profile_payload(row)
+
+
+@router.put("/profile")
+def update_profile(data: ProfileUpdate, request: Request, if_match: str | None = Header(None)):
+    revision = expected_revision(if_match)
+    user_id = request.state.session["user_id"]
+    name = normalize_display_name(data.display_name)
+    avatar = avatar_thumbnail(data.avatar)
+    specialties = json.dumps(data.specialties, ensure_ascii=False) if data.specialties is not None else None
+    with get_db_ctx() as conn:
+        updated = conn.execute(
+            f"""UPDATE users SET display_name = ?, avatar_png = ?, profile_revision = profile_revision + 1,
+                   work_role = COALESCE(?, work_role), specialties = COALESCE(?, specialties), bio = COALESCE(?, bio)
+               WHERE id = ? AND profile_revision = ? AND is_active = 1
+               RETURNING {PROFILE_COLUMNS}""",
+            (name, avatar, data.work_role, specialties, data.bio, user_id, revision),
+        ).fetchone()
+        if updated is None:
+            raise_write_conflict(conn, "users", user_id)
+        conn.commit()
+    return profile_payload(updated)
 
 
 @router.post("/reauthenticate")
