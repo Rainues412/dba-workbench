@@ -1,5 +1,5 @@
 """Scripts API - CRUD operations for the script library."""
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query, Request
 from pydantic import BaseModel
 from typing import Optional
 from backend.database import get_db_ctx, page_response, validate_page
@@ -33,6 +33,7 @@ class ScriptUpdate(BaseModel):
 
 @router.get("/")
 def list_scripts(
+    request: Request,
     keyword: str = "",
     db_type: str = "",
     wb_type: str = "",
@@ -41,6 +42,7 @@ def list_scripts(
     page: int = 1,
     page_size: int = 20,
     locate_id: Optional[int] = Query(default=None, ge=1),
+    auto_pin: bool = False,
 ):
     """List scripts with filtering and pagination."""
     with get_db_ctx() as conn:
@@ -67,10 +69,19 @@ def list_scripts(
 
         offset, ps = validate_page(page, page_size)
         order_by = "updated_at DESC, id DESC"
+        order_params = []
+        if auto_pin and not keyword.strip():
+            order_by = f"""CASE WHEN id IN (
+                SELECT script_id FROM script_usage
+                WHERE user_id = ? AND viewed_at >= datetime('now', '-30 days')
+                GROUP BY script_id HAVING COUNT(*) >= 3
+                ORDER BY COUNT(*) DESC, MAX(viewed_at) DESC, script_id DESC LIMIT 5
+            ) THEN 0 ELSE 1 END, {order_by}"""
+            order_params.append(request.state.session["user_id"])
         if locate_id is not None:
             position = conn.execute(
                 f"SELECT position FROM (SELECT id, ROW_NUMBER() OVER (ORDER BY {order_by}) AS position FROM scripts {where}) WHERE id = ?",
-                params + [locate_id],
+                order_params + params + [locate_id],
             ).fetchone()
             if position:
                 page = (position[0] - 1) // ps + 1
@@ -81,9 +92,37 @@ def list_scripts(
                        is_favorite, created_at, updated_at, version, revision
                 FROM scripts {where}
                 ORDER BY {order_by} LIMIT ? OFFSET ?""",
-            params + [ps, offset],
+            params + order_params + [ps, offset],
         ).fetchall()
         return page_response(total, rows, page, ps)
+
+
+@router.get("/recent-views")
+def recent_views(request: Request):
+    with get_db_ctx() as conn:
+        rows = conn.execute(
+            """SELECT scripts.id, scripts.title, MAX(script_usage.viewed_at) AS viewed_at
+               FROM script_usage JOIN scripts ON scripts.id = script_usage.script_id
+               WHERE script_usage.user_id = ? AND script_usage.viewed_at >= datetime('now', '-30 days')
+               GROUP BY scripts.id ORDER BY viewed_at DESC, MAX(script_usage.id) DESC LIMIT 5""",
+            (request.state.session["user_id"],),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+@router.post("/{script_id}/view", status_code=204)
+def record_view(script_id: int, request: Request):
+    with get_db_ctx() as conn:
+        user_id = request.state.session["user_id"]
+        cursor = conn.execute(
+            """INSERT INTO script_usage(user_id, script_id)
+               SELECT ?, id FROM scripts WHERE id = ?""",
+            (user_id, script_id),
+        )
+        if cursor.rowcount != 1:
+            raise HTTPException(404, "Script not found")
+        conn.execute("DELETE FROM script_usage WHERE user_id = ? AND viewed_at < datetime('now', '-30 days')", (user_id,))
+        conn.commit()
 
 
 @router.get("/facets")

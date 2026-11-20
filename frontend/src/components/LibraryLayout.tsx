@@ -88,9 +88,9 @@ export function LibraryLayout({ module, enabled, categories, preview, previewOpe
     return () => window.clearTimeout(timer);
   }, [open]);
   useEffect(() => {
-    if (!enabled || !wide || !preview) return;
+    if (!enabled || !preview) return;
     // Panel registration must finish before applying a layout.
-    const frame = requestAnimationFrame(() => groupRef.current?.setLayout(open ? { list: 50, preview: 50 } : { list: 100, preview: 0 }));
+    const frame = requestAnimationFrame(() => groupRef.current?.setLayout(wide && open ? { list: 50, preview: 50 } : { list: 100, preview: 0 }));
     return () => cancelAnimationFrame(frame);
   }, [enabled, wide, Boolean(preview), open, groupRef]);
   useEffect(() => {
@@ -114,9 +114,8 @@ export function LibraryLayout({ module, enabled, categories, preview, previewOpe
         {children}
       </Panel>
       {wide && preview && <Separator className="library-resize-handle" disabled={!open} aria-hidden={!open} aria-label="调整文件列表和预览宽度" title="拖动调整；Esc 撤销；双击均分；拖过右侧八成后松开收起预览" onPointerDown={startDrag}><GripVertical size={14} aria-hidden="true" /></Separator>}
-      {wide && preview && <Panel id="preview" className="library-preview-pane" minSize={open ? 340 : 0} maxSize={open ? "100%" : 0} defaultSize="50%" aria-hidden={!open} inert={!open} style={{ overflow: open ? "visible" : "hidden" }}>{(open || present) && preview}</Panel>}
+      {preview && <Panel id="preview" className="library-preview-pane" minSize={wide && open ? 340 : 0} maxSize={wide && open ? "100%" : 0} defaultSize="50%" aria-hidden={!open} inert={!open} style={{ overflow: open ? "visible" : "hidden" }}>{(open || present) && preview}</Panel>}
     </Group>
-    {!wide && (open || present) && preview}
     {dragging && createPortal(<div className="library-drag-shield"><span role="status">{willClose ? "松开收起预览 · Esc 撤销" : "拖动调整 · Esc 撤销"}</span></div>, document.body)}
   </div>;
 }

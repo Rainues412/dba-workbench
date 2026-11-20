@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { Copy, FileText, FolderOpen, Maximize2, Minimize2, MoreHorizontal, Pencil, Pin, Star, Trash2, X } from "lucide-react";
 import screenfull from "screenfull";
 import { api, Entity } from "../api/client";
@@ -10,6 +11,10 @@ import { LocalFileLinks } from "./LocalFileLinks";
 import { EmptyState, ErrorState, LoadingState } from "./States";
 import { FileName } from "./FileName";
 import { SelectionIndicator, SelectionMotion } from "./SelectionMotion";
+import { usePreference } from "../preferences";
+import { ScriptCodePreview } from "./ScriptCodePreview";
+import { useDesktopWindow } from "./DesktopWindowControls";
+import { AppDialog } from "./AppDialog";
 
 const MarkdownFilePreview = lazy(() => import("./MarkdownFilePreview").then((module) => ({ default: module.MarkdownFilePreview })));
 
@@ -45,12 +50,20 @@ export function LibraryRecords({ config, rows, selectedId, disabled, searchQuery
   onNotice: (message: string) => void;
 }) {
   const Icon = config.icon;
-  return <SelectionMotion><ul className="library-record-list" aria-label={`${config.title}记录`}>
+  return <SelectionMotion><ul className="library-record-list" aria-label={`${config.title}记录`} onKeyDown={(event) => {
+    if (config.key !== "scripts" || disabled || !(event.target instanceof HTMLButtonElement) || !event.target.matches(".library-record-title")) return;
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); event.target.click(); return; }
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    const titles = [...event.currentTarget.querySelectorAll<HTMLButtonElement>(".library-record-title:not(:disabled)")];
+    const index = titles.indexOf(event.target);
+    event.preventDefault();
+    titles[index + (event.key === "ArrowDown" ? 1 : -1)]?.focus();
+  }}>
     {rows.map((row) => {
       const title = recordTitle(config, row);
       const filePath = config.key !== "resources" && config.fileLinks ? String(row[config.fileLinks.pathField] || "").trim() : "";
       const description = String(row.summary || row.description || (config.key === "resources" ? row.path || row.url : "") || "");
-      return <li key={row.id} className={`library-record${selectedId === row.id ? " selected" : ""}`}>
+      return <li key={row.id} className={`library-record${config.key === "scripts" ? " script-record" : ""}${selectedId === row.id ? " selected" : ""}`}>
         {selectedId === row.id && <SelectionIndicator className="record-active-indicator" radius={0} />}
         <span className={`library-record-icon ${config.key}`} aria-hidden="true"><Icon size={20} /></span>
         <div className="library-record-copy">
@@ -91,11 +104,17 @@ export function LibraryPreview({ config, id, open = true, editorOpen, onClose, o
   onRefresh: () => Promise<void>;
 }) {
   const headingId = useId();
-  const dialogRef = useRef<HTMLDialogElement>(null);
+  const desktop = Boolean(useDesktopWindow());
+  const client = useQueryClient();
+  const navigate = useNavigate();
+  const lastView = useRef<number | null>(null);
+  const showDocumentInfo = usePreference("showDocumentInfo") === "true" && config.key === "scripts";
   const readerRef = useRef<HTMLDivElement>(null);
   const fullscreenTrigger = useRef<HTMLButtonElement>(null);
   const savedPageScroll = useRef(0);
   const [expanded, setExpanded] = useState(false);
+  const expandedRef = useRef(expanded);
+  expandedRef.current = expanded;
   const [message, setMessage] = useState("");
   const [drawer, setDrawer] = useState(() => typeof window.matchMedia === "function" && window.matchMedia("(max-width: 1399px)").matches);
   const detail = useQuery({
@@ -104,6 +123,11 @@ export function LibraryPreview({ config, id, open = true, editorOpen, onClose, o
     enabled: id !== null,
   });
   const row = detail.data;
+  const recentViews = useQuery({
+    queryKey: ["scripts", "recent-views"],
+    queryFn: () => api<{ id: number; title: string; viewed_at: string }[]>("/api/scripts/recent-views"),
+    enabled: Boolean(open && row && showDocumentInfo && !drawer),
+  });
   const savedContent = String(row?.content || "");
   const linkedPath = String(row?.file_path || "");
   const hasLinkedFile = Boolean(row && linkedPath.trim());
@@ -126,12 +150,21 @@ export function LibraryPreview({ config, id, open = true, editorOpen, onClose, o
   });
   const body = needsFile ? file.data?.content || "" : savedContent;
   useEffect(() => {
+    if (!open || id === null) { lastView.current = null; return; }
+    if (config.key !== "scripts" || row?.id !== id || lastView.current === id) return;
+    lastView.current = id;
+    void api(`/api/scripts/${id}/view`, { method: "POST" }).then(() => {
+      void client.invalidateQueries({ queryKey: ["scripts", "recent-views"] });
+      void client.invalidateQueries({ predicate: ({ queryKey }) => queryKey[0] === "scripts" && typeof queryKey[1] === "number", refetchType: "none" });
+    }).catch(() => undefined);
+  }, [client, config.key, id, open, row?.id]);
+  useEffect(() => {
     setMessage("");
   }, [id]);
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
     const media = window.matchMedia("(max-width: 1399px)");
-    const changed = () => { if (!document.fullscreenElement) setDrawer(media.matches); };
+    const changed = () => { if (!document.fullscreenElement && !expandedRef.current) setDrawer(media.matches); };
     media.addEventListener("change", changed);
     document.addEventListener("fullscreenchange", changed);
     return () => { media.removeEventListener("change", changed); document.removeEventListener("fullscreenchange", changed); };
@@ -147,7 +180,7 @@ export function LibraryPreview({ config, id, open = true, editorOpen, onClose, o
     return () => screenfull.off("change", changed);
   }, []);
   useEffect(() => {
-    if (!expanded) return;
+    if (!expanded || desktop) return;
     const escape = (event: KeyboardEvent) => {
       if (event.key === "Escape" && screenfull.isEnabled) {
         event.preventDefault(); event.stopPropagation(); void screenfull.exit();
@@ -155,29 +188,22 @@ export function LibraryPreview({ config, id, open = true, editorOpen, onClose, o
     };
     document.addEventListener("keydown", escape, true);
     return () => document.removeEventListener("keydown", escape, true);
-  }, [expanded]);
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!drawer || id === null || !dialog || !open) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { if (dialog.open) dialog.close(); document.body.style.overflow = previousOverflow; };
-  }, [drawer, id, open]);
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    // A drawer created when the window narrows must wait for the editor above it.
-    if (drawer && open && !editorOpen && dialog && !dialog.open) dialog.showModal();
-  }, [drawer, id, open, editorOpen]);
+  }, [expanded, desktop]);
 
   const title = row ? recordTitle(config, row) : "记录预览";
   async function closePreview() {
     if (screenfull.isEnabled && screenfull.element === readerRef.current) await screenfull.exit();
     const trigger = document.querySelector<HTMLButtonElement>('.library-record-title[aria-pressed="true"]') ?? document.querySelector<HTMLButtonElement>(".preview-toggle");
-    if (dialogRef.current?.open) dialogRef.current.close();
+    setExpanded(false);
     onClose();
     trigger?.focus({ preventScroll: true });
   }
   async function toggleReading() {
+    if (desktop) {
+      setExpanded((value) => !value);
+      if (expanded) setDrawer(window.matchMedia("(max-width: 1399px)").matches);
+      return;
+    }
     if (!screenfull.isEnabled || !readerRef.current) return;
     try {
       if (!expanded) savedPageScroll.current = window.scrollY;
@@ -193,9 +219,23 @@ export function LibraryPreview({ config, id, open = true, editorOpen, onClose, o
     try { await navigator.clipboard.writeText(body); notify(file.data?.truncated && needsFile ? "已复制当前预览片段" : "正文已复制"); }
     catch { notify("复制失败，请手动选择正文复制"); }
   }
-  const content = <div ref={readerRef} className={`library-reader${expanded ? " expanded" : ""}`}>
+  function dismissPreview() {
+    if (expanded && desktop) {
+      setExpanded(false);
+      setDrawer(window.matchMedia("(max-width: 1399px)").matches);
+      fullscreenTrigger.current?.focus({ preventScroll: true });
+    } else void closePreview();
+  }
+  const canExpand = desktop || screenfull.isEnabled;
+  const content = <div ref={readerRef} className={`library-reader${expanded ? " expanded" : ""}${expanded && desktop ? " desktop-expanded" : ""}`}
+    onKeyDown={(event) => {
+      if (event.key !== "Escape" || !desktop || !expanded || event.defaultPrevented) return;
+      event.preventDefault();
+      event.stopPropagation();
+      dismissPreview();
+    }}>
     <header className="library-preview-heading"><h2 id={headingId} title={title}><FileName text={title} path={linkedPath} /></h2><div>
-      <button ref={fullscreenTrigger} type="button" className="icon-button" aria-label={expanded ? "退出大屏阅读" : "大屏阅读"} title={screenfull.isEnabled ? expanded ? "退出大屏阅读（Esc）" : "大屏阅读" : "当前浏览器不支持全屏阅读"} disabled={!row || !screenfull.isEnabled} onClick={() => void toggleReading()}>{expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button>
+      <button ref={fullscreenTrigger} type="button" className="icon-button" aria-label={expanded ? "退出大屏阅读" : "大屏阅读"} title={canExpand ? expanded ? "退出大屏阅读（Esc）" : "大屏阅读" : "当前浏览器不支持全屏阅读"} disabled={!row || !canExpand} onClick={() => void toggleReading()}>{expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button>
       <button type="button" className="button small" disabled={!row || detail.isLoading || !!detail.error} onClick={() => void editRecord()}><Pencil size={14} />编辑</button>
       <button type="button" className="icon-button" aria-label="关闭预览" title="关闭预览" onClick={closePreview}><X size={19} /></button>
     </div></header>
@@ -209,7 +249,8 @@ export function LibraryPreview({ config, id, open = true, editorOpen, onClose, o
         {!row[config.fileLinks.pathField] && !(config.fileLinks.urlField && row[config.fileLinks.urlField]) && <p className="muted">未关联本地文件或网址</p>}
       </section>}
     </div>}
-    <div className="library-preview-body">
+    <div className={`library-preview-body${showDocumentInfo && row ? " has-script-inspector" : ""}`}>
+      <div className="library-preview-main">
       {message && <p className="library-inline-notice" aria-live="polite">{message}</p>}
       {id === null ? <EmptyState title="选择一条记录预览" description="点击列表标题即可查看，文件和网址通过独立按钮打开。" />
         : detail.isLoading ? <LoadingState label="正在读取完整记录" />
@@ -238,16 +279,27 @@ export function LibraryPreview({ config, id, open = true, editorOpen, onClose, o
                   : needsFile && file.error ? <ErrorState message={`关联文件预览失败：${file.error.message}`} retry={() => void file.refetch()} />
                   : <>
                     {needsFile && file.data?.truncated && <p className="library-inline-notice" role="status">文件较大，仅显示前 512 KB 预览；请快捷打开查看完整内容。</p>}
-                    {body ? <pre className="library-code"><code>{body}</code></pre>
+                    {body ? <ScriptCodePreview key={row.id} text={body} />
                       : <p className="muted">{needsFile ? "关联文件为空。" : "尚未填写正文，也未关联本地文件。"}</p>}
                   </>}
               </section>}
               {config.key === "scripts" && <details className="library-history"><summary><FileText size={15} />历史版本</summary><EntityDetails module={config.key} item={row} onRefresh={onRefresh} readOnly /></details>}
           </>
         </>}
+      </div>
+      {showDocumentInfo && row && <aside className="script-inspector" aria-label="文档信息">
+        <h3>文档信息</h3>
+        <dl><dt>版本</dt><dd>{String(row.version || "—")}</dd><dt>数据库</dt><dd>{String(row.db_type || "—")}</dd>
+          <dt>更新于</dt><dd>{String(row.updated_at || "—").replace("T", " ").slice(0, 16)}</dd></dl>
+        <h3>最近查看</h3>
+        {recentViews.isError ? <p className="muted">暂时无法读取最近查看。</p> : recentViews.data?.length
+          ? <ul>{recentViews.data.map((record) => <li key={record.id}><button type="button" title={record.title}
+            disabled={record.id === id} onClick={() => navigate(`/scripts?preview=${record.id}`, { state: { previewSearch: true } })}>{record.title}</button></li>)}</ul>
+          : <p className="muted">{recentViews.isLoading ? "正在读取…" : "暂无查看记录。"}</p>}
+      </aside>}
     </div>
   </div>;
-  if (drawer && id === null) return null;
-  return drawer ? <dialog ref={dialogRef} className="library-preview library-preview-drawer" aria-labelledby={headingId} onCancel={(event) => { event.preventDefault(); if (expanded && screenfull.isEnabled) void screenfull.exit(); else void closePreview(); }} onClick={(event) => { if (event.target === event.currentTarget) void closePreview(); }}>{content}</dialog>
+  if (drawer && (id === null || !open || editorOpen)) return null;
+  return drawer ? <AppDialog className={`library-preview library-preview-drawer${expanded && desktop ? " desktop-expanded-drawer" : ""}`} labelledBy={headingId} onClose={dismissPreview} dimBackground={false}>{content}</AppDialog>
     : <aside className="panel library-preview" aria-label="记录预览" onKeyDown={(event) => { if (event.key === "Escape" && !expanded) void closePreview(); }}>{content}</aside>;
 }

@@ -439,7 +439,7 @@ describe("library classification and read-only preview", () => {
     if (config.key === "scripts") expect(within(preview).getByText("完整正文，不能被摘要覆盖")).toBeInTheDocument();
     else expect(within(preview).queryByText("完整正文，不能被摘要覆盖")).not.toBeInTheDocument();
     expect(preview.querySelector("form")).toBeNull();
-    expect(requests.some(({ init }) => init?.method)).toBe(false);
+    expect(requests.some(({ path, init }) => init?.method && path !== "/api/scripts/7/view")).toBe(false);
     fireEvent.click(within(preview).getByRole("button", { name: `打开所在文件夹：快速访问测试` }));
     await waitFor(() => expect(requests.find(({ path }) => path === "/api/launcher/path")).toBeTruthy());
     const launched = requests.find(({ path }) => path === "/api/launcher/path")!;
@@ -566,6 +566,7 @@ describe("library classification and read-only preview", () => {
     const row = { id: 4, revision: 2, title: "脚本历史", version: 2 };
     const writes: RequestInit[] = [];
     vi.stubGlobal("fetch", vi.fn(async (path: string, init?: RequestInit) => {
+      if (path.endsWith("/view")) return new Response(null, { status: 204 });
       if (init?.method) writes.push(init);
       if (path.endsWith("facets")) return Response.json({ total: 1, items: [] });
       if (path.endsWith("/versions/1")) return Response.json({ content: "SELECT 'history';" });

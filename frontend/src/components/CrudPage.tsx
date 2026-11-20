@@ -4,6 +4,7 @@ import { AlertTriangle, Archive, ArrowLeft, CalendarDays, CheckCircle2, ChevronD
 import { useLocation, useSearchParams } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import { api, ApiError, Entity, entityApi } from "../api/client";
+import { usePreference } from "../preferences";
 import { CategoryNavigation } from "./CategoryNavigation";
 import { DatabaseLabel } from "./DatabaseLabel";
 import type { Classification, Facets } from "./CategoryNavigation";
@@ -86,6 +87,7 @@ function CrudContent({ config }: { config: CrudConfig }) {
   const previewSearch = location.state?.previewSearch === true;
   useLayoutEffect(() => { currentPreview.current = { id: previewId, open: previewEnabled }; }, [location.key, previewId, previewEnabled]);
   const recordTarget = searchParams.get("record");
+  const createTarget = searchParams.get("create");
   const projectCustomer = Number(searchParams.get("customer"));
   const projectTarget = isCustomer && Number.isSafeInteger(projectCustomer) && projectCustomer > 0 ? searchParams.get("project") : null;
   const jumpMode = projectTarget && projectJump?.key === location.key ? projectJump.mode : null;
@@ -99,12 +101,14 @@ function CrudContent({ config }: { config: CrudConfig }) {
     }, { replace: true });
   }, [projectTarget, setSearchParams]);
   const searchLabel = isCustomer ? "搜索客户名或项目名" : `按标题搜索${config.title}`;
+  const autoPinScripts = usePreference("autoPinScripts") === "true";
   if (hasPreview && locateId !== null) filters.locate_id = String(locateId);
   if (isTask && taskArchive) filters.archived = "1";
   else if (isTask && status) filters.status = status;
   if (isTask && priority) filters.priority = priority;
   if (isTask && overdueOnly) filters.overdue = "1";
   if (hasFavorites && favoriteOnly) filters.favorite_only = "1";
+  if (config.key === "scripts" && autoPinScripts && !debouncedKeyword) filters.auto_pin = "1";
   if (config.classification) {
     if (database) filters[config.classification.databaseField] = database;
     if (category && config.classification.categoryField) filters[config.classification.categoryField] = category;
@@ -144,6 +148,15 @@ function CrudContent({ config }: { config: CrudConfig }) {
     const record = Number(recordTarget);
     if (Number.isSafeInteger(record) && record > 0) { setCreating(false); setProjectEdit(null); setSelectedId(record); }
   }, [recordTarget]);
+  useEffect(() => {
+    if (createTarget !== "1" || (config.key !== "scripts" && config.key !== "articles")) return;
+    setSelectedId(null); setCreating(true);
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete("create");
+      return next;
+    }, { replace: true });
+  }, [createTarget, config.key, setSearchParams]);
   useEffect(() => {
     if (projectTarget) { setCreating(false); setSelectedId(null); setProjectEdit(null); }
   }, [projectTarget, location.key]);
@@ -445,7 +458,12 @@ function Editor({ config, item, loading, editing, useNativeDialog, loadError, on
   }
   const saveError = error && <div className="alert error full" role="alert">{error}</div>;
   const actions = <div className="modal-actions full"><button type="button" className="button" onClick={onClose}>取消</button><button className="button primary" disabled={busy}>{busy ? "保存中…" : <><CheckCircle2 size={17} />保存</>}</button></div>;
-  const content = <section className={`modal${isCustomer ? " customer-modal" : ""}`} role={native ? undefined : "dialog"} aria-modal={native ? undefined : true} aria-labelledby={native ? undefined : "editor-title"}>
+  const content = <section className={`modal${isCustomer ? " customer-modal" : ""}`} role={native ? undefined : "dialog"} aria-modal={native ? undefined : true} aria-labelledby={native ? undefined : "editor-title"}
+    onKeyDown={(event) => {
+      if (config.key !== "scripts" || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
+      event.preventDefault();
+      if (!busy) event.currentTarget.querySelector("form")?.requestSubmit();
+    }}>
       <div className="modal-header"><div><p className="eyebrow">{editing ? "EDIT RECORD" : "CREATE RECORD"}</p><h2 id="editor-title">{editing ? `编辑${config.title}` : `新增${config.title}`}</h2></div><button className="icon-button modal-close" onClick={onClose} aria-label="关闭"><X size={19} /></button></div>
       {loading ? <LoadingState /> : loadError || (editing && !item) ? <ErrorState message="详情加载失败，未进入新增模式，请重试" retry={onRetry} /> : isCustomer ? <form className="customer-edit-form" onSubmit={submit}>
         <div className="customer-edit-content form-grid"><CustomerFields item={item} draft={draft} setDraft={setDraft} /></div>
