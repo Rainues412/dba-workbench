@@ -84,7 +84,6 @@ export function Shell() {
   }, []);
   const topbarActions = <>
     <GlobalSearch />
-    <span className="local-status"><span className="status-dot" />本机安全模式</span>
     <button className="icon-button topbar-button" onClick={() => setTheme((value) => value === "light" ? "dark" : "light")} aria-label={theme === "light" ? "切换到深色模式" : "切换到浅色模式"} title={theme === "light" ? "深色模式" : "浅色模式"}>
       {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
     </button>
@@ -154,7 +153,7 @@ export function Shell() {
 
       <div className="workspace">
         {position !== "top" && <header className={desktopWindow ? "topbar desktop-topbar" : "topbar"}>
-          <DesktopDragRegion actions={desktopWindow}><span title={current.label}>{current.label}</span><small>{current.description}</small></DesktopDragRegion>
+          <DesktopDragRegion actions={desktopWindow}><span title={current.label}>{current.label}</span></DesktopDragRegion>
           <div className="topbar-actions">{topbarActions}</div>
         </header>}
         <main className="main-content"><Outlet /></main>

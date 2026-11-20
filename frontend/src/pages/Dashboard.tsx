@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight, BookOpenText, Building2, CheckCircle2, Clock3, Database, KeyRound,
-  ListTodo, PackageOpen, ScrollText, ShieldCheck, Sparkles, TriangleAlert,
+  ListTodo, PackageOpen, ScrollText, Sparkles, TriangleAlert,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { motion } from "motion/react";
@@ -33,12 +33,12 @@ export function Dashboard() {
 
   const data = stats.data!;
   const cards = [
-    { label: "脚本资产", value: data.script_count, hint: "可复用运维脚本", to: "/scripts", icon: ScrollText, tone: "blue" },
-    { label: "知识文章", value: data.article_count, hint: "已沉淀技术文档", to: "/articles", icon: BookOpenText, tone: "violet" },
-    { label: "待处理任务", value: data.task_pending, hint: data.task_overdue ? `${data.task_overdue} 项已逾期 · ${data.task_total} 项总计` : `${data.task_total} 项任务总计`, to: "/tasks", icon: ListTodo, tone: data.task_overdue ? "rose" : "amber" },
-    { label: "客户项目", value: data.customer_count, hint: "客户及项目信息", to: "/customers", icon: Building2, tone: "cyan" },
-    { label: "资源索引", value: data.resource_count, hint: "工具、安装包与入口", to: "/resources", icon: PackageOpen, tone: "emerald" },
-    { label: "保险箱条目", value: data.password_count, hint: "客户端加密保存", to: "/vault", icon: KeyRound, tone: "rose" },
+    { label: "脚本资产", value: data.script_count, to: "/scripts", icon: ScrollText, tone: "blue" },
+    { label: "知识文章", value: data.article_count, to: "/articles", icon: BookOpenText, tone: "violet" },
+    { label: "待处理任务", value: data.task_pending, hint: data.task_overdue > 0 ? `${data.task_overdue} 项已逾期` : "", to: "/tasks", icon: ListTodo, tone: data.task_overdue ? "rose" : "amber" },
+    { label: "客户项目", value: data.customer_count, to: "/customers", icon: Building2, tone: "cyan" },
+    { label: "资源索引", value: data.resource_count, to: "/resources", icon: PackageOpen, tone: "emerald" },
+    { label: "保险箱条目", value: data.password_count, to: "/vault", icon: KeyRound, tone: "rose" },
   ];
   const largestDatabaseCount = Math.max(1, ...(distribution.data ?? []).map((item) => item.count));
 
@@ -61,8 +61,7 @@ export function Dashboard() {
     <section className="stat-grid" aria-label="数据摘要">
       {cards.map(({ label, value, hint, to, icon: Icon, tone }) => <Link className={`stat-card tone-${tone}`} to={to} key={label}>
         <span className="stat-icon"><Icon size={20} strokeWidth={1.9} /></span>
-        <span className="stat-copy"><small>{label}</small><DashboardNumber value={value} progress={entrance} /><em>{hint}</em></span>
-        <ArrowRight className="stat-arrow" size={17} aria-hidden="true" />
+        <span className="stat-copy"><small>{label}</small><DashboardNumber value={value} progress={entrance} />{hint && <em>{hint}</em>}</span>
       </Link>)}
     </section>
 
@@ -121,11 +120,10 @@ function DashboardHero() {
   const greeting = greetingForHour(now.getHours());
   return <section className="dashboard-hero">
     <div className="hero-copy">
+      <p className="eyebrow">WORKBENCH</p>
       <div className="hero-kicker"><Sparkles size={15} /> {dateFormat.format(now)}</div>
       <h1>{displayName ? `${greeting}，${displayName}` : greeting}</h1>
-      <p>集中查看 DBA 资产、待办工作和安全状态。</p>
     </div>
-    <div className="hero-security"><ShieldCheck size={22} /><span><strong>本机数据受保护</strong><small>仅回环地址 · 已启用身份验证</small></span></div>
   </section>;
 }
 

@@ -1,7 +1,6 @@
 .library-page { width: min(1800px, 100%); padding: 1.4rem; }
 .library-page > .page-header { margin-bottom: 1rem; align-items: center; }
 .library-page .page-title-group h1 { font-size: 1.6rem; }
-.library-page .page-title-group .eyebrow { display: none; }
 .library-page .page-title-icon { width: 42px; height: 42px; border-radius: 12px; }
 .library-page .page-header .muted { font-size: .78rem; }
 .library-shell { display: grid; grid-template-columns: 176px minmax(0, 1fr); align-items: start; min-width: 0; overflow-anchor: none; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-sm); }
