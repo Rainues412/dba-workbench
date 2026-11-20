@@ -167,7 +167,7 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
             page.get_by_label("保险箱主密码", exact=True).fill("test-only-vault-master")
             page.get_by_label("确认主密码").fill("test-only-vault-master")
             page.get_by_role("button", name="创建保险箱").click()
-            page.get_by_role("heading", name="请备份管理员恢复密钥").wait_for(timeout=20_000)
+            page.get_by_text("恢复密钥待备份", exact=True).wait_for(timeout=20_000)
             page.get_by_role("button", name="新增条目").click()
             editor = page.get_by_role("dialog")
             assert editor.get_by_role("checkbox", name="收藏此条目").count() == 1

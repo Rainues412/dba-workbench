@@ -563,6 +563,47 @@ body:has(.desktop-shell) .profile-dialog { inset-block: 64px; max-height: calc(1
 .desktop-vault-gate .vault-password-input input { width: 100%; }
 .desktop-vault-gate .button.primary { width: 100%; }
 .vault-recovery-command { padding: .8rem; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-soft); border-radius: var(--radius-sm); }
+.context-details { min-width: 0; border: 1px solid var(--border); border-radius: 9px; color: var(--muted); background: var(--surface); font-size: .76rem; }
+.context-details > summary { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .7rem .85rem; color: var(--text); font-weight: 650; list-style: none; cursor: pointer; }
+.context-details > summary::-webkit-details-marker { display: none; }
+.context-details > summary::after { content: ""; flex: 0 0 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); }
+.context-details[open] > summary::after { transform: rotate(45deg); }
+.context-details > summary:hover { background: var(--surface-soft); }
+.context-details > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; border-radius: 8px; }
+.context-details > p, .context-details > .recovery-instructions { margin: 0; padding: 0 .85rem .75rem; line-height: 1.65; overflow-wrap: anywhere; }
+.recovery-instructions p { margin: 0; }
+.recovery-instructions .vault-recovery-command { margin: .6rem 0; color: var(--text); }
+.vault-recovery-status { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; padding: .6rem .85rem; background: var(--warning-soft); border-color: color-mix(in srgb, var(--warning) 28%, var(--border)); }
+.vault-recovery-status > span { display: inline-flex; align-items: center; gap: .45rem; color: var(--warning); font-size: .78rem; font-weight: 700; }
+.vault-page-title { display: flex; align-items: center; flex-wrap: wrap; gap: .65rem; }
+.vault-recovery-status > .context-details { flex: 1 1 220px; border: 0; background: transparent; }
+.vault-recovery-status .context-details > summary { justify-content: flex-end; padding: .4rem; }
+.vault-toolbar { gap: .55rem; }
+.vault-toolbar .search-field { min-width: 180px; }
+.vault-toolbar > .button-row { flex-wrap: wrap; justify-content: flex-end; gap: .45rem; }
+.edge-import-dialog, .vault-restore-dialog { display: flex; flex-direction: column; gap: 1rem; width: min(620px, calc(100vw - 2rem)); color: var(--text); }
+.dialog-focus-boundary { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+.edge-import-dialog .modal-header, .vault-restore-dialog .modal-header { margin: 0; }
+.edge-import-dialog .modal-header h2, .vault-restore-dialog .modal-header h2 { margin: 0; }
+.edge-import-dialog .modal-actions, .vault-restore-dialog .modal-actions { margin-top: .25rem; padding-top: .85rem; border-top: 1px solid var(--border); }
+.edge-import-dialog .alert, .vault-restore-dialog .alert { margin: 0; }
+.consequence-warning { display: flex; align-items: flex-start; gap: .6rem; padding: .8rem; border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--border)); border-radius: 9px; color: var(--warning); background: var(--warning-soft); font-size: .78rem; line-height: 1.65; }
+.consequence-warning > svg { flex: 0 0 auto; margin-top: .15rem; }
+.consequence-warning p { margin: .25rem 0 0; }
+.import-file-field input { min-width: 0; max-width: 100%; font-size: .75rem; }
+.import-counts { display: flex; flex-wrap: wrap; gap: .75rem; color: var(--muted); font-size: .8rem; }
+.import-counts > span { flex: 1; padding: .75rem; border-radius: 8px; background: var(--surface-soft); }
+.import-counts strong { color: var(--text-strong); }
+.backup-file { display: flex; align-items: center; gap: .6rem; min-width: 0; }
+.backup-file > strong { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .8rem; }
+.backup-file > .button { flex-shrink: 0; }
+.vault-restore-dialog .dialog-focus-boundary > .button { align-self: flex-start; }
+@media (max-width: 720px) {
+  .vault-recovery-status > span { flex: 1 1 100%; }
+  .vault-recovery-status > .context-details { flex: 1 1 140px; }
+  .vault-recovery-status .context-details > summary { justify-content: space-between; }
+  .vault-toolbar > .button-row { justify-content: flex-start; }
+}
 .vault-lock-hint { display: flex; align-items: flex-start; justify-content: center; gap: .4rem; width: min(460px, 100%); margin: .85rem auto 0; color: var(--muted); font-size: .75rem; line-height: 1.6; text-align: left; }
 .vault-lock-hint > svg { flex: none; margin-top: .2em; }
 .vault-lock-hint-part { display: inline-block; max-width: 100%; vertical-align: top; }

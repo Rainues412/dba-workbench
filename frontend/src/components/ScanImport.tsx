@@ -214,7 +214,7 @@ export function ScanImport({ module, onImported }: { module: Module; onImported?
                   disabled={!!busy} onChange={(event) => setSelected(new Set(event.target.checked ? items.map((item) => item.path) : []))} />
                 <span>全选</span>
               </label>
-              <span className="muted">{module === "articles" ? "数据库 / 分类" : "数据库"}</span>
+              <span className="muted">已选 {selected.size} / {items.length} 个文件</span>
             </div>
             <div className="scan-preview-list">
               {items.map((item) => {
@@ -231,6 +231,11 @@ export function ScanImport({ module, onImported }: { module: Module; onImported?
               })}
             </div>
           </div>}
+          <details className="context-details scan-import-rules"><summary>支持格式与识别规则</summary>
+            <p>{module === "articles" ? "支持 Markdown、PDF、Word、Excel、PowerPoint、TXT 和 HTML 文档。" : module === "scripts" ? "支持 SQL、Shell、Python、PowerShell、BAT 和 CMD 脚本。" : "支持 EXE、MSI、BIN、ZIP、7Z、RAR、ISO、TAR、GZ、RPM、DEB、DMG 和 APK 文件。"}</p>
+            <p>{module === "articles" ? "根据目录识别数据库与分类。" : "根据文件与目录生成导入记录。"}重复记录会跳过，已有内容保持不变。</p>
+            <p>只在点击“导入所选”后写入，源文件保持不变。</p>
+          </details>
         </div>
         {items.length > 0 && <footer className="modal-actions scan-import-footer">
           <button type="button" className="button primary" disabled={!!busy || !selected.size} onClick={() => void run("import")}>

@@ -24,7 +24,7 @@ def test_entry_password_toggle_preserves_encryption_and_editor_privacy(live_serv
             page.get_by_label("保险箱主密码", exact=True).fill("test-only-master-password")
             page.get_by_label("确认主密码", exact=True).fill("test-only-master-password")
             page.get_by_role("button", name="创建保险箱", exact=True).click()
-            page.get_by_role("heading", name="请备份管理员恢复密钥").wait_for(timeout=20_000)
+            page.get_by_text("恢复密钥待备份", exact=True).wait_for(timeout=20_000)
             writes = []
             page.on("request", lambda request: writes.append({"method": request.method, "body": request.post_data or ""})
                     if request.method in {"POST", "PUT"} and "/api/vault/items" in request.url else None)

@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import { Upload, X } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { AlertTriangle, Upload, X } from "lucide-react";
 import { api, ApiError, jsonBody } from "../api/client";
 import { decryptSecret, encryptSecret } from "../vault/crypto";
 import type { VaultCipherItem, VaultSecret } from "../vault/crypto";
 import { edgeImportKey, loginIdentity, parseEdgeCsv } from "../vault/edgeCsv";
+import { AppDialog } from "./AppDialog";
+import { DialogFocusBoundary } from "./DialogFocusBoundary";
 
 export function EdgePasswordImport({ dek, userId, canImport, loadExisting, onImported }: {
   dek: Uint8Array<ArrayBuffer>;
@@ -12,6 +14,7 @@ export function EdgePasswordImport({ dek, userId, canImport, loadExisting, onImp
   loadExisting: () => Promise<VaultSecret[]>;
   onImported: () => Promise<void>;
 }) {
+  const headingId = useId();
   const [open, setOpen] = useState(false);
   const [parsed, setParsed] = useState<ReturnType<typeof parseEdgeCsv> | null>(null);
   const [busy, setBusy] = useState(false);
@@ -86,5 +89,14 @@ export function EdgePasswordImport({ dek, userId, canImport, loadExisting, onImp
       }
     }
   }
-  return <><button className="button" disabled={busy} onClick={() => { if (canImport()) setOpen(true); else setError("请先重新验证登录密码并解锁保险箱"); }}><Upload size={16} />导入 Edge 密码</button>{error && !open && <p role="alert">{error}</p>}{open && <div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="edge-import-title"><div className="modal-header"><h2 id="edge-import-title">导入 Edge 密码 CSV</h2><button className="icon-button" aria-label="关闭 Edge 导入" disabled={busy} onClick={close}><X size={19} /></button></div><p className="muted">CSV 是明文文件。只在本机浏览器内解析和加密，不上传原文件、不保存到 localStorage、不显示密码预览。</p><p className="muted">相同网址、账号和密码会跳过；密码不同另存为新条目，不覆盖现有记录。导入分类为“Edge 导入”。</p><label>选择 Edge CSV<input ref={fileInput} type="file" accept=".csv,text/csv" disabled={busy} onClick={(event) => { event.currentTarget.value = ""; }} onChange={(event) => { void read(event.target.files?.[0]); }} /></label>{parsed && <p role="status">待导入 {parsed.items.length} 条，无密码行 {parsed.emptyPasswords} 条。点击确认后才写入。</p>}{message && <p className="alert" role="status">{message}</p>}{error && <p className="alert error" role="alert">{error}</p>}<div className="modal-actions"><button className="button" disabled={busy} onClick={close}>关闭</button><button className="button primary" disabled={busy || !parsed} onClick={() => void importPasswords()}>{busy ? "正在加密导入…" : "确认加密导入"}</button></div></section></div>}</>;
+  return <><button className="button" disabled={busy} onClick={() => { if (canImport()) setOpen(true); else setError("请先重新验证登录密码并解锁保险箱"); }}><Upload size={16} />导入 Edge 密码</button>{error && !open && <p role="alert">{error}</p>}{open && <AppDialog className="modal edge-import-dialog" labelledBy={headingId} onClose={close}>
+    <DialogFocusBoundary><div className="modal-header"><h2 id={headingId}>导入 Edge 密码</h2><button className="icon-button" aria-label="关闭 Edge 导入" disabled={busy} onClick={close}><X size={19} /></button></div>
+    <div className="consequence-warning"><AlertTriangle size={19} aria-hidden="true" /><strong>CSV 含明文密码。核对导入结果后，请自行删除原文件。</strong></div>
+    <label className="import-file-field">CSV 文件<input ref={fileInput} type="file" accept=".csv,text/csv" disabled={busy} onClick={(event) => { event.currentTarget.value = ""; }} onChange={(event) => { void read(event.target.files?.[0]); }} /></label>
+    {parsed && <div className="import-counts" role="status"><span>待处理 <strong>{parsed.items.length}</strong> 条</span><span>无密码 <strong>{parsed.emptyPasswords}</strong> 条</span></div>}
+    <details className="context-details"><summary>导入规则</summary><p>相同网址、账号和密码会跳过；密码不同另存为新条目，不覆盖现有记录。导入分类为“Edge 导入”。</p><p>点击“确认加密导入”后才写入。</p></details>
+    <details className="context-details"><summary>数据处理方式</summary><p>只在本机浏览器内解析和加密，不上传原文件、不保存到 localStorage、不显示密码预览。</p></details>
+    {message && <p className="alert" role="status">{message}</p>}{error && <p className="alert error" role="alert">{error}</p>}
+    <div className="modal-actions"><button className="button" disabled={busy} onClick={close}>取消</button><button className="button primary" disabled={busy || !parsed} onClick={() => void importPasswords()}>{busy ? "正在加密导入…" : "确认加密导入"}</button></div>
+    </DialogFocusBoundary></AppDialog>}</>;
 }

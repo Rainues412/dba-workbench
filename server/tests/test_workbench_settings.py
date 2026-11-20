@@ -131,7 +131,7 @@ def test_forge_settings_open_from_sidebar_and_control_navigation(live_server, mo
             expect(settings.get_by_role("heading", name="密码库安全")).to_be_visible()
             expect(settings.get_by_label("闲置时自动锁定")).to_have_value("15")
             settings.get_by_label("闲置时自动锁定").select_option("120")
-            settings.get_by_text("密码库数据位置").click()
+            settings.get_by_text("数据位置与技术详情").click()
             expect(settings.get_by_text("0 条凭据")).to_be_visible()
             query.clear()
             settings.get_by_role("button", name="导航栏", exact=True).click()

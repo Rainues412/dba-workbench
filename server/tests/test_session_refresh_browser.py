@@ -25,7 +25,7 @@ def test_server_reauth_rejection_updates_badge_without_refresh(live_server, isol
             page.get_by_label("保险箱主密码", exact=True).fill("test-only-master-password")
             page.get_by_label("确认主密码", exact=True).fill("test-only-master-password")
             page.get_by_role("button", name="创建保险箱", exact=True).click()
-            page.get_by_role("heading", name="请备份管理员恢复密钥").wait_for(timeout=20_000)
+            page.get_by_text("恢复密钥待备份", exact=True).wait_for(timeout=20_000)
             # Only the server knows about this expiry; no focus event, reload or clock change.
             with sqlite3.connect(database) as conn:
                 conn.execute("UPDATE sessions SET reauthenticated_until = ?", ("2000-01-01T00:00:00+00:00",))
@@ -56,7 +56,7 @@ def test_grant_expiry_refresh_preserves_draft_and_updates_login(live_server, iso
             page.get_by_label("保险箱主密码", exact=True).fill("test-only-master-password")
             page.get_by_label("确认主密码", exact=True).fill("test-only-master-password")
             page.get_by_role("button", name="创建保险箱", exact=True).click()
-            page.get_by_role("heading", name="请备份管理员恢复密钥").wait_for(timeout=20_000)
+            page.get_by_text("恢复密钥待备份", exact=True).wait_for(timeout=20_000)
             page.get_by_role("button", name="新增条目", exact=True).click()
             editor = page.get_by_role("dialog", name="新增保险箱条目", exact=True)
             editor.get_by_label("名称或备注", exact=True).fill("自动刷新保留草稿")

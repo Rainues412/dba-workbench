@@ -1,12 +1,14 @@
 import { FormEvent, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Clipboard, Download, Eye, EyeOff, Globe2, KeyRound, LockKeyhole, Pencil, Plus, RefreshCw, Search, ShieldCheck, Star, Trash2, Upload, UserRound, X } from "lucide-react";
+import { CheckCircle2, Clipboard, Download, Eye, EyeOff, Globe2, KeyRound, LockKeyhole, Pencil, Plus, RefreshCw, Search, ShieldCheck, Star, Trash2, UserRound, X } from "lucide-react";
 import { ApiError, api, jsonBody, Page, setVaultAccessToken, VAULT_LOCKED_EVENT } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { Pagination } from "../components/Pagination";
 import { EdgePasswordImport } from "../components/EdgePasswordImport";
 import { VaultCategoryInput } from "../components/VaultCategoryInput";
+import { VaultBackupRestore } from "../components/VaultBackupRestore";
+import { VaultRecoveryInstructions } from "../components/VaultRecoveryInstructions";
 import {
   createVaultProfile, decryptSecret, encryptSecret, RecoveryPublicKey,
   unlockVault, VaultCipherItem, VaultProfile, VaultSecret,
@@ -259,7 +261,7 @@ export function Vault() {
       formElement.reset();
       await Promise.all([profile.refetch(), legacyStatus.refetch()]);
       await client.invalidateQueries({ queryKey: ["vault", "items"] });
-      setNotice("保险箱已创建。请立即备份管理员恢复密钥并确认。 ");
+      setNotice("");
     } catch (reason) {
       if (!request.signal.aborted) {
         setError(reason instanceof Error ? reason.message : "保险箱创建失败");
@@ -432,7 +434,7 @@ export function Vault() {
   }
 
   async function downloadBackup() {
-    if (!isCurrent()) { setError("备份前请重新完成敏感操作验证"); return; }
+    if (!isCurrent()) throw new Error("备份前请重新完成敏感操作验证");
     const backup = await api<Record<string, unknown>>("/api/vault/backup");
     const link = document.createElement("a");
     link.href = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" }));
@@ -440,25 +442,20 @@ export function Vault() {
     link.click(); URL.revokeObjectURL(link.href); setNotice("已生成只含密文的备份");
   }
 
-  async function restoreBackup(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    if (!isCurrent()) { setError("恢复前请重新完成敏感操作验证"); return; }
-    if (!window.confirm("恢复会替换当前保险箱密文。确定继续吗？")) return;
-    try {
-      const document = JSON.parse(await file.text()) as Record<string, unknown>;
-      const result = await api<{ restored: boolean; item_count: number }>("/api/vault/backup/restore", {
-        method: "POST", body: jsonBody({ ...document, confirm: "RESTORE" }),
-      });
-      lock(); await profile.refetch(); setNotice(`已恢复 ${result.item_count} 条密文；请重新解锁校验`);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "备份恢复失败"); }
+  async function restoreBackup(file: File) {
+    if (!isCurrent()) throw new Error("恢复前请重新完成敏感操作验证");
+    const document = JSON.parse(await file.text()) as Record<string, unknown>;
+    if (!isCurrent()) throw new Error("恢复前请重新完成敏感操作验证");
+    const result = await api<{ restored: boolean; item_count: number }>("/api/vault/backup/restore", {
+      method: "POST", body: jsonBody({ ...document, confirm: "RESTORE" }),
+    });
+    lock(); await profile.refetch(); setNotice(`已恢复 ${result.item_count} 条密文；请重新解锁校验`);
   }
 
   return <VaultPage>
-    <header className="page-header"><div className="page-title-group"><span className="page-title-icon vault"><KeyRound size={24} /></span><div><p className="eyebrow">DATA MODULE</p><h1>密码保险箱</h1></div></div>{dek && <button className="button" onClick={() => lock("保险箱已锁定")}><LockKeyhole size={17} />立即锁定</button>}</header>
+    <header className="page-header"><div className="page-title-group"><span className="page-title-icon vault"><KeyRound size={24} /></span><div><p className="eyebrow">DATA MODULE</p><div className="vault-page-title"><h1>密码保险箱</h1>{dek && <span className="badge success">已解锁</span>}</div></div></div>{dek && <button className="button" onClick={() => lock("保险箱已锁定")}><LockKeyhole size={17} />立即锁定</button>}</header>
     {(notice || error) && <div className={`alert ${error ? "error" : ""}`} role={error ? "alert" : "status"}><span>{!error && <CheckCircle2 size={17} />}{error || notice}</span><button className="icon-button" onClick={() => { setError(""); setNotice(""); }} aria-label="关闭"><X size={17} /></button></div>}
-    {!desktopVault && <><section className="panel reauth-panel"><span className="reauth-icon"><ShieldCheck size={23} /></span><div><h2>敏感操作验证</h2><p className="muted">查看、复制、修改、删除、迁移和备份前，需要验证登录密码。</p></div><form onSubmit={verifySensitiveOperation}>
+    {!desktopVault && <><section className="panel reauth-panel"><span className="reauth-icon"><ShieldCheck size={23} /></span><div><h2>敏感操作验证</h2></div><form onSubmit={verifySensitiveOperation}>
       <input name="login_password" type="password" minLength={9} maxLength={256} aria-label="敏感操作验证密码" autoComplete="current-password" placeholder="登录密码" required />
       <button className="button">{`验证 ${reauthMinutes} 分钟`}</button>
     </form><div className="reauth-state"><span className={`badge ${reauthenticated ? "success" : "danger"}`}><span>{reauthenticated ? "已验证" : expired ? "已过期" : "未验证"}</span></span>{reauthenticated && <span className="reauth-countdown" aria-label="验证剩余时间">剩余 {Math.floor(remainingSeconds / 60).toString().padStart(2, "0")}:{(remainingSeconds % 60).toString().padStart(2, "0")}</span>}</div></section>
@@ -487,12 +484,18 @@ export function Vault() {
         <p className="vault-lock-hint"><ShieldCheck size={14} aria-hidden="true" /><span><span className="vault-lock-hint-part">刷新页面后需重新解锁；</span><span className="vault-lock-hint-part">连续 15 分钟无操作将自动锁定。</span></span></p>
       </section>
       : <>
-        <div className="button-row"><EdgePasswordImport dek={dek} userId={session!.user!.id} canImport={() => dekRef.current === dek && isCurrent()} loadExisting={async () => { const key = dekRef.current; if (!key) throw new Error("保险箱已锁定"); return Promise.all((await loadAllItems()).map((item) => decryptSecret(key, item))); }} onImported={async () => { await items.refetch(); }} /></div>
         {desktopVault && !profile.data!.questions_set && <section className="panel recovery-callout"><span className="callout-icon"><ShieldCheck size={22} /></span><div><h2>设置密保问题</h2><p className="muted">忘记主密码时，可通过回答密保问题重置。</p></div><button className="button" onClick={() => setEnrolling((value) => !value)}>{enrolling ? "收起" : "设置密保"}</button>
           {enrolling && <form className="stack vault-enroll-form" onSubmit={enrollQuestions}><RecoveryQuestionFields /><button className="button primary" disabled={enrollBusy}>保存密保</button></form>}
         </section>}
-        {!profile.data!.profile?.recovery_confirmed_at && <section className="panel recovery-callout"><span className="callout-icon"><Download size={22} /></span><div><h2>请备份管理员恢复密钥</h2><p className="muted">在 server 目录运行 <code>python -m backend.admin backup-recovery-key --output &lt;绝对备份目录&gt;</code>，并将副本与数据库分开保存。</p></div><button className="button" onClick={async () => { await api("/api/vault/recovery/confirm", { method: "POST" }); await profile.refetch(); }}>我已完成备份</button></section>}
-        <section className="panel data-panel" ref={panelRef}><div className="toolbar"><label className="search-field"><Search size={17} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="按名称搜索已解锁条目" aria-label="按名称搜索保险箱" /></label><button className={`button vault-filter-toggle${favoritesOnly ? " is-active" : ""}`} aria-pressed={favoritesOnly} onClick={() => { setFavoritesOnly((current) => !current); setPage(1); }}><Star size={16} fill={favoritesOnly ? "currentColor" : "none"} />仅看收藏</button><div className="button-row"><button className="button" onClick={() => void downloadBackup()}><Download size={16} />加密备份</button><label className="button file-button"><Upload size={16} />恢复加密备份<input className="sr-only" type="file" accept="application/json,.json" onChange={(event) => void restoreBackup(event)} /></label><button className="button primary" onClick={() => isCurrent() ? setEditing("new") : setError("新增前请重新完成敏感操作验证")}><Plus size={17} />新增条目</button></div></div>
+        {!profile.data!.profile?.recovery_confirmed_at && <section className="panel vault-recovery-status"><span><ShieldCheck size={17} aria-hidden="true" />恢复密钥待备份</span><details className="context-details"><summary>查看备份方法</summary><VaultRecoveryInstructions /></details><button className="button small" onClick={async () => {
+          try { await api("/api/vault/recovery/confirm", { method: "POST" }); await profile.refetch(); }
+          catch (reason) { setError(reason instanceof Error ? reason.message : "备份状态保存失败，请重试"); }
+        }}>我已完成备份</button></section>}
+        <section className="panel data-panel" ref={panelRef}><div className="toolbar vault-toolbar"><label className="search-field"><Search size={17} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="按名称搜索已解锁条目" aria-label="按名称搜索保险箱" /></label><button className={`button vault-filter-toggle${favoritesOnly ? " is-active" : ""}`} aria-pressed={favoritesOnly} onClick={() => { setFavoritesOnly((current) => !current); setPage(1); }}><Star size={16} fill={favoritesOnly ? "currentColor" : "none"} />仅看收藏</button><div className="button-row">
+          <EdgePasswordImport dek={dek} userId={session!.user!.id} canImport={() => dekRef.current === dek && isCurrent()} loadExisting={async () => { const key = dekRef.current; if (!key) throw new Error("保险箱已锁定"); return Promise.all((await loadAllItems()).map((item) => decryptSecret(key, item))); }} onImported={async () => { await items.refetch(); }} />
+          <button className="button" onClick={() => void downloadBackup().catch((reason) => setError(reason instanceof Error ? reason.message : "备份失败"))}><Download size={16} />加密备份</button>
+          <VaultBackupRestore canRestore={() => { if (dekRef.current && isCurrent()) return true; setError("恢复前请解锁并重新完成敏感操作验证"); return false; }} onBackup={downloadBackup} onRestore={restoreBackup} />
+          <button className="button primary" onClick={() => isCurrent() ? setEditing("new") : setError("新增前请重新完成敏感操作验证")}><Plus size={17} />新增条目</button></div></div>
           {(legacyLocal.length > 0 || (legacyStatus.data?.backend_entries ?? 0) > 0) && <div className="migration-banner"><span>检测到 {legacyLocal.length} 条浏览器旧数据和 {legacyStatus.data?.backend_entries ?? 0} 条后端旧数据。</span><button className="button" onClick={() => void migrateLegacy()}>迁移并校验</button></div>}
           {!items.isLoading && !items.error && secrets.length > 0 && <div className="vault-category-groups" role="group" aria-label="保险箱分类分组">
             <div className="vault-category-options">

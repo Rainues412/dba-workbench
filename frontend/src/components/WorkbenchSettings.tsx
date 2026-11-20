@@ -6,6 +6,7 @@ import { savePreference, usePreference, type Preference } from "../preferences";
 import { desktopVaultApi, useDesktopVaultUnlocked } from "../vault/desktopVault";
 import { AppDialog } from "./AppDialog";
 import { desktopSettingsApi, useDesktopSettings } from "../desktopSettings";
+import { VaultRecoveryInstructions } from "./VaultRecoveryInstructions";
 
 const sections = [
   ["appearance", "外观与阅读", Monitor, "字号 字体 动画 行号 换行 密度"],
@@ -153,7 +154,9 @@ export function WorkbenchSettings({ desktop, onClose }: { desktop: boolean; onCl
             <label>确认新主密码<input name="confirm_password" type="password" autoComplete="new-password" minLength={9} maxLength={256} required /></label>
             <button type="submit" className="button" disabled={passwordBusy}>{passwordBusy ? "正在保存…" : "保存新主密码"}</button>
           </form>}
-          <details className="vault-diagnostics" onToggle={(event) => setShowDiagnostics(event.currentTarget.open)}><summary>密码库数据位置</summary>
+          <details className="context-details"><summary>恢复密钥与备份方法</summary><VaultRecoveryInstructions /></details>
+          <details className="vault-diagnostics context-details" onToggle={(event) => setShowDiagnostics(event.currentTarget.open)}><summary>数据位置与技术详情</summary>
+            <p>主密码通过 Argon2id 派生密钥，凭据使用 AES-256-GCM 加密。</p>
             {diagnostics.isLoading && <p>正在读取密码库信息…</p>}
             {diagnostics.data && <p>{diagnostics.data.database_path}<br />{diagnostics.data.credential_count} 条凭据</p>}
             {diagnostics.error && <p role="alert">无法读取密码库信息。</p>}
