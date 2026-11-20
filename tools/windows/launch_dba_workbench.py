@@ -72,6 +72,7 @@ def start_server(desktop_host: Path | None = None) -> bool:
             "DBA_LOG_DIR": str(LOG_DIR),
             "DBA_FILE_VIEWER_DATA_DIR": str(REPO_DIR / ".runtime" / "file-viewer-data"),
             "DBA_WEBVIEW_PROFILE": str(REPO_DIR / ".runtime" / "webview"),
+            "DBA_DESKTOP_SETTINGS_FILE": str(REPO_DIR / ".runtime" / "desktop-settings.json"),
         }
     )
     if EDGE_PATH is not None and EDGE_PATH.is_file():
@@ -116,7 +117,11 @@ def start_server(desktop_host: Path | None = None) -> bool:
     return False
 
 
-def main(desktop_host: Path | None = None) -> None:
+def main(desktop_host: Path | None = None, *, on_logon: bool = False, show_window: bool = False) -> None:
+    if on_logon:
+        os.environ["DBA_ON_LOGON"] = "true"
+    if show_window:
+        os.environ["DBA_SHOW_WINDOW"] = "true"
     if not (SERVER_DIR / "main.py").is_file():
         raise SystemExit(f"找不到服务入口：{SERVER_DIR / 'main.py'}")
 
@@ -129,6 +134,8 @@ def main(desktop_host: Path | None = None) -> None:
             raise SystemExit(f"DBA 工作台启动失败，请查看日志：{LOG_PATH}")
         return
 
+    if on_logon:
+        return
     if not desktop_window.activate(PORT) and not open_workbench(URL, EDGE_PATH):
         raise SystemExit(f"无法打开默认浏览器，请手动访问：{URL}")
 
@@ -137,7 +144,10 @@ if __name__ == "__main__":
     try:
         parser = argparse.ArgumentParser(description="启动 DBA 工作台")
         parser.add_argument("--desktop-host", type=Path, help="使用指定的 DBA 工作台源码启动宿主")
-        main(parser.parse_args().desktop_host)
+        parser.add_argument("--on-logon", action="store_true", help="Windows 登录自启")
+        parser.add_argument("--show-window", action="store_true", help="忽略静默启动并显示窗口")
+        args = parser.parse_args()
+        main(args.desktop_host, on_logon=args.on_logon, show_window=args.show_window)
     except (OSError, ValueError, SystemExit) as error:
         if os.name == "nt":
             import ctypes

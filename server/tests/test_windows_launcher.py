@@ -144,6 +144,14 @@ def test_new_server_owns_browser_and_tray_lifecycle(launcher, monkeypatch):
     launcher.main()
 
 
+def test_logon_does_not_raise_an_existing_window(launcher, monkeypatch):
+    monkeypatch.setattr(launcher, "probe_service", lambda: "dba")
+    monkeypatch.setattr(launcher.desktop_window, "activate", lambda _: pytest.fail("logon must not activate an existing window"))
+    launcher.main(on_logon=True)
+    assert launcher.os.environ["DBA_ON_LOGON"] == "true"
+    monkeypatch.delenv("DBA_ON_LOGON")
+
+
 def test_server_waits_for_http_readiness_after_port_opens(launcher, tmp_path, monkeypatch):
     monkeypatch.setattr(launcher, "LOG_DIR", tmp_path)
     monkeypatch.setattr(launcher, "LOG_PATH", tmp_path / "server.log")

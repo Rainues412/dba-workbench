@@ -88,7 +88,7 @@ export function Shell() {
     <button className="icon-button topbar-button" onClick={() => setTheme((value) => value === "light" ? "dark" : "light")} aria-label={theme === "light" ? "切换到深色模式" : "切换到浅色模式"} title={theme === "light" ? "深色模式" : "浅色模式"}>
       {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
     </button>
-    {desktopWindow && <DesktopWindowControls actions={desktopWindow} />}
+    {desktopWindow && <DesktopWindowControls actions={desktopWindow} settingsAvailable={Boolean(session?.vault_password_only)} />}
   </>;
 
   return (

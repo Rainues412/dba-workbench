@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Copy, Minus, Square, X } from "lucide-react";
+import { useDesktopSettings } from "../desktopSettings";
 
 type DesktopWindowApi = {
   minimize: () => Promise<void>;
@@ -74,11 +75,13 @@ export function DesktopDragRegion({ actions, children }: { actions: ReturnType<t
   >{children}</div>;
 }
 
-export function DesktopWindowControls({ actions }: { actions: NonNullable<ReturnType<typeof useDesktopWindow>> }) {
+export function DesktopWindowControls({ actions, settingsAvailable = false }: { actions: NonNullable<ReturnType<typeof useDesktopWindow>>; settingsAvailable?: boolean }) {
+  const settings = useDesktopSettings(settingsAvailable);
   const sizeLabel = actions.maximized ? "还原窗口" : "最大化窗口";
+  const closeLabel = settings.data?.close_to_tray === false ? "退出工作台" : "关闭到托盘";
   return <div className="desktop-window-controls" role="group" aria-label="窗口控制">
     <button type="button" aria-label="最小化窗口" title="最小化窗口" onClick={actions.minimize}><Minus size={15} aria-hidden="true" /></button>
     <button type="button" aria-label={sizeLabel} title={sizeLabel} onClick={actions.toggleSize}>{actions.maximized ? <Copy size={13} aria-hidden="true" /> : <Square size={13} aria-hidden="true" />}</button>
-    <button type="button" className="desktop-window-close" aria-label="关闭到托盘" title="关闭到托盘" onClick={actions.close}><X size={16} aria-hidden="true" /></button>
+    <button type="button" className="desktop-window-close" aria-label={closeLabel} title={closeLabel} onClick={actions.close}><X size={16} aria-hidden="true" /></button>
   </div>;
 }

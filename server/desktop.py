@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import json
+import logging
 import secrets
 import socket
 import sys
@@ -15,6 +16,7 @@ from pathlib import Path
 
 from backend import desktop_window
 from backend.browser_launch import find_edge, open_workbench
+from backend.desktop_settings import DesktopSettings, WindowsStartup, startup_command
 
 APP_TITLE = "DBA 工作台"
 HOST = "127.0.0.1"
@@ -114,17 +116,18 @@ def _open_browser_when_ready() -> None:
         time.sleep(0.25)
 
 
-def _show_window_when_ready(server, window) -> None:
+def _show_window_when_ready(server, window, silent_start: bool = False) -> None:
     while not server.should_exit:
         if server.started:
             window.load_url(_launch_url)
-            window.show()
-            window.maximize()
+            if not silent_start:
+                window.show()
+                window.maximize()
             return
         time.sleep(0.05)
 
 
-def _run_webview(server, window) -> None:
+def _run_webview(server, window, silent_start: bool = False) -> None:
     import webview
 
     result: Future[None] = Future()
@@ -134,7 +137,7 @@ def _run_webview(server, window) -> None:
             if not window.events.loaded.wait(15):
                 raise RuntimeError("WebView2 初始化超时。")
             _start_tray(server)
-            threading.Thread(target=_show_window_when_ready, args=(server, window), daemon=True).start()
+            threading.Thread(target=_show_window_when_ready, args=(server, window, silent_start), daemon=True).start()
             server.run()
         except Exception as error:
             result.set_exception(error)
@@ -225,7 +228,8 @@ def main() -> None:
     log_dir = _configure_runtime()
     state = _probe_service()
     if state == "dba":
-        _open_workbench()
+        if "--on-logon" not in sys.argv and os.environ.get("DBA_ON_LOGON") != "true":
+            _open_workbench()
         return
     if state == "other":
         raise RuntimeError(f"端口 {PORT} 已被其他程序占用。")
@@ -234,6 +238,22 @@ def main() -> None:
     from backend.auth import enable_desktop_login
     from file_viewer_runtime import start_file_viewer, stop_file_viewer
     from main import app
+
+    compiled = "__compiled__" in globals()
+    name, command = startup_command(
+        Path(__file__), Path(sys.executable), compiled=compiled,
+        host=os.environ.get("DBA_SOURCE_DESKTOP_HOST", ""),
+    )
+    default_preferences = _data_directory() / "desktop-settings.json" if compiled else Path(__file__).resolve().parents[1] / ".runtime" / "desktop-settings.json"
+    preferences = DesktopSettings(Path(os.environ.get("DBA_DESKTOP_SETTINGS_FILE") or default_preferences), WindowsStartup(name, command))
+    app.state.desktop_settings = preferences
+    try:
+        current = preferences.read()
+    except (OSError, ValueError):
+        logging.exception("无法读取启动偏好，将显示工作台窗口。")
+        current = {"auto_start": False, "silent_start": False}
+    force_show = "--show-window" in sys.argv or os.environ.get("DBA_SHOW_WINDOW") == "true"
+    silent_start = current["auto_start"] and current["silent_start"] and not force_show
 
     viewer = start_file_viewer(_data_directory(), log_dir)
     try:
@@ -249,17 +269,24 @@ def main() -> None:
             timeout_graceful_shutdown=10,
         )
         server = uvicorn.Server(config)
-        window = desktop_window.create(APP_TITLE, PORT, _tray_icon_path(), lambda: server.should_exit)
+        window = desktop_window.create(
+            APP_TITLE, PORT, _tray_icon_path(), lambda: server.should_exit,
+            preferences.close_to_tray,
+            lambda: setattr(server, "should_exit", True),
+        )
+        preferences.native_window = window is not None
         if window is None:
-            threading.Thread(target=_open_browser_when_ready, daemon=True).start()
             _start_tray(server)
+            if not silent_start:
+                threading.Thread(target=_open_browser_when_ready, daemon=True).start()
             server.run()
         else:
-            _run_webview(server, window)
+            _run_webview(server, window, silent_start)
     except Exception as error:
         raise RuntimeError(f"启动失败，请查看日志：{log_dir / 'server.log'}") from error
     finally:
         stop_file_viewer(viewer)
+        app.state.desktop_settings = None
 
 
 if __name__ == "__main__":

@@ -84,7 +84,7 @@ def activate(port: int) -> bool:
     return found
 
 
-def create(title: str, port: int, icon_path: Path, is_exiting):
+def create(title: str, port: int, icon_path: Path, is_exiting, should_close_to_tray=lambda: True, on_closed=lambda: None):
     if sys.platform != "win32":
         return None
 
@@ -158,7 +158,7 @@ def create(title: str, port: int, icon_path: Path, is_exiting):
         form.BeginInvoke(Action(begin_drag))
 
     def close_to_tray():
-        if is_exiting():
+        if is_exiting() or not should_close_to_tray():
             return True
         window.hide()
         # Release page memory (including unlocked vault keys) just as closing a tab does.
@@ -167,5 +167,6 @@ def create(title: str, port: int, icon_path: Path, is_exiting):
 
     window.events.before_show += register_window
     window.events.closing += close_to_tray
+    window.events.closed += on_closed
     window.expose(window.minimize, window_is_maximized, toggle_window_size, start_window_drag, window.destroy)
     return window

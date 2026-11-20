@@ -50,9 +50,20 @@ Filename: "{app}\DBA工作台.exe"; Description: "启动 DBA 工作台"; Flags: 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   DataDirectory: String;
+  StartupCommand: String;
+  StartupExecutable: String;
 begin
   if CurUninstallStep <> usUninstall then
     Exit;
+
+  StartupExecutable := ExpandConstant('{app}\DBA工作台.exe');
+  if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run',
+       'DBAWorkbench', StartupCommand) then
+  begin
+    if (CompareText(StartupCommand, '"' + StartupExecutable + '" --on-logon') = 0) or
+       (CompareText(StartupCommand, StartupExecutable + ' --on-logon') = 0) then
+      RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'DBAWorkbench');
+  end;
 
   DataDirectory := ExpandConstant('{localappdata}\DBA Workbench');
   if DirExists(DataDirectory) and

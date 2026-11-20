@@ -5,11 +5,13 @@ import { api, VAULT_LOCKED_EVENT } from "../api/client";
 import { savePreference, usePreference, type Preference } from "../preferences";
 import { desktopVaultApi, useDesktopVaultUnlocked } from "../vault/desktopVault";
 import { AppDialog } from "./AppDialog";
+import { desktopSettingsApi, useDesktopSettings } from "../desktopSettings";
 
 const sections = [
   ["appearance", "外观与阅读", Monitor, "字号 字体 动画 行号 换行 密度"],
   ["navigation", "导航栏", PanelLeft, "菜单 位置 侧栏 左 右 顶部 底部"],
   ["workspace", "工作区", BookOpenText, "脚本 置顶 文档 信息"],
+  ["window", "窗口与启动", Monitor, "开机 自启 静默 窗口 关闭 最小化 托盘"],
   ["security", "密码库安全", Database, "密码 保险箱 主密码 解锁 锁定 安全 数据位置"],
   ["shortcuts", "快捷键", Keyboard, "按键 搜索 保存 打开"],
   ["about", "关于", Info, "版本 许可 内容"],
@@ -32,10 +34,12 @@ export function WorkbenchSettings({ desktop, onClose }: { desktop: boolean; onCl
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [changing, setChanging] = useState(false);
   const [passwordBusy, setPasswordBusy] = useState(false);
+  const [windowBusy, setWindowBusy] = useState(false);
   const visible = sections.filter(([id, label, , terms]) =>
-    (desktop || id !== "security") && (!query.trim() || `${label} ${terms}`.includes(query.trim())));
+    (desktop || (id !== "security" && id !== "window")) && (!query.trim() || `${label} ${terms}`.includes(query.trim())));
   const active = query.trim() ? visible[0]?.[0] : section;
   const client = useQueryClient();
+  const windowSettings = useDesktopSettings(desktop && active === "window");
   const unlocked = useDesktopVaultUnlocked();
   const auto = useQuery({ queryKey: ["vault", "auto-status"], queryFn: ({ signal }) => desktopVaultApi.autoStatus(signal), enabled: active === "security" });
   const diagnostics = useQuery({ queryKey: ["vault", "diagnostics"], queryFn: desktopVaultApi.diagnostics, enabled: desktop && showDiagnostics });
@@ -55,6 +59,17 @@ export function WorkbenchSettings({ desktop, onClose }: { desktop: boolean; onCl
   function update(key: Preference, value: string) {
     try { savePreference(key, value); markSaved(); }
     catch { setSavedAt(0); setError("无法保存偏好，请检查本地存储后重试。"); }
+  }
+  async function updateWindow(name: "auto_start" | "silent_start" | "close_to_tray", enabled: boolean) {
+    if (!windowSettings.data || windowBusy) return;
+    setWindowBusy(true); setError(""); setSavedAt(0);
+    try {
+      client.setQueryData(["desktop", "settings"], await desktopSettingsApi.update({ [name]: enabled }, windowSettings.data.revision));
+      markSaved();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "窗口与启动设置保存失败。");
+      void windowSettings.refetch();
+    } finally { setWindowBusy(false); }
   }
   async function setAutoUnlock(enabled: boolean) {
     setAutoBusy(true); setError("");
@@ -106,6 +121,22 @@ export function WorkbenchSettings({ desktop, onClose }: { desktop: boolean; onCl
         {active === "workspace" && <><h3>工作区</h3>
           <TogglePreference label="常用脚本自动置顶" detail="近 30 天使用至少 3 次，最多 5 个。" name="autoPinScripts" onUpdate={update} />
           <TogglePreference label="显示文档信息" name="showDocumentInfo" onUpdate={update} />
+        </>}
+        {active === "window" && <><h3>窗口与启动</h3>
+          {windowSettings.isPending && <p role="status">正在读取窗口与启动设置…</p>}
+          {windowSettings.isError && <p role="alert">无法读取窗口与启动设置。<button type="button" className="button" onClick={() => void windowSettings.refetch()}>重新读取</button></p>}
+          {windowSettings.data && <>
+            {([
+              ["auto_start", "开机启动", windowSettings.data.startup_conflict ? "启动项指向其他位置，请先在 Windows 中核对。" : "登录当前 Windows 账户后自动运行。"],
+              ["silent_start", "静默启动", "需先开启开机启动。启动时仅显示托盘图标，可从托盘或再次打开软件显示窗口。"],
+              ["close_to_tray", "关闭时最小化到托盘", windowSettings.data.native_window ? "开启后，关闭窗口仍在后台运行；关闭此选项后将退出软件。" : "此选项需要使用桌面窗口；浏览器模式请从托盘退出软件。"],
+            ] as const).map(([name, label, detail]) => <label className="preference-row" key={name}>
+              <span><strong>{label}</strong><small>{detail}</small></span>
+              <Toggle label={label} checked={windowSettings.data[name]}
+                disabled={windowBusy || windowSettings.isFetching || (name === "auto_start" && windowSettings.data.startup_conflict) || (name === "silent_start" && !windowSettings.data.auto_start) || (name === "close_to_tray" && !windowSettings.data.native_window)}
+                onChange={(enabled) => void updateWindow(name, enabled)} />
+            </label>)}
+          </>}
         </>}
         {active === "security" && <><h3>密码库安全</h3>
           <label className="preference-row"><span><strong>在这台电脑上自动解锁</strong><small>使用此 Windows 账户的人可自动访问保险箱。</small>

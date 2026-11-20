@@ -27,6 +27,78 @@ def test_frequently_viewed_scripts_are_pinned_without_changing_search(client):
 
 
 @pytest.mark.browser
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_window_startup_settings_persist_and_report_save_errors(live_server, tmp_path, monkeypatch, theme):
+    import main
+    from backend import auth
+    from backend.desktop_settings import DesktopSettings
+    from test_desktop_settings import FakeStartup
+
+    startup = FakeStartup()
+    preferences = DesktopSettings(tmp_path / "desktop-settings.json", startup)
+    preferences.native_window = True
+    monkeypatch.setattr(main.app.state, "desktop_settings", preferences, raising=False)
+    monkeypatch.setattr(auth, "_desktop_token", "test-only-window-settings")
+    with sync_playwright() as playwright:
+        browser = _edge(playwright)
+        try:
+            page = browser.new_page(viewport={"width": 1320, "height": 880})
+            page.set_default_timeout(7000)
+            page.add_init_script("""window.pywebview = {api: {
+                minimize: async () => {}, destroy: async () => {},
+                start_window_drag: async () => {}, window_is_maximized: async () => true,
+                toggle_window_size: async () => false
+            }}""")
+            page.goto(f"{live_server}/#desktop=test-only-window-settings")
+            if theme == "dark":
+                page.get_by_role("button", name="切换到深色模式").click()
+            page.locator(".sidebar-foot").get_by_role("button", name="设置", exact=True).click()
+            dialog = page.get_by_role("dialog", name="设置", exact=True)
+            dialog.get_by_role("button", name="窗口与启动", exact=True).click()
+            auto = dialog.get_by_role("switch", name="开机启动", exact=True)
+            silent = dialog.get_by_role("switch", name="静默启动", exact=True)
+            close = dialog.get_by_role("switch", name="关闭时最小化到托盘", exact=True)
+            expect(auto).not_to_be_checked()
+            expect(silent).to_be_disabled()
+            expect(close).to_be_checked()
+            auto.focus()
+            auto.press("Space")
+            expect(auto).to_be_checked()
+            assert startup.read() == startup.command
+            silent.click()
+            expect(silent).to_be_checked()
+            close.click()
+            expect(page.get_by_role("button", name="退出工作台", exact=True)).to_be_visible()
+            expect(dialog.get_by_role("status")).to_contain_text("已保存")
+            page.reload()
+            page.locator(".sidebar-foot").get_by_role("button", name="设置", exact=True).click()
+            dialog.get_by_role("button", name="窗口与启动", exact=True).click()
+            expect(auto).to_be_checked()
+            expect(silent).to_be_checked()
+            expect(close).not_to_be_checked()
+            close.click()
+            expect(close).to_be_checked()
+            expect(close).to_be_enabled()
+            page.screenshot(path=str(Path(os.environ["TEMP"]) / f"window-startup-{theme}.png"))
+            page.route("**/api/desktop/settings", lambda route: route.fulfill(status=503, json={"detail": "测试保存失败"}) if route.request.method == "PUT" else route.continue_())
+            auto.click()
+            expect(dialog.get_by_role("alert")).to_contain_text("测试保存失败")
+            expect(auto).to_be_checked()
+            page.unroute("**/api/desktop/settings")
+            expect(auto).to_be_enabled()
+            auto.click()
+            expect(auto).not_to_be_checked()
+            expect(silent).not_to_be_checked()
+            expect(silent).to_be_disabled()
+            assert startup.read() is None
+            page.set_viewport_size({"width": 980, "height": 640})
+            assert dialog.evaluate("node => node.scrollWidth <= node.clientWidth")
+            page.screenshot(path=str(Path(os.environ["TEMP"]) / f"window-startup-small-{theme}.png"))
+        finally:
+            browser.close()
+
+
+@pytest.mark.browser
 def test_forge_settings_open_from_sidebar_and_control_navigation(live_server, monkeypatch):
     from backend import auth
 
@@ -39,7 +111,7 @@ def test_forge_settings_open_from_sidebar_and_control_navigation(live_server, mo
             sidebar = page.locator(".sidebar-foot")
             sidebar.get_by_role("button", name="设置", exact=True).click()
             settings = page.get_by_role("dialog", name="设置")
-            expect(settings.get_by_role("navigation", name="设置分类").get_by_role("button")).to_have_count(6)
+            expect(settings.get_by_role("navigation", name="设置分类").get_by_role("button")).to_have_count(7)
             expect(settings.get_by_role("searchbox", name="搜索设置")).to_be_focused()
             settings.get_by_label("界面密度").select_option("comfortable")
             expect(page.locator("html")).to_have_attribute("data-density", "comfortable")
