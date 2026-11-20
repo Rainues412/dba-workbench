@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Clipboard, Download, Eye, EyeOff, Globe2, KeyRound, LockKeyhole, Pencil, Plus, RefreshCw, Search, ShieldCheck, Star, Tags, Trash2, Upload, UserRound, X } from "lucide-react";
-import { ApiError, api, jsonBody, Page } from "../api/client";
+import { CheckCircle2, Clipboard, Download, Eye, EyeOff, Globe2, KeyRound, LockKeyhole, Pencil, Plus, RefreshCw, Search, ShieldCheck, Star, Trash2, Upload, UserRound, X } from "lucide-react";
+import { ApiError, api, jsonBody, Page, setVaultAccessToken, VAULT_LOCKED_EVENT } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { Pagination } from "../components/Pagination";
@@ -13,14 +13,22 @@ import {
 } from "../vault/crypto";
 import { startVaultAutoLock } from "../vault/autoLock";
 import { useReauthStatus } from "../vault/useReauthStatus";
+import { usePreference } from "../preferences";
+import { desktopVaultApi, type VaultGrant } from "../vault/desktopVault";
+import { readRecoveryQuestions, RecoveryQuestionFields } from "../vault/RecoveryQuestions";
 
 const EMPTY_SECRET: VaultSecret = { site: "", url: "", username: "", password: "", category: "", notes: "", favorite: false };
 const LEGACY_KEY = "wb_dba_workbench_accounts";
 const NAME_COLLATOR = new Intl.Collator(["zh-CN", "en"], { numeric: true, sensitivity: "base" });
 
-type ProfileResponse = { initialized: boolean; profile: VaultProfile | null };
+type ProfileResponse = { initialized: boolean; profile: VaultProfile | null; questions_set?: boolean };
 type Decrypted = { cipher: VaultCipherItem; secret: VaultSecret };
 type CaptchaChallenge = { challenge_id: string; image: string; expires_in: number };
+
+function revokeDesktopVaultAccess(blockAutoUnlock = true) {
+  void api(`/api/vault/unlock?block_auto_unlock=${blockAutoUnlock}`, { method: "DELETE", keepalive: true }).catch(() => undefined);
+  setVaultAccessToken();
+}
 
 async function loadAllItems(signal?: AbortSignal): Promise<VaultCipherItem[]> {
   const result: VaultCipherItem[] = [];
@@ -35,6 +43,10 @@ export function Vault() {
   const { session, reauthenticate, refreshError } = useAuth();
   const client = useQueryClient();
   const [dek, setDek] = useState<Uint8Array<ArrayBuffer> | null>(null);
+  const [desktopUnlockUntil, setDesktopUnlockUntil] = useState<string>();
+  const [unlocking, setUnlocking] = useState(false);
+  const unlockRequest = useRef<AbortController | null>(null);
+  const hasDesktopGrant = useRef(false);
   const [secrets, setSecrets] = useState<Decrypted[]>([]);
   const [search, setSearch] = useState("");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
@@ -47,6 +59,8 @@ export function Vault() {
   const [notice, setNotice] = useState("");
   const [editing, setEditing] = useState<Decrypted | "new" | null>(null);
   const [recoveringPassword, setRecoveringPassword] = useState(false);
+  const [enrolling, setEnrolling] = useState(false);
+  const [enrollBusy, setEnrollBusy] = useState(false);
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
@@ -65,10 +79,11 @@ export function Vault() {
     queryFn: ({ signal }) => loadAllItems(signal),
     enabled: Boolean(dek),
   });
-  const { reauthenticated, expired, remainingSeconds, isCurrent } = useReauthStatus(session?.reauthenticated_until);
+  const desktopVault = Boolean(session?.vault_password_only);
+  const preferredIdleMinutes = usePreference("idleMinutes");
+  const idleMinutes = desktopVault ? Number(preferredIdleMinutes) : 15;
+  const { reauthenticated, expired, remainingSeconds, isCurrent } = useReauthStatus(desktopVault ? desktopUnlockUntil : session?.reauthenticated_until);
   const reauthMinutes = session?.reauth_minutes ?? 30;
-  const needsVerificationPassword = session?.password_setup_required;
-  const verificationPasswordLabel = session?.desktop ? "敏感操作密码" : "登录密码";
   const legacyLocal = readLegacyLocal();
   const categoryGroups = useMemo(() => {
     const counts = new Map<string, number>();
@@ -100,22 +115,75 @@ export function Vault() {
   }, [page]);
 
   function lock(message?: string) {
+    if (hasDesktopGrant.current) {
+      hasDesktopGrant.current = false;
+      revokeDesktopVaultAccess();
+      setDesktopUnlockUntil(undefined);
+    }
     dekRef.current?.fill(0);
     dekRef.current = null;
-    setDek(null); setSecrets([]); setRevealed(new Set()); setSelected(new Set()); setEditing(null); setCategoryFilter(null); setPage(1);
+    setDek(null); setSecrets([]); setRevealed(new Set()); setSelected(new Set()); setEditing(null); setCategoryFilter(null); setPage(1); setEnrolling(false);
     if (message) setNotice(message);
   }
 
-  useEffect(() => () => { dekRef.current?.fill(0); dekRef.current = null; }, []);
+  useEffect(() => () => {
+    unlockRequest.current?.abort();
+    if (hasDesktopGrant.current) {
+      hasDesktopGrant.current = false;
+      revokeDesktopVaultAccess(false);
+    }
+    dekRef.current?.fill(0);
+    dekRef.current = null;
+  }, []);
   useEffect(() => { setSelected(new Set()); setRevealed(new Set()); }, [page, pageSize, search, favoritesOnly, categoryFilter]);
   useEffect(() => { if (!reauthenticated) setRevealed(new Set()); }, [reauthenticated]);
   useEffect(() => {
-    if (expired) setNotice((current) => current.startsWith("敏感操作已授权") ? "" : current);
-  }, [expired]);
+    if (expired && desktopVault && dekRef.current) lock("解锁已过期，请重新输入保险箱主密码");
+    else if (expired) setNotice((current) => current.startsWith("敏感操作已授权") ? "" : current);
+  }, [expired, desktopVault]);
   useEffect(() => {
-    if (!dek) return;
-    return startVaultAutoLock(() => lock("保险箱已因闲置自动锁定"));
-  }, [dek]);
+    if (!desktopVault) return;
+    const onLocked = () => {
+      if (dekRef.current) lock("保险箱已锁定，请重新输入主密码");
+    };
+    window.addEventListener(VAULT_LOCKED_EVENT, onLocked);
+    return () => window.removeEventListener(VAULT_LOCKED_EVENT, onLocked);
+  }, [desktopVault]);
+  useEffect(() => {
+    if (!dek || !idleMinutes) return;
+    return startVaultAutoLock(() => lock("保险箱已因闲置自动锁定"), idleMinutes * 60_000);
+  }, [dek, idleMinutes]);
+  useEffect(() => {
+    if (!desktopVault || !dek) return;
+    let active = true;
+    const renew = () => void desktopVaultApi.renew()
+      .then((grant) => { if (active && dekRef.current === dek) setDesktopUnlockUntil(grant.expires_at); })
+      .catch(() => undefined);
+    const timer = window.setInterval(renew, 20 * 60_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [desktopVault, dek]);
+  useEffect(() => {
+    if (!desktopVault || !profile.data?.initialized) return;
+    const request = new AbortController();
+    void desktopVaultApi.autoStatus(request.signal).then(async ({ enabled }) => {
+      if (!enabled || request.signal.aborted || unlockRequest.current || dekRef.current) return;
+      unlockRequest.current = request;
+      setUnlocking(true);
+      const grant = await desktopVaultApi.autoUnlock(request.signal);
+      if (grant && !request.signal.aborted) {
+        acceptGrant(grant);
+        setDek(Uint8Array.from(atob(grant.data_key.replaceAll("-", "+").replaceAll("_", "/")), (character) => character.charCodeAt(0)));
+      }
+    }).catch((reason) => {
+      if (!request.signal.aborted) setNotice(reason instanceof Error ? `自动解锁失败：${reason.message}，请使用主密码解锁。` : "自动解锁失败，请使用主密码解锁。");
+    }).finally(() => {
+      if (unlockRequest.current === request) {
+        unlockRequest.current = null;
+        if (!request.signal.aborted) setUnlocking(false);
+      }
+    });
+    return () => request.abort();
+  }, [desktopVault, profile.data?.initialized]);
 
   useEffect(() => {
     if (!dek || !items.data) return;
@@ -129,44 +197,116 @@ export function Vault() {
   if (profile.isLoading) return <VaultPage><LoadingState label="读取保险箱状态" /></VaultPage>;
   if (profile.error && !profile.data) return <VaultPage><ErrorState message="保险箱状态加载失败" retry={() => void profile.refetch()} /></VaultPage>;
 
-  async function verifyLogin(event: FormEvent<HTMLFormElement>) {
+  async function verifySensitiveOperation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError("");
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     const password = String(form.get("login_password") ?? "");
-    if (needsVerificationPassword && password !== form.get("confirm_verification_password")) {
-      setError("两次输入的敏感操作密码不一致");
+    try {
+      await reauthenticate(password);
+      formElement.reset();
+      setNotice(`敏感操作已授权 ${reauthMinutes} 分钟`);
+    } catch (reason) { setError(reason instanceof ApiError ? reason.message : "登录密码验证失败"); }
+  }
+
+  function acceptGrant(grant: VaultGrant) {
+    hasDesktopGrant.current = true;
+    setDesktopUnlockUntil(grant.expires_at);
+    setVaultAccessToken(grant.token);
+  }
+
+  async function unlockWithMasterPassword(password: string, envelope: VaultProfile, signal: AbortSignal) {
+    const userId = session!.user!.id;
+    const key = await unlockVault(password, userId, envelope, desktopVault ? async (wrappingKey) => {
+      const grant = await api<VaultGrant>("/api/vault/unlock", {
+        method: "POST", body: jsonBody({ wrapping_key: wrappingKey }), signal,
+      });
+      if (signal.aborted) return;
+      acceptGrant(grant);
+    } : undefined);
+    if (signal.aborted) {
+      key.fill(0);
       return;
     }
-    try { await reauthenticate(password); formElement.reset(); setNotice(`敏感操作已授权 ${reauthMinutes} 分钟`); }
-    catch (reason) { setError(reason instanceof ApiError ? reason.message : `${verificationPasswordLabel}验证失败`); }
+    setDek(key);
   }
 
   async function initialize(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError("");
     const formElement = event.currentTarget;
-    if (!isCurrent()) { setError("请先重新完成敏感操作验证"); return; }
+    if (!desktopVault && !isCurrent()) { setError("请先重新完成敏感操作验证"); return; }
     const form = new FormData(formElement);
     const first = String(form.get("master_password") ?? "");
     if (first.length < 9 || first !== String(form.get("confirm_master") ?? "")) { setError("主密码至少 9 位，且两次输入必须一致"); return; }
+    const questions = desktopVault ? readRecoveryQuestions(form) : undefined;
+    if (unlockRequest.current) return;
+    const request = new AbortController();
+    unlockRequest.current = request;
+    setUnlocking(true);
     try {
-      const recovery = await api<RecoveryPublicKey>("/api/vault/recovery-public-key");
+      const recovery = await api<RecoveryPublicKey>("/api/vault/recovery-public-key", { signal: request.signal });
       const created = await createVaultProfile(first, session!.user!.id, recovery);
-      await api<VaultProfile>("/api/vault/profile", { method: "POST", body: jsonBody(created.profile) });
-      setDek(created.dek); formElement.reset();
+      try {
+        await api<VaultProfile>("/api/vault/profile", { method: "POST", body: jsonBody({ ...created.profile, questions }), signal: request.signal });
+        if (desktopVault) await unlockWithMasterPassword(first, created.profile, request.signal);
+        else setDek(created.dek);
+      } catch (reason) {
+        created.dek.fill(0);
+        throw reason;
+      }
+      if (desktopVault) created.dek.fill(0);
+      if (request.signal.aborted) return;
+      formElement.reset();
       await Promise.all([profile.refetch(), legacyStatus.refetch()]);
       await client.invalidateQueries({ queryKey: ["vault", "items"] });
       setNotice("保险箱已创建。请立即备份管理员恢复密钥并确认。 ");
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "保险箱创建失败"); }
+    } catch (reason) {
+      if (!request.signal.aborted) {
+        setError(reason instanceof Error ? reason.message : "保险箱创建失败");
+        if (desktopVault) void profile.refetch();
+      }
+    } finally {
+      unlockRequest.current = null;
+      if (!request.signal.aborted) setUnlocking(false);
+    }
+  }
+
+  async function enrollQuestions(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setEnrollBusy(true);
+    try {
+      await desktopVaultApi.enroll(readRecoveryQuestions(new FormData(event.currentTarget)));
+      await profile.refetch();
+      setEnrolling(false);
+      setNotice("密保问题已保存");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "无法保存密保问题");
+    } finally {
+      setEnrollBusy(false);
+    }
   }
 
   async function unlock(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError("");
     const formElement = event.currentTarget;
-    if (!isCurrent()) { setError("查看保险箱前请先重新完成敏感操作验证"); return; }
+    if (!desktopVault && !isCurrent()) { setError("查看保险箱前请先重新完成敏感操作验证"); return; }
     const password = String(new FormData(formElement).get("master_password") ?? "");
-    try { const key = await unlockVault(password, session!.user!.id, profile.data!.profile!); setDek(key); formElement.reset(); setNotice("保险箱已解锁"); }
-    catch { setError("主密码错误或密钥信封已损坏"); }
+    if (unlockRequest.current) return;
+    const request = new AbortController();
+    unlockRequest.current = request;
+    setUnlocking(true);
+    try {
+      await unlockWithMasterPassword(password, profile.data!.profile!, request.signal);
+      if (request.signal.aborted) return;
+      formElement.reset();
+      setNotice("保险箱已解锁");
+    } catch (reason) {
+      if (!request.signal.aborted) setError(reason instanceof ApiError ? reason.message : "主密码错误或密钥信封已损坏");
+    } finally {
+      unlockRequest.current = null;
+      if (!request.signal.aborted) setUnlocking(false);
+    }
   }
 
   async function saveSecret(secret: VaultSecret, current?: Decrypted) {
@@ -194,7 +334,7 @@ export function Vault() {
   async function removeEntries(entries: Decrypted[]) {
     if (!entries.length || deletingRef.current) return;
     const key = dekRef.current;
-    const authorized = () => key && dekRef.current === key && Boolean(session?.reauthenticated_until && new Date(session.reauthenticated_until).getTime() > Date.now());
+    const authorized = () => key && dekRef.current === key && isCurrent();
     if (!authorized()) { setError("删除前请解锁并重新完成敏感操作验证"); return; }
     if (!window.confirm(`确定永久删除选中的 ${entries.length} 条密码吗？此操作不可撤销，请先确认已有加密备份。`)) return;
     deletingRef.current = true; setDeleting(true); setError(""); setNotice("");
@@ -220,7 +360,7 @@ export function Vault() {
   function togglePassword(entry: Decrypted) {
     const itemKey = entry.cipher.item_key;
     // Hiding remains available even after the sensitive-operation grant expires.
-    if (!revealed.has(itemKey) && !(session?.reauthenticated_until && new Date(session.reauthenticated_until).getTime() > Date.now())) {
+    if (!revealed.has(itemKey) && !isCurrent()) {
       setError("查看前请重新完成敏感操作验证"); return;
     }
     setRevealed((current) => { const next = new Set(current); if (next.has(itemKey)) next.delete(itemKey); else next.add(itemKey); return next; });
@@ -316,25 +456,45 @@ export function Vault() {
   }
 
   return <VaultPage>
-    <header className="page-header"><div className="page-title-group"><span className="page-title-icon vault"><KeyRound size={24} /></span><div><p className="eyebrow">CLIENT-SIDE ENCRYPTED</p><h1>密码保险箱</h1><p className="muted">条目在浏览器内使用 Argon2id 与 AES-256-GCM 加解密。</p></div></div>{dek && <button className="button" onClick={() => lock("保险箱已锁定")}><LockKeyhole size={17} />立即锁定</button>}</header>
+    <header className="page-header"><div className="page-title-group"><span className="page-title-icon vault"><KeyRound size={24} /></span><div><p className="eyebrow">DATA MODULE</p><h1>密码保险箱</h1></div></div>{dek && <button className="button" onClick={() => lock("保险箱已锁定")}><LockKeyhole size={17} />立即锁定</button>}</header>
     {(notice || error) && <div className={`alert ${error ? "error" : ""}`} role={error ? "alert" : "status"}><span>{!error && <CheckCircle2 size={17} />}{error || notice}</span><button className="icon-button" onClick={() => { setError(""); setNotice(""); }} aria-label="关闭"><X size={17} /></button></div>}
-    <section className="panel reauth-panel"><span className="reauth-icon"><ShieldCheck size={23} /></span><div><h2>敏感操作验证</h2><p className="muted">{needsVerificationPassword ? "首次使用保险箱，请设置至少 9 位的敏感操作密码。" : `查看、复制、修改、删除、迁移和备份前，需要验证${verificationPasswordLabel}。`}</p></div><form className={needsVerificationPassword ? "reauth-setup" : undefined} onSubmit={verifyLogin}>
-      <input name="login_password" type="password" minLength={9} maxLength={256} aria-label="敏感操作验证密码" autoComplete={needsVerificationPassword ? "new-password" : "current-password"} placeholder={verificationPasswordLabel} required />
-      {needsVerificationPassword && <input name="confirm_verification_password" type="password" minLength={9} maxLength={256} aria-label="确认敏感操作密码" autoComplete="new-password" placeholder="确认敏感操作密码" required />}
-      <button className="button">{needsVerificationPassword ? "设置并验证" : `验证 ${reauthMinutes} 分钟`}</button>
+    {!desktopVault && <><section className="panel reauth-panel"><span className="reauth-icon"><ShieldCheck size={23} /></span><div><h2>敏感操作验证</h2><p className="muted">查看、复制、修改、删除、迁移和备份前，需要验证登录密码。</p></div><form onSubmit={verifySensitiveOperation}>
+      <input name="login_password" type="password" minLength={9} maxLength={256} aria-label="敏感操作验证密码" autoComplete="current-password" placeholder="登录密码" required />
+      <button className="button">{`验证 ${reauthMinutes} 分钟`}</button>
     </form><div className="reauth-state"><span className={`badge ${reauthenticated ? "success" : "danger"}`}><span>{reauthenticated ? "已验证" : expired ? "已过期" : "未验证"}</span></span>{reauthenticated && <span className="reauth-countdown" aria-label="验证剩余时间">剩余 {Math.floor(remainingSeconds / 60).toString().padStart(2, "0")}:{(remainingSeconds % 60).toString().padStart(2, "0")}</span>}</div></section>
-    {expired && <div className="alert error" role="status">敏感操作验证已过期，请重新输入{verificationPasswordLabel}验证。</div>}
-    {refreshError && <div className="alert error" role="status">登录状态暂未同步，恢复连接后会自动重试。</div>}
+    {expired && <div className="alert error" role="status">敏感操作验证已过期，请重新输入登录密码验证。</div>}</>}
+    {refreshError && <div className="alert error" role="status">{desktopVault ? "本机会话" : "登录"}状态暂未同步，恢复连接后会自动重试。</div>}
     {profile.error && <div className="alert error" role="status">保险箱状态暂未同步，恢复连接后会自动重试。</div>}
-    {!profile.data!.initialized ? <section className="panel vault-gate"><span className="vault-gate-icon"><ShieldCheck size={30} /></span><h2>创建新保险箱</h2><p className="muted">保险箱主密码独立设置。忘记后只能由本机管理员恢复。</p><form className="stack compact" onSubmit={initialize}><label>保险箱主密码<input name="master_password" type="password" minLength={9} autoComplete="new-password" required /></label><label>确认主密码<input name="confirm_master" type="password" minLength={9} autoComplete="new-password" required /></label><button className="button primary" disabled={!reauthenticated}><ShieldCheck size={17} />创建保险箱</button></form></section>
-      : !dek ? <section className="panel vault-gate"><span className="vault-gate-icon"><LockKeyhole size={30} /></span><h2>保险箱已锁定</h2><form className="stack compact vault-unlock-form" onSubmit={unlock}><label>保险箱主密码<input name="master_password" type="password" minLength={9} autoComplete="current-password" required autoFocus /></label><button type="button" className="vault-forgot-link" onClick={() => setRecoveringPassword(true)}>忘记密码</button><button className="button primary" disabled={!reauthenticated}><LockKeyhole size={17} />解锁</button></form><p className="vault-lock-hint"><ShieldCheck size={14} aria-hidden="true" /><span><span className="vault-lock-hint-part">刷新页面后需重新解锁；</span><span className="vault-lock-hint-part">连续 15 分钟无操作将自动锁定。</span></span></p></section>
+    {desktopVault && !dek ? <DesktopVaultGate initialized={profile.data!.initialized} busy={unlocking} onSubmit={profile.data!.initialized ? unlock : initialize} onForgot={() => setRecoveringPassword(true)} />
+      : !profile.data!.initialized ? <section className="panel vault-gate">
+      <span className="vault-gate-icon"><ShieldCheck size={30} /></span>
+      <h2>创建新保险箱</h2>
+      <p className="muted">保险箱主密码用于解锁保险箱，请单独设置。</p>
+      <form className="stack compact" onSubmit={initialize}>
+        <label>保险箱主密码<input name="master_password" type="password" minLength={9} autoComplete="new-password" required /></label>
+        <label>确认主密码<input name="confirm_master" type="password" minLength={9} autoComplete="new-password" required /></label>
+        <button className="button primary" disabled={unlocking || !reauthenticated}><ShieldCheck size={17} />创建保险箱</button>
+      </form>
+    </section>
+      : !dek ? <section className="panel vault-gate">
+        <span className="vault-gate-icon"><LockKeyhole size={30} /></span>
+        <h2>保险箱已锁定</h2>
+        <form className="stack compact vault-unlock-form" onSubmit={unlock}>
+          <label>保险箱主密码<input name="master_password" type="password" minLength={9} autoComplete="current-password" required autoFocus /></label>
+          <button type="button" className="vault-forgot-link" onClick={() => setRecoveringPassword(true)}>忘记密码</button>
+          <button className="button primary" disabled={unlocking || !reauthenticated}><LockKeyhole size={17} />解锁</button>
+        </form>
+        <p className="vault-lock-hint"><ShieldCheck size={14} aria-hidden="true" /><span><span className="vault-lock-hint-part">刷新页面后需重新解锁；</span><span className="vault-lock-hint-part">连续 15 分钟无操作将自动锁定。</span></span></p>
+      </section>
       : <>
-        <div className="button-row"><EdgePasswordImport dek={dek} userId={session!.user!.id} canImport={() => dekRef.current === dek && Boolean(session?.reauthenticated_until && new Date(session.reauthenticated_until).getTime() > Date.now())} loadExisting={async () => { const key = dekRef.current; if (!key) throw new Error("保险箱已锁定"); return Promise.all((await loadAllItems()).map((item) => decryptSecret(key, item))); }} onImported={async () => { await items.refetch(); }} /></div>
+        <div className="button-row"><EdgePasswordImport dek={dek} userId={session!.user!.id} canImport={() => dekRef.current === dek && isCurrent()} loadExisting={async () => { const key = dekRef.current; if (!key) throw new Error("保险箱已锁定"); return Promise.all((await loadAllItems()).map((item) => decryptSecret(key, item))); }} onImported={async () => { await items.refetch(); }} /></div>
+        {desktopVault && !profile.data!.questions_set && <section className="panel recovery-callout"><span className="callout-icon"><ShieldCheck size={22} /></span><div><h2>设置密保问题</h2><p className="muted">忘记主密码时，可通过回答密保问题重置。</p></div><button className="button" onClick={() => setEnrolling((value) => !value)}>{enrolling ? "收起" : "设置密保"}</button>
+          {enrolling && <form className="stack vault-enroll-form" onSubmit={enrollQuestions}><RecoveryQuestionFields /><button className="button primary" disabled={enrollBusy}>保存密保</button></form>}
+        </section>}
         {!profile.data!.profile?.recovery_confirmed_at && <section className="panel recovery-callout"><span className="callout-icon"><Download size={22} /></span><div><h2>请备份管理员恢复密钥</h2><p className="muted">在 server 目录运行 <code>python -m backend.admin backup-recovery-key --output &lt;绝对备份目录&gt;</code>，并将副本与数据库分开保存。</p></div><button className="button" onClick={async () => { await api("/api/vault/recovery/confirm", { method: "POST" }); await profile.refetch(); }}>我已完成备份</button></section>}
         <section className="panel data-panel" ref={panelRef}><div className="toolbar"><label className="search-field"><Search size={17} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="按名称搜索已解锁条目" aria-label="按名称搜索保险箱" /></label><button className={`button vault-filter-toggle${favoritesOnly ? " is-active" : ""}`} aria-pressed={favoritesOnly} onClick={() => { setFavoritesOnly((current) => !current); setPage(1); }}><Star size={16} fill={favoritesOnly ? "currentColor" : "none"} />仅看收藏</button><div className="button-row"><button className="button" onClick={() => void downloadBackup()}><Download size={16} />加密备份</button><label className="button file-button"><Upload size={16} />恢复加密备份<input className="sr-only" type="file" accept="application/json,.json" onChange={(event) => void restoreBackup(event)} /></label><button className="button primary" onClick={() => isCurrent() ? setEditing("new") : setError("新增前请重新完成敏感操作验证")}><Plus size={17} />新增条目</button></div></div>
           {(legacyLocal.length > 0 || (legacyStatus.data?.backend_entries ?? 0) > 0) && <div className="migration-banner"><span>检测到 {legacyLocal.length} 条浏览器旧数据和 {legacyStatus.data?.backend_entries ?? 0} 条后端旧数据。</span><button className="button" onClick={() => void migrateLegacy()}>迁移并校验</button></div>}
           {!items.isLoading && !items.error && secrets.length > 0 && <div className="vault-category-groups" role="group" aria-label="保险箱分类分组">
-            <span className="vault-category-title"><Tags size={15} />分类分组</span>
             <div className="vault-category-options">
               <button className="vault-category-button" aria-label={`全部分类，${secrets.length} 条`} aria-pressed={categoryFilter === null} onClick={() => { setCategoryFilter(null); setPage(1); }}><span className="vault-category-name">全部</span><span className="vault-category-count">{secrets.length}</span></button>
               {categoryGroups.map(([category, count]) => <button className="vault-category-button" aria-label={`${category || "未分类"}，${count} 条`} aria-pressed={categoryFilter === category} title={category || "未分类"} key={category || "__uncategorized__"} onClick={() => { setCategoryFilter(category); setPage(1); }}><span className="vault-category-name">{category || "未分类"}</span><span className="vault-category-count">{count}</span></button>)}
@@ -365,14 +525,108 @@ export function Vault() {
           {!items.isLoading && !items.error && <Pagination page={currentPage} pages={pages} total={filtered.length} pageSize={pageSize} onChange={(next) => { paginationTop.current = panelRef.current?.querySelector(".pagination")?.getBoundingClientRect().top ?? null; setPage(next); }} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />}
         </section>
       </>}
-    {editing && <SecretEditor authorized={reauthenticated} categories={categoryGroups.map(([category]) => category).filter(Boolean)} current={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} onSave={saveSecret} />}
-    {recoveringPassword && !dek && <ForgotMasterPasswordEditor onClose={() => setRecoveringPassword(false)} onChanged={async () => { await profile.refetch(); setNotice("保险箱主密码已重置，请使用新密码解锁"); setRecoveringPassword(false); }} />}
+    {editing && <SecretEditor authorized={reauthenticated} isCurrent={isCurrent} desktopVault={desktopVault} categories={categoryGroups.map(([category]) => category).filter(Boolean)} current={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} onSave={saveSecret} />}
+    {recoveringPassword && !dek && (desktopVault ? <DesktopVaultRecovery username={session!.user!.username} onClose={() => setRecoveringPassword(false)} onChanged={passwordRecovered} /> : <ForgotMasterPasswordEditor onClose={() => setRecoveringPassword(false)} onChanged={passwordRecovered} />)}
   </VaultPage>;
+
+  async function passwordRecovered() {
+    await Promise.all([profile.refetch(), client.invalidateQueries({ queryKey: ["vault", "auto-status"] })]);
+    setNotice("保险箱主密码已重置，请使用新密码解锁");
+    setRecoveringPassword(false);
+  }
+}
+
+function DesktopVaultGate({ initialized, busy, onSubmit, onForgot }: {
+  initialized: boolean;
+  busy: boolean;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onForgot: () => void;
+}) {
+  const [showPassword, setShowPassword] = useState(false);
+  return <section className="panel vault-gate desktop-vault-gate" aria-labelledby="vault-gate-title">
+    <span className="vault-gate-icon"><LockKeyhole size={28} aria-hidden="true" /></span>
+    <h2 id="vault-gate-title">{initialized ? "解锁保险箱" : "创建本地保险箱"}</h2>
+    <form className="stack compact" onSubmit={onSubmit}>
+      <label htmlFor="vault-master-password">保险箱主密码</label>
+      <div className="vault-password-input">
+        <input id="vault-master-password" name="master_password" type={showPassword ? "text" : "password"} minLength={9} maxLength={256}
+          placeholder={initialized ? undefined : "至少 9 位"} autoComplete={initialized ? "current-password" : "new-password"} autoCapitalize="none" spellCheck={false} required autoFocus />
+        <button className="icon-button" type="button" aria-label={showPassword ? "隐藏主密码" : "显示主密码"} aria-controls="vault-master-password"
+          aria-pressed={showPassword} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button>
+      </div>
+      {!initialized && <>
+        <label htmlFor="vault-confirm-password">确认主密码</label>
+        <input id="vault-confirm-password" name="confirm_master" type="password" minLength={9} maxLength={256} autoComplete="new-password" required />
+        <RecoveryQuestionFields />
+      </>}
+      <button className="button primary" disabled={busy}>{busy ? "正在处理…" : initialized ? "解锁" : "创建并解锁"}</button>
+    </form>
+    {initialized && <button type="button" className="vault-forgot-link" onClick={onForgot}>忘记主密码</button>}
+  </section>;
+}
+
+function DesktopVaultRecovery({ username, onClose, onChanged }: { username: string; onClose: () => void; onChanged: () => Promise<void> }) {
+  const command = `..\\.runtime\\.venv\\Scripts\\python.exe -m backend.admin recover-vault -- '${username.replaceAll("'", "''")}'`;
+  const questions = useQuery({ queryKey: ["vault", "recovery-questions"], queryFn: desktopVaultApi.recoveryQuestions, staleTime: 0 });
+  const [ticket, setTicket] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const node = dialog.current;
+    node?.showModal();
+    return () => node?.close();
+  }, []);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const next = String(form.get("new_master_password") ?? "");
+    if (ticket && (next.length < 9 || next !== String(form.get("confirm_master_password") ?? ""))) {
+      setError("新主密码至少 9 位，且两次输入必须一致");
+      return;
+    }
+    setBusy(true); setError("");
+    try {
+      if (!ticket) {
+        const result = await desktopVaultApi.verify(form.getAll("answer").map(String));
+        setTicket(result.ticket);
+      } else {
+        await desktopVaultApi.reset(ticket, next);
+        await onChanged();
+      }
+    } catch (cause) {
+      if (ticket && cause instanceof ApiError && (cause.status === 403 || cause.status === 409)) setTicket("");
+      setError(cause instanceof Error ? cause.message : "重置失败，请重试");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return <dialog ref={dialog} className="modal vault-password-modal vault-recovery-dialog" aria-labelledby="vault-recovery-title" onCancel={(event) => { event.preventDefault(); if (!busy) onClose(); }}>
+    <div className="modal-header"><h2 id="vault-recovery-title">恢复保险箱主密码</h2><button type="button" className="icon-button modal-close" aria-label="关闭" autoFocus onClick={onClose}><X size={19} /></button></div>
+    {questions.isLoading && <LoadingState label="正在读取密保问题" />}
+    {questions.error && <ErrorState message="读取密保问题失败" retry={() => void questions.refetch()} />}
+    {Boolean(questions.data?.questions.length) && <form key={ticket ? "reset" : "verify"} className="stack" onSubmit={submit}>
+      {ticket ? <>
+        <label>新主密码<input name="new_master_password" type="password" minLength={9} maxLength={256} placeholder="至少 9 位" autoComplete="new-password" required autoFocus /></label>
+        <label>确认新主密码<input name="confirm_master_password" type="password" minLength={9} maxLength={256} autoComplete="new-password" required /></label>
+      </> : <><p className="muted">答对全部问题后可重置主密码。</p>
+        {questions.data!.questions.map((question, index) => <label key={question}>{question}<input name="answer" type="password" maxLength={256} autoComplete="off" required autoFocus={index === 0} /></label>)}
+      </>}
+      <div className="modal-actions"><button type="button" className="button" onClick={onClose}>取消</button><button className="button primary" disabled={busy}>{busy ? "正在处理…" : ticket ? "确认重置" : "验证答案"}</button></div>
+    </form>}
+    {error && <p className="alert error" role="alert">{error}</p>}
+    {questions.data && !questions.data.questions.length && <p className="muted">此保险箱尚未设置密保问题。请使用已有的恢复密钥。</p>}
+    <details className="vault-offline-recovery" open={questions.data?.questions.length === 0 || undefined}>
+      <summary>使用恢复密钥离线恢复</summary>
+      <p>将匹配的管理员恢复私钥放回数据库目录，从系统托盘退出工作台，然后在项目的 <code>server</code> 目录运行：</p>
+      <pre className="vault-recovery-command"><code>{command}</code></pre>
+      <p className="muted">按提示设置新主密码，再启动工作台解锁。</p>
+    </details>
+  </dialog>;
 }
 
 function ForgotMasterPasswordEditor({ onClose, onChanged }: { onClose: () => void; onChanged: () => Promise<void> }) {
-  const { session } = useAuth();
-  const verificationPasswordLabel = session?.desktop ? "敏感操作密码" : "登录密码";
+  const verificationPasswordLabel = "登录密码";
   const [captcha, setCaptcha] = useState<CaptchaChallenge | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -401,15 +655,15 @@ function ForgotMasterPasswordEditor({ onClose, onChanged }: { onClose: () => voi
       await refreshCaptcha();
     } finally { setBusy(false); }
   }
-  return <div className="modal-backdrop"><section className="modal vault-password-modal" role="dialog" aria-modal="true" aria-labelledby="vault-password-title"><div className="modal-header"><div><p className="eyebrow">RECOVERY</p><h2 id="vault-password-title">重置保险箱主密码</h2></div><button className="icon-button modal-close" onClick={onClose} aria-label="关闭"><X size={19} /></button></div><p className="muted">验证{verificationPasswordLabel}与本机验证码后，系统会使用管理员恢复密钥重新保护数据密钥。</p><form className="form-grid" onSubmit={submit}><label className="full">{verificationPasswordLabel}<input name="login_password" type="password" minLength={9} autoComplete="current-password" required autoFocus /></label><label>新保险箱主密码<input name="new_master_password" type="password" minLength={9} autoComplete="new-password" required /></label><label>确认新主密码<input name="confirm_master_password" type="password" minLength={9} autoComplete="new-password" required /></label><label className="full">验证码<div className="captcha-row">{captcha ? <img src={captcha.image} alt="本机验证码" /> : <span className="captcha-placeholder">正在生成…</span>}<input name="captcha_code" minLength={5} maxLength={5} autoComplete="off" placeholder="输入 5 位验证码" required /><button type="button" className="icon-button" onClick={() => void refreshCaptcha()} aria-label="刷新验证码" title="刷新验证码"><RefreshCw size={17} /></button></div></label>{error && <div className="alert error full" role="alert">{error}</div>}<div className="modal-actions full"><button type="button" className="button" onClick={onClose}>取消</button><button className="button primary" disabled={busy || !captcha}><KeyRound size={17} />{busy ? "正在重置…" : "确认重置"}</button></div></form></section></div>;
+  return <div className="modal-backdrop"><section className="modal vault-password-modal" role="dialog" aria-modal="true" aria-labelledby="vault-password-title"><div className="modal-header"><div><h2 id="vault-password-title">重置保险箱主密码</h2></div><button className="icon-button modal-close" onClick={onClose} aria-label="关闭"><X size={19} /></button></div><p className="muted">验证{verificationPasswordLabel}和本机验证码后，才能重置保险箱主密码。</p><form className="form-grid" onSubmit={submit}><label className="full">{verificationPasswordLabel}<input name="login_password" type="password" minLength={9} autoComplete="current-password" required autoFocus /></label><label>新保险箱主密码<input name="new_master_password" type="password" minLength={9} autoComplete="new-password" required /></label><label>确认新主密码<input name="confirm_master_password" type="password" minLength={9} autoComplete="new-password" required /></label><label className="full">验证码<div className="captcha-row">{captcha ? <img src={captcha.image} alt="本机验证码" /> : <span className="captcha-placeholder">正在生成…</span>}<input name="captcha_code" minLength={5} maxLength={5} autoComplete="off" placeholder="输入 5 位验证码" required /><button type="button" className="icon-button" onClick={() => void refreshCaptcha()} aria-label="刷新验证码" title="刷新验证码"><RefreshCw size={17} /></button></div></label>{error && <div className="alert error full" role="alert">{error}</div>}<div className="modal-actions full"><button type="button" className="button" onClick={onClose}>取消</button><button className="button primary" disabled={busy || !captcha}><KeyRound size={17} />{busy ? "正在重置…" : "确认重置"}</button></div></form></section></div>;
 }
 
-function SecretEditor({ current, categories, authorized, onClose, onSave }: { current?: Decrypted; categories: string[]; authorized: boolean; onClose: () => void; onSave: (secret: VaultSecret, current?: Decrypted) => Promise<void> }) {
+function SecretEditor({ current, categories, authorized, isCurrent, desktopVault, onClose, onSave }: { current?: Decrypted; categories: string[]; authorized: boolean; isCurrent: () => boolean; desktopVault: boolean; onClose: () => void; onSave: (secret: VaultSecret, current?: Decrypted) => Promise<void> }) {
   const [error, setError] = useState(""); const [busy, setBusy] = useState(false); const value = current?.secret ?? EMPTY_SECRET;
   const [showPassword, setShowPassword] = useState(false);
   const passwordId = useId();
-  const { reauthenticate, session } = useAuth();
-  const verificationPasswordLabel = session?.desktop ? "敏感操作密码" : "登录密码";
+  const { reauthenticate } = useAuth();
+  const verificationPasswordLabel = "登录密码";
   const [reauthPassword, setReauthPassword] = useState("");
   useEffect(() => { if (!authorized) setShowPassword(false); else setReauthPassword(""); }, [authorized]);
   async function renewAuthorization() {
@@ -419,7 +673,7 @@ function SecretEditor({ current, categories, authorized, onClose, onSave }: { cu
     finally { setBusy(false); }
   }
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setBusy(true); setError(""); const data = new FormData(event.currentTarget); try { await onSave({ site: String(data.get("site") ?? ""), url: String(data.get("url") ?? ""), username: String(data.get("vault_entry_username") ?? ""), password: String(data.get("vault_entry_password") ?? ""), category: String(data.get("category") ?? ""), notes: String(data.get("notes") ?? ""), favorite: data.get("favorite") === "on" }, current); } catch (reason) { setError(reason instanceof Error ? reason.message : "保存失败"); } finally { setBusy(false); } }
-  return <div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="secret-title"><div className="modal-header"><div><p className="eyebrow">SECURE RECORD</p><h2 id="secret-title">{current ? "编辑保险箱条目" : "新增保险箱条目"}</h2></div><button className="icon-button modal-close" onClick={onClose} aria-label="关闭"><X size={19} /></button></div><form className="form-grid" autoComplete="off" onSubmit={submit}><label>名称或备注<input name="site" defaultValue={value.site} required autoFocus /></label><VaultCategoryInput categories={categories} initialValue={value.category} /><label className="full">网址<input name="url" type="url" defaultValue={value.url} /></label><label>账号名<input name="vault_entry_username" autoComplete="off" autoCapitalize="none" defaultValue={value.username} /></label><div className="vault-password-field"><label htmlFor={passwordId}>密码</label><div className="vault-password-input"><input id={passwordId} name="vault_entry_password" autoComplete="new-password" autoCapitalize="none" type={showPassword ? "text" : "password"} defaultValue={value.password} spellCheck={false} required /><button type="button" className="icon-button" disabled={!authorized} aria-label={showPassword ? "隐藏密码" : "显示密码"} title={showPassword ? "隐藏密码" : "显示密码"} aria-pressed={showPassword} aria-controls={passwordId} onMouseDown={(event) => event.preventDefault()} onClick={() => { if (showPassword || (session?.reauthenticated_until && Date.parse(session.reauthenticated_until) > Date.now())) setShowPassword((visible) => !visible); }}>{showPassword ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}</button></div></div><label className="full">详细备注<textarea name="notes" defaultValue={value.notes} rows={4} /></label><label className="full vault-switch-row"><input className="sr-only" type="checkbox" name="favorite" aria-label="收藏此条目" defaultChecked={value.favorite} /><span className="vault-switch-copy"><Star size={18} /><span><strong>收藏此条目</strong><small>收藏后将在列表中优先展示</small></span></span><span className="vault-switch-track" aria-hidden="true"><span /></span></label>{!authorized && <div className="vault-editor-reauth full"><p className="alert error" role="alert">敏感操作验证已过期，当前输入已保留。请重新验证后再保存。</p><div className="vault-editor-reauth-controls"><input type="password" name="vault_reauth_password" aria-label={`重新验证${verificationPasswordLabel}`} placeholder={verificationPasswordLabel} autoComplete="off" value={reauthPassword} onChange={(event) => setReauthPassword(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); if (!busy && reauthPassword) void renewAuthorization(); } }} /><button type="button" className="button" disabled={busy || !reauthPassword} onClick={() => void renewAuthorization()}>重新验证</button></div></div>}{error && <div className="alert error full">{error}</div>}<div className="modal-actions full"><button type="button" className="button" onClick={onClose}>取消</button><button className="button primary" disabled={busy || !authorized}><CheckCircle2 size={17} />保存</button></div></form></section></div>;
+  return <div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="secret-title"><div className="modal-header"><div><h2 id="secret-title">{current ? "编辑保险箱条目" : "新增保险箱条目"}</h2></div><button className="icon-button modal-close" onClick={onClose} aria-label="关闭"><X size={19} /></button></div><form className="form-grid" autoComplete="off" onSubmit={submit}><label>名称或备注<input name="site" defaultValue={value.site} required autoFocus /></label><VaultCategoryInput categories={categories} initialValue={value.category} /><label className="full">网址<input name="url" type="url" defaultValue={value.url} /></label><label>账号名<input name="vault_entry_username" autoComplete="off" autoCapitalize="none" defaultValue={value.username} /></label><div className="vault-password-field"><label htmlFor={passwordId}>密码</label><div className="vault-password-input"><input id={passwordId} name="vault_entry_password" autoComplete="new-password" autoCapitalize="none" type={showPassword ? "text" : "password"} defaultValue={value.password} spellCheck={false} required /><button type="button" className="icon-button" disabled={!authorized} aria-label={showPassword ? "隐藏密码" : "显示密码"} title={showPassword ? "隐藏密码" : "显示密码"} aria-pressed={showPassword} aria-controls={passwordId} onMouseDown={(event) => event.preventDefault()} onClick={() => { if (showPassword || isCurrent()) setShowPassword((visible) => !visible); }}>{showPassword ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}</button></div></div><label className="full">详细备注<textarea name="notes" defaultValue={value.notes} rows={4} /></label><label className="full vault-switch-row"><input className="sr-only" type="checkbox" name="favorite" aria-label="收藏此条目" defaultChecked={value.favorite} /><span className="vault-switch-copy"><Star size={18} /><span><strong>收藏此条目</strong></span></span><span className="vault-switch-track" aria-hidden="true"><span /></span></label>{!desktopVault && !authorized && <div className="vault-editor-reauth full"><p className="alert error" role="alert">敏感操作验证已过期，当前输入已保留。请重新验证后再保存。</p><div className="vault-editor-reauth-controls"><input type="password" name="vault_reauth_password" aria-label={`重新验证${verificationPasswordLabel}`} placeholder={verificationPasswordLabel} autoComplete="off" value={reauthPassword} onChange={(event) => setReauthPassword(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); if (!busy && reauthPassword) void renewAuthorization(); } }} /><button type="button" className="button" disabled={busy || !reauthPassword} onClick={() => void renewAuthorization()}>重新验证</button></div></div>}{error && <div className="alert error full">{error}</div>}<div className="modal-actions full"><button type="button" className="button" onClick={onClose}>取消</button><button className="button primary" disabled={busy || !authorized}><CheckCircle2 size={17} />保存</button></div></form></section></div>;
 }
 
 function VaultPage({ children }: { children: React.ReactNode }) { return <div className="page vault-page">{children}</div>; }

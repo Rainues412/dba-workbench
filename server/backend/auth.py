@@ -145,7 +145,6 @@ def _session_row(token: str):
     with get_db_ctx() as conn:
         row = conn.execute(
             """SELECT sessions.*, users.username, users.is_active,
-                      users.password_hash = ? AS password_setup_required,
                       GROUP_CONCAT(roles.name) AS roles
                FROM sessions
                JOIN users ON users.id = sessions.user_id
@@ -153,7 +152,7 @@ def _session_row(token: str):
                JOIN roles ON roles.id = memberships.role_id
                WHERE sessions.token_hash = ?
                GROUP BY sessions.id""",
-            (UNSET_PASSWORD_HASH, digest(token)),
+            (digest(token),),
         ).fetchone()
         if not row:
             return None

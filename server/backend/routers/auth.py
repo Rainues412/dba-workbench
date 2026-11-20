@@ -12,7 +12,6 @@ from backend.auth import (
     REAUTH_MINUTES,
     SESSION_COOKIE,
     SESSION_HOURS,
-    UNSET_PASSWORD_HASH,
     attempt_identifier,
     clear_attempts,
     create_session,
@@ -31,8 +30,8 @@ from backend.auth import (
     verify_desktop_login,
     verify_password,
 )
-from backend.concurrency import expected_revision, raise_write_conflict
 from backend.config import settings
+from backend.concurrency import expected_revision, raise_write_conflict
 from backend.database import get_db_ctx
 from backend.user_profile import PROFILE_COLUMNS, ProfileUpdate, avatar_thumbnail, normalize_display_name, profile_payload
 
@@ -47,7 +46,6 @@ class Credentials(BaseModel):
 
 class Reauthenticate(BaseModel):
     password: Annotated[str, Field(min_length=MIN_PASSWORD_LENGTH, max_length=256)]
-    initialize_password: bool = False
 
 
 def _username(value: str) -> str:
@@ -81,7 +79,7 @@ def _session_payload(session: dict, csrf: str | None = None) -> dict:
         "csrf_token": csrf,
         "reauthenticated_until": session.get("reauthenticated_until"),
         "reauth_minutes": REAUTH_MINUTES,
-        "password_setup_required": bool(session["password_setup_required"]),
+        "vault_password_only": desktop_login_enabled(),
     }
 
 
@@ -167,6 +165,7 @@ def login(data: Credentials, request: Request, response: Response):
         "setup_required": False,
         "user": {"id": row["id"], "username": row["username"], "roles": ["owner"]},
         "csrf_token": csrf,
+        "vault_password_only": desktop_login_enabled(),
         "reauthenticated_until": None,
         "reauth_minutes": REAUTH_MINUTES,
     }
@@ -215,6 +214,8 @@ def update_profile(data: ProfileUpdate, request: Request, if_match: str | None =
 
 @router.post("/reauthenticate")
 def reauthenticate(data: Reauthenticate, request: Request):
+    if desktop_login_enabled():
+        raise HTTPException(403, "请使用保险箱主密码解锁。")
     session = request.state.session
     identifier = attempt_identifier(request, f"reauth:{session['username']}")
     delay = retry_after(identifier)
@@ -225,17 +226,7 @@ def reauthenticate(data: Reauthenticate, request: Request):
             "SELECT password_hash FROM users WHERE id = ? AND is_active = 1",
             (session["user_id"],),
         ).fetchone()
-        if row and data.initialize_password:
-            if row["password_hash"] != UNSET_PASSWORD_HASH:
-                raise HTTPException(409, "敏感操作密码已设置，请刷新后验证。")
-            cursor = conn.execute(
-                "UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND password_hash = ? AND is_active = 1",
-                (hash_password(data.password), session["user_id"], UNSET_PASSWORD_HASH),
-            )
-            if cursor.rowcount != 1:
-                raise HTTPException(409, "敏感操作密码已设置，请刷新后验证。")
-            conn.commit()
-    if not row or (not data.initialize_password and not verify_password(row["password_hash"], data.password)):
+    if not row or not verify_password(row["password_hash"], data.password):
         record_failed_attempt(identifier)
         raise HTTPException(401, "Invalid password")
     clear_attempts(identifier)

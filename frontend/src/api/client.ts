@@ -15,10 +15,23 @@ export class ApiError extends Error {
 }
 
 let csrfToken = "";
+let vaultAccessToken = "";
 export const REAUTH_REQUIRED_EVENT = "dba:reauth-required";
+export const VAULT_LOCKED_EVENT = "dba:vault-locked";
+export const VAULT_ACCESS_EVENT = "dba:vault-access-changed";
 
 export function setCsrfToken(token?: string | null) {
   csrfToken = token ?? "";
+}
+
+export function setVaultAccessToken(token = "") {
+  if (vaultAccessToken === token) return;
+  vaultAccessToken = token;
+  window.dispatchEvent(new Event(VAULT_ACCESS_EVENT));
+}
+
+export function hasVaultAccessToken() {
+  return Boolean(vaultAccessToken);
 }
 
 export async function api<T>(
@@ -34,12 +47,16 @@ export async function api<T>(
     headers.set("X-CSRF-Token", csrfToken);
   }
   if (init.revision !== undefined) headers.set("If-Match", String(init.revision));
+  if (vaultAccessToken && path.startsWith("/api/vault/")) headers.set("X-DBA-Vault-Token", vaultAccessToken);
   const response = await fetch(path, { ...init, headers, credentials: "same-origin" });
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as ApiErrorBody;
     // Other 403s (CSRF, directory permissions) must not invalidate the grant.
     if (response.status === 403 && (body.error?.message ?? body.detail) === "Recent password verification required" && typeof window !== "undefined") {
       window.dispatchEvent(new Event(REAUTH_REQUIRED_EVENT));
+    }
+    if (response.status === 403 && (body.error?.message ?? body.detail) === "Vault unlock required") {
+      window.dispatchEvent(new Event(VAULT_LOCKED_EVENT));
     }
     throw new ApiError(
       response.status,
@@ -60,7 +77,7 @@ export type Session = {
   authenticated: boolean;
   setup_required: boolean;
   desktop?: boolean;
-  password_setup_required?: boolean;
+  vault_password_only?: boolean;
   csrf_token?: string;
   reauthenticated_until?: string | null;
   reauth_minutes?: number;
@@ -101,10 +118,10 @@ export const authApi = {
   login: (username: string, password: string) =>
     api<Session>("/api/auth/login", { method: "POST", body: jsonBody({ username, password }) }),
   logout: () => api<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
-  reauthenticate: (password: string, initializePassword = false) =>
+  reauthenticate: (password: string) =>
     api<{ reauthenticated_until: string }>("/api/auth/reauthenticate", {
       method: "POST",
-      body: jsonBody(initializePassword ? { password, initialize_password: true } : { password }),
+      body: jsonBody({ password }),
     }),
 };
 

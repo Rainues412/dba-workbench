@@ -105,7 +105,7 @@ def test_profile_is_session_scoped_versioned_and_saves_a_thumbnail(raw_client: T
     assert cleared.json() == {**empty, "revision": 4}
 
 
-def test_desktop_login_requires_launch_token_and_sets_up_vault_verification(raw_client, monkeypatch) -> None:
+def test_desktop_login_requires_launch_token_without_setting_an_account_password(raw_client, monkeypatch) -> None:
     from backend import auth
 
     monkeypatch.setattr(auth, "_desktop_token", "test-only-desktop-token")
@@ -119,20 +119,17 @@ def test_desktop_login_requires_launch_token_and_sets_up_vault_verification(raw_
     assert login.status_code == 204
     assert "HttpOnly" in login.headers["set-cookie"]
     session = raw_client.get("/api/auth/status").json()
-    assert session["password_setup_required"] is True
+    assert session["vault_password_only"] is True
     assert session["reauthenticated_until"] is None
     assert raw_client.get("/api/dashboard/stats").status_code == 200
 
     headers = {"X-CSRF-Token": session["csrf_token"]}
     password = {"password": OWNER["password"]}
-    assert raw_client.post("/api/auth/reauthenticate", json=password, headers=headers).status_code == 401
-    initialize = {**password, "initialize_password": True}
-    assert raw_client.post("/api/auth/reauthenticate", json=initialize, headers=headers).status_code == 200
-    assert raw_client.post("/api/auth/reauthenticate", json=initialize, headers=headers).status_code == 409
-    assert raw_client.get("/api/auth/status").json()["password_setup_required"] is False
+    assert raw_client.post("/api/auth/reauthenticate", json=password, headers=headers).status_code == 403
+    assert raw_client.get("/api/vault/profile").json()["initialized"] is False
 
 
-def test_desktop_login_reuses_existing_owner_and_password(raw_client, monkeypatch) -> None:
+def test_desktop_login_reuses_existing_owner_without_using_the_old_password_for_vault_access(raw_client, monkeypatch) -> None:
     from backend import auth
 
     owner = raw_client.post("/api/auth/setup", json=OWNER).json()["user"]
@@ -141,13 +138,13 @@ def test_desktop_login_reuses_existing_owner_and_password(raw_client, monkeypatc
     assert raw_client.post("/api/auth/desktop", headers={"X-DBA-Desktop-Token": "test-only-desktop-token"}).status_code == 204
     session = raw_client.get("/api/auth/status").json()
     assert session["user"] == owner
-    assert session["password_setup_required"] is False
+    assert session["vault_password_only"] is True
     verified = raw_client.post(
         "/api/auth/reauthenticate",
         json={"password": OWNER["password"]},
         headers={"X-CSRF-Token": session["csrf_token"]},
     )
-    assert verified.status_code == 200
+    assert verified.status_code == 403
 
 
 def test_login_rotates_session_logout_revokes_and_reauthenticates(

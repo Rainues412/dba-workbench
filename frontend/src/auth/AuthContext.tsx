@@ -59,9 +59,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       client.setQueryData<Session>(SESSION_KEY, { authenticated: false, setup_required: false });
     },
     reauthenticate: async (password) => {
-      const result = await authApi.reauthenticate(password, session?.password_setup_required);
+      const result = await authApi.reauthenticate(password);
       await client.cancelQueries({ queryKey: SESSION_KEY });
-      client.setQueryData<Session>(SESSION_KEY, (current) => current ? { ...current, password_setup_required: false, reauthenticated_until: result.reauthenticated_until } : current);
+      client.setQueryData<Session>(SESSION_KEY, (current) => current ? { ...current, reauthenticated_until: result.reauthenticated_until } : current);
       return result.reauthenticated_until;
     },
   }), [client, loading, session, status.isError]);

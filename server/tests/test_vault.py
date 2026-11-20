@@ -61,8 +61,9 @@ def reauthenticate(client: TestClient) -> None:
     assert response.status_code == 200, response.text
 
 
-def initialize_vault(client: TestClient) -> tuple[bytes, bytes]:
-    reauthenticate(client)
+def initialize_vault(client: TestClient, questions=None) -> tuple[bytes, bytes]:
+    if questions is None:
+        reauthenticate(client)
     key_response = client.get("/api/vault/recovery-public-key")
     assert key_response.status_code == 200, key_response.text
     recovery = key_response.json()
@@ -100,10 +101,117 @@ def initialize_vault(client: TestClient) -> tuple[bytes, bytes]:
             "wrapped_dek_nonce": b64(wrap_nonce),
             "recovery_wrapped_dek": b64(recovery_wrapped),
             "recovery_key_id": recovery["key_id"],
+            **({"questions": questions} if questions is not None else {}),
         },
     )
     assert response.status_code == 201, response.text
     return dek, recovery_wrapped
+
+
+def desktop_unlock(client, password):
+    profile = client.get("/api/vault/profile").json()["profile"]
+    kek = hash_secret_raw(
+        password.encode(), unb64(profile["kdf_salt"]), time_cost=3, memory_cost=65536,
+        parallelism=1, hash_len=32, type=Type.ID,
+    )
+    return client.post("/api/vault/unlock", json={"wrapping_key": b64(kek)})
+
+
+def test_desktop_recovery_and_password_change_preserve_items(client, isolated_app, monkeypatch):
+    from backend import auth
+
+    monkeypatch.setattr(auth, "_desktop_token", "test-only-desktop-token")
+    questions = [
+        {"question": "测试问题甲", "answer": "unique-test-only-answer"},
+        {"question": "测试问题乙", "answer": "another-test-only-answer"},
+    ]
+    dek, _ = initialize_vault(client, questions)
+    assert client.get("/api/vault/profile").json()["questions_set"]
+    assert client.get("/api/vault/recovery/questions").json() == {"questions": [q["question"] for q in questions]}
+    old_grant = {"X-DBA-Vault-Token": desktop_unlock(client, MASTER_PASSWORD).json()["token"]}
+    item = encrypted_item(dek, "test-item-key-0021", bytes(range(12)), "original-test-only-value")
+    assert client.post("/api/vault/items", json=item, headers=old_grant).status_code == 201
+    assert client.put("/api/vault/profile/password", json={
+        "current_master_password": "wrong-test-only-password", "new_master_password": "new-test-only-password",
+    }).status_code == 401
+    with sqlite3.connect(isolated_app[1]) as conn:
+        stored = [row[0] for row in conn.execute("SELECT answer_hash FROM vault_recovery_questions")]
+        assert all(value.startswith("$argon2id$") for value in stored)
+        assert all(question["answer"] not in " ".join(stored) for question in questions)
+    assert client.post("/api/vault/recovery/verify", json={"answers": [questions[0]["answer"]]}).status_code == 401
+    result = client.post("/api/vault/recovery/verify", json={"answers": [q["answer"] for q in questions]})
+    assert result.status_code == 200, result.text
+    reset = {"ticket": result.json()["ticket"], "new_master_password": "reset-test-only-password"}
+    assert client.put("/api/vault/recovery/reset", json=reset).status_code == 204
+    assert client.put("/api/vault/recovery/reset", json=reset).status_code == 403
+    assert client.get("/api/vault/items", headers=old_grant).status_code == 403
+    assert desktop_unlock(client, MASTER_PASSWORD).status_code == 401
+    assert client.put("/api/vault/profile/password", json={
+        "current_master_password": reset["new_master_password"], "new_master_password": "changed-test-only-password",
+    }).status_code == 204
+    new_grant = {"X-DBA-Vault-Token": desktop_unlock(client, "changed-test-only-password").json()["token"]}
+    saved = client.get("/api/vault/items", headers=new_grant).json()["items"][0]
+    assert saved["ciphertext"] == item["ciphertext"]
+    assert saved["nonce"] == item["nonce"]
+
+
+def test_existing_desktop_vault_can_enroll_only_after_unlock(client, monkeypatch):
+    from backend import auth
+
+    initialize_vault(client)
+    monkeypatch.setattr(auth, "_desktop_token", "test-only-desktop-token")
+    questions = {"questions": [{"question": "旧保险箱问题", "answer": "old-vault-test-only-answer"}]}
+    assert client.get("/api/vault/recovery/questions").json() == {"questions": []}
+    assert client.post("/api/vault/recovery/questions", json=questions).status_code == 403
+    grant = {"X-DBA-Vault-Token": desktop_unlock(client, MASTER_PASSWORD).json()["token"]}
+    assert client.post("/api/vault/recovery/questions", json=questions, headers=grant).status_code == 204
+    assert client.post("/api/vault/recovery/questions", json=questions, headers=grant).status_code == 409
+    for _ in range(5):
+        assert client.post("/api/vault/recovery/verify", json={"answers": ["wrong"]}).status_code == 401
+    assert client.post("/api/vault/recovery/verify", json={"answers": ["wrong"]}).status_code == 429
+
+
+def test_windows_credential_auto_unlock_respects_navigation_and_explicit_lock(client, monkeypatch):
+    from backend import auth, vault_device
+
+    if not vault_device.available():
+        pytest.skip("Windows Credential Manager is required")
+    monkeypatch.setattr(auth, "_desktop_token", "test-only-desktop-token")
+    dek, _ = initialize_vault(client, [{"question": "测试问题", "answer": "auto-unlock-test-only-answer"}])
+    route = "/api/vault/auto-unlock"
+    try:
+        assert client.get(route).json() == {"available": True, "enabled": False}
+        assert client.put(route, json={"enabled": True}).status_code == 403
+        grant = {"X-DBA-Vault-Token": desktop_unlock(client, MASTER_PASSWORD).json()["token"]}
+        assert client.put(route, json={"enabled": True}, headers=grant).json()["enabled"]
+        assert client.get(route).json()["enabled"]
+        result = client.post(route).json()
+        assert unb64(result["data_key"]) == dek
+        grant = {"X-DBA-Vault-Token": result["token"]}
+        assert client.post("/api/vault/unlock/renew", headers=grant).status_code == 200
+        assert client.delete("/api/vault/unlock?block_auto_unlock=false", headers=grant).status_code == 204
+        assert client.get("/api/vault/items", headers=grant).status_code == 403
+        result = client.post(route).json()
+        assert unb64(result["data_key"]) == dek
+        grant = {"X-DBA-Vault-Token": result["token"]}
+        assert client.delete("/api/vault/unlock", headers=grant).status_code == 204
+        assert client.post(route).json() is None
+        # Page cleanup cannot undo a deliberate or idle lock.
+        assert client.delete("/api/vault/unlock?block_auto_unlock=false", headers=grant).status_code == 204
+        assert client.post(route).json() is None
+        assert desktop_unlock(client, MASTER_PASSWORD).status_code == 200
+        assert unb64(client.post(route).json()["data_key"]) == dek
+        assert client.put(route, json={"enabled": False}).status_code == 200
+        assert not client.get(route).json()["enabled"]
+        assert client.post(route).json() is None
+        # A fresh application process also permits start-up auto unlock after a lock.
+        grant = {"X-DBA-Vault-Token": desktop_unlock(client, MASTER_PASSWORD).json()["token"]}
+        assert client.put(route, json={"enabled": True}, headers=grant).status_code == 200
+        assert client.delete("/api/vault/unlock", headers=grant).status_code == 204
+        monkeypatch.setattr(vault_router, "_auto_unlock_blocked", set())
+        assert unb64(client.post(route).json()["data_key"]) == dek
+    finally:
+        vault_device.delete_key(1)
 
 
 def encrypted_item(dek: bytes, item_key: str, nonce: bytes, password: str) -> dict:
@@ -119,6 +227,32 @@ def encrypted_item(dek: bytes, item_key: str, nonce: bytes, password: str) -> di
         "nonce": b64(nonce),
         "aad": aad,
     }
+
+
+def test_existing_desktop_vault_requires_a_master_password_grant(client, isolated_app, monkeypatch):
+    from backend import auth
+
+    dek, _ = initialize_vault(client)
+    _, test_db = isolated_app
+    test_db.with_name(".vault_recovery_private.pem").unlink()
+    monkeypatch.setattr(auth, "_desktop_token", "test-only-desktop-token")
+
+    item = encrypted_item(dek, "desktop-item-key-001", bytes(range(12)), "test-secret")
+    assert client.get("/api/vault/items").status_code == 403
+    assert client.post("/api/vault/items", json=item).status_code == 403
+    assert client.get("/api/vault/captcha").status_code == 404
+    assert client.post("/api/vault/unlock", json={"wrapping_key": b64(bytes(32))}).status_code == 401
+
+    profile = client.get("/api/vault/profile").json()["profile"]
+    wrapping_key = hash_secret_raw(MASTER_PASSWORD.encode(), unb64(profile["kdf_salt"]),
+                                  time_cost=3, memory_cost=65536, parallelism=1, hash_len=32, type=Type.ID)
+    result = client.post("/api/vault/unlock", json={"wrapping_key": b64(wrapping_key)})
+    assert result.status_code == 200, result.text
+    headers = {"X-DBA-Vault-Token": result.json()["token"]}
+    assert client.post("/api/vault/items", json=item, headers=headers).status_code == 201
+    assert client.get("/api/vault/items", headers=headers).json()["total"] == 1
+    assert client.delete("/api/vault/unlock", headers=headers).status_code == 204
+    assert client.get("/api/vault/items", headers=headers).status_code == 403
 
 
 def test_versioned_envelope_tamper_nonce_and_recovery(

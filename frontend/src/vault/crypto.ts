@@ -102,7 +102,7 @@ export async function createVaultProfile(masterPassword: string, userId: number,
     dek,
     profile: {
       envelope_version: 1,
-      kdf_name: "argon2id",
+      kdf_name: "argon2id" as const,
       ...parameters,
       wrapped_dek: encodeBase64(new Uint8Array(wrapped)),
       wrapped_dek_nonce: encodeBase64(nonce),
@@ -112,7 +112,7 @@ export async function createVaultProfile(masterPassword: string, userId: number,
   };
 }
 
-export async function unlockVault(masterPassword: string, userId: number, profile: VaultProfile) {
+export async function unlockVault(masterPassword: string, userId: number, profile: VaultProfile, authorize?: (wrappingKey: string) => Promise<void>) {
   const kek = await deriveKek(masterPassword, profile);
   try {
     const plaintext = await crypto.subtle.decrypt(
@@ -125,7 +125,14 @@ export async function unlockVault(masterPassword: string, userId: number, profil
       await importAesKey(kek),
       decodeBase64(profile.wrapped_dek),
     );
-    return new Uint8Array(plaintext);
+    const dek = new Uint8Array(plaintext);
+    try {
+      await authorize?.(encodeBase64(kek));
+      return dek;
+    } catch (error) {
+      dek.fill(0);
+      throw error;
+    }
   } finally {
     kek.fill(0);
   }
