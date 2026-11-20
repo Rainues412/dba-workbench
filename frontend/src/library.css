@@ -87,6 +87,7 @@
 .library-record { position: relative; isolation: isolate; display: grid; grid-template-columns: 36px minmax(0, 1fr); align-items: start; gap: .7rem; min-width: 0; padding: 1rem; border-bottom: 1px solid var(--border); border-left: 3px solid transparent; }
 .library-record:last-child { border-bottom: 0; }
 .library-record { scroll-margin-block: 82px 16px; }
+.library-record[data-previewable] { cursor: pointer; }
 .library-record:hover { background: var(--surface-soft); }
 .library-record.selected { background: transparent; }
 .record-active-indicator { inset: 0 0 0 -3px; z-index: -1; border-left: 3px solid var(--primary); background: var(--primary-soft); }

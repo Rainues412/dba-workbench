@@ -1,4 +1,4 @@
-"""Exercise title toggling and real panel transitions in the production build."""
+"""Exercise whole-card toggling and real panel transitions in the production build."""
 import json
 
 import pytest
@@ -49,7 +49,7 @@ def test_title_toggles_animate_reset_width_and_keep_list_state(live_server, tmp_
     for number in (1, 2):
         sample = tmp_path / f"toggle-{number}.md"
         sample.write_text(f"# 第{number}条正文\n\n保持原文件预览。", encoding="utf-8")
-        client.post(f"/api/{module}/", json={"title": f"切换预览-{number}", "file_path": str(sample)}, headers={"X-CSRF-Token": csrf}).raise_for_status()
+        client.post(f"/api/{module}/", json={"title": "短" if number == 1 else f"切换预览-{number}", "file_path": str(sample)}, headers={"X-CSRF-Token": csrf}).raise_for_status()
     with sync_playwright() as playwright:
         browser = _edge(playwright)
         try:
@@ -57,9 +57,11 @@ def test_title_toggles_animate_reset_width_and_keep_list_state(live_server, tmp_
             page.add_init_script(f"localStorage.setItem({json.dumps(f'dba-library-layout:{module}')}, JSON.stringify({{collapsed:false,list:20}}))")
             _login(page, live_server)
             page.get_by_role("navigation", name="主导航").get_by_role("link", name=label, exact=True).click()
-            first = page.get_by_role("button", name="预览：切换预览-1", exact=True)
+            first = page.get_by_role("button", name="预览：短", exact=True)
             second = page.get_by_role("button", name="预览：切换预览-2", exact=True)
-            first.click()
+            first_card = page.locator('.library-record').filter(has=first)
+            second_card = page.locator('.library-record').filter(has=second)
+            first_card.click(position={"x": 12, "y": 12})
             expect(page.locator(".library-markdown").get_by_role("heading", name="第1条正文")).to_be_visible()
             pane = page.locator(".library-panels > [data-panel]:has(> .library-preview-pane)")
             default_width = pane.bounding_box()["width"]
@@ -73,7 +75,7 @@ def test_title_toggles_animate_reset_width_and_keep_list_state(live_server, tmp_
             page.evaluate("window.__originalList = document.querySelector('.library-record-list')")
             address = page.url
             _sample_widths(page)
-            first.click()
+            first_card.locator('.library-record-icon').click()
             expect(first).to_have_attribute("aria-pressed", "false")
             expect(page.locator(".library-preview")).to_have_count(0)
             page.wait_for_timeout(100)
@@ -95,28 +97,39 @@ def test_title_toggles_animate_reset_width_and_keep_list_state(live_server, tmp_
             assert any(0 < opacity < 1 for opacity in page.evaluate('window.__previewOpacities'))
             assert abs(pane.bounding_box()["width"] - default_width) < 2
             assert abs(page.locator(".library-categories").bounding_box()["width"] - categories) < 1
-            second.click()
+            second_card.click(position={"x": 12, "y": 12})
             expect(page.locator(".library-markdown").get_by_role("heading", name="第2条正文")).to_be_visible()
             expect(second).to_have_attribute("aria-pressed", "true")
             expect(first).to_have_attribute("aria-pressed", "false")
             # Rapid reversal keeps the same viewer mounted and cancels the pending removal.
-            page.evaluate("""() => { const title = document.querySelector('.library-record-title[aria-pressed=true]'); title.click(); title.click(); }""")
+            page.evaluate("""() => { const card = document.querySelector('.library-record.selected'); card.click(); card.click(); }""")
             page.wait_for_timeout(300)
             expect(second).to_have_attribute("aria-pressed", "true")
             expect(page.locator(".library-markdown").get_by_role("heading", name="第2条正文")).to_be_visible()
             page.evaluate("document.documentElement.dataset.theme = 'dark'")
             page.screenshot(path=str(tmp_path / f"{module}-toggle-dark.png"))
+            expect(page.get_by_role('button', name='收起预览', exact=True)).to_have_count(0)
+            # Nested controls never close or open the card's preview.
+            selected = second_card.locator('.library-record-title')
+            second_card.get_by_role('button', name='收藏', exact=True).click()
+            expect(selected).to_have_attribute('aria-pressed', 'true')
+            second_card.get_by_role('button', name='取消收藏', exact=True).click()
+            expect(selected).to_have_attribute('aria-pressed', 'true')
+            page.evaluate("navigator.clipboard.writeText = async () => {}")
+            second_card.get_by_role('button', name='复制路径：切换预览-2', exact=True).click()
+            expect(selected).to_have_attribute('aria-pressed', 'true')
             page.emulate_media(reduced_motion="reduce")
             duration = pane.evaluate("element => getComputedStyle(element).transitionDuration")
             assert float(duration.removesuffix("s")) < 0.001
-            second.click()
+            second_card.click(position={"x": 12, "y": 12})
             expect(page.locator(".library-preview")).to_have_count(0)
             page.set_viewport_size({"width": 390, "height": 844})
             page.emulate_media(reduced_motion="no-preference")
-            first.click()
+            first_card.click(position={"x": 12, "y": 12})
             dialog = page.get_by_role("dialog")
             expect(dialog).to_be_visible()
             expect(dialog.locator(".library-markdown").get_by_role("heading", name="第1条正文")).to_be_visible()
+            assert dialog.evaluate('node => node.scrollWidth <= node.clientWidth')
             page.wait_for_timeout(250)
             _sample_drawer(page)
             dialog.get_by_role("button", name="关闭预览", exact=True).click()

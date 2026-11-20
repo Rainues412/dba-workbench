@@ -63,7 +63,17 @@ export function LibraryRecords({ config, rows, selectedId, disabled, searchQuery
       const title = recordTitle(config, row);
       const filePath = config.key !== "resources" && config.fileLinks ? String(row[config.fileLinks.pathField] || "").trim() : "";
       const description = String(row.summary || row.description || (config.key === "resources" ? row.path || row.url : "") || "");
-      return <li key={row.id} className={`library-record${config.key === "scripts" ? " script-record" : ""}${selectedId === row.id ? " selected" : ""}`}>
+      return <li key={row.id} className={`library-record${config.key === "scripts" ? " script-record" : ""}${selectedId === row.id ? " selected" : ""}`}
+        data-previewable={config.key !== "resources" && !disabled ? "" : undefined}
+        onClick={(event) => {
+          if (config.key === "resources" || disabled || event.defaultPrevented || !(event.target instanceof Element)) return;
+          // Keep nested controls independent; the title already handles keyboard activation.
+          if (event.target.closest("button, a, input, select, textarea, details, [role='button'], [contenteditable='true']")) return;
+          const selection = window.getSelection();
+          if (selection && !selection.isCollapsed && event.currentTarget.contains(selection.anchorNode)) return;
+          event.currentTarget.querySelector<HTMLButtonElement>(".library-record-title")?.focus({ preventScroll: true });
+          onPreview(row.id);
+        }}>
         {selectedId === row.id && <SelectionIndicator className="record-active-indicator" radius={0} />}
         <span className={`library-record-icon ${config.key}`} aria-hidden="true"><Icon size={20} /></span>
         <div className="library-record-copy">

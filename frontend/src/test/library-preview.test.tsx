@@ -66,7 +66,8 @@ describe("library classification and read-only preview", () => {
     await within(preview).findByRole("heading", { name: row.title });
     expect(title).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "预览" })).toBeEnabled();
-    fireEvent.click(title);
+    expect(screen.queryByRole("button", { name: "收起预览" })).not.toBeInTheDocument();
+    fireEvent.click(title.closest("li")!);
     expect(screen.queryByRole("complementary", { name: "记录预览" })).not.toBeInTheDocument();
     cleanup();
     show(config);
