@@ -176,7 +176,7 @@ def _exit_from_tray(server, icon) -> None:
     icon.stop()
 
 
-def _run_tray(server) -> None:
+def _run_tray(server, ready: Future[None]) -> None:
     import pystray
 
     menu = pystray.Menu(
@@ -192,12 +192,31 @@ def _run_tray(server) -> None:
 
         with Image.open(_tray_icon_path()) as source:
             icon = pystray.Icon("dba-workbench", source.copy(), APP_TITLE, menu)
-    icon.run()
+    def setup(tray):
+        try:
+            tray.visible = True
+        except Exception as error:
+            ready.set_exception(error)
+            tray.stop()
+        else:
+            ready.set_result(None)
+
+    icon.run(setup=setup)
 
 
 def _start_tray(server) -> threading.Thread:
-    thread = threading.Thread(target=_run_tray, args=(server,), name="system-tray", daemon=True)
+    ready: Future[None] = Future()
+
+    def run():
+        try:
+            _run_tray(server, ready)
+        except Exception as error:
+            if not ready.done():
+                ready.set_exception(error)
+
+    thread = threading.Thread(target=run, name="system-tray", daemon=True)
     thread.start()
+    ready.result(timeout=10)
     return thread
 
 

@@ -11,11 +11,24 @@ from pystray import Icon
 from pystray._util import win32
 
 
+def _host_executable() -> str:
+    # An embedded Python host can set sys.executable to the venv interpreter.
+    # Shell associates a notification GUID with the actual executable image.
+    get_name = ctypes.windll.kernel32.GetModuleFileNameW
+    get_name.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_uint]
+    get_name.restype = ctypes.c_uint
+    buffer = ctypes.create_unicode_buffer(32768)
+    size = get_name(None, buffer, len(buffer))
+    if not size or size >= len(buffer):
+        raise OSError("无法识别工作台托盘宿主。")
+    return buffer.value.casefold()
+
+
 class WorkbenchTrayIcon(Icon):
     def __init__(self, path: Path, title: str, menu) -> None:
         self._icon_path = path.resolve()
         # The Shell otherwise shares cached entries based on the Python host.
-        identity = uuid5(NAMESPACE_URL, f"dba-workbench:tray:{str(self._icon_path).casefold()}")
+        identity = uuid5(NAMESPACE_URL, f"dba-workbench:tray:{_host_executable()}:{str(self._icon_path).casefold()}")
         self._tray_guid = win32.NOTIFYICONDATAW.GUID.from_buffer_copy(identity.bytes_le)
         with Image.open(self._icon_path) as source:
             super().__init__("dba-workbench", source.copy(), title, menu)
@@ -24,7 +37,17 @@ class WorkbenchTrayIcon(Icon):
         # pystray prepares the image with NIM_MODIFY before its first NIM_ADD.
         if code == win32.NIM_MODIFY and not self.visible:
             return
-        return super()._message(code, flags | win32.NIF_GUID, guidItem=self._tray_guid, **kwargs)
+        result = win32.Shell_NotifyIcon(code, win32.NOTIFYICONDATAW(
+            cbSize=ctypes.sizeof(win32.NOTIFYICONDATAW),
+            hWnd=self._hwnd,
+            hID=id(self),
+            uFlags=flags | win32.NIF_GUID,
+            guidItem=self._tray_guid,
+            **kwargs,
+        ))
+        if code == win32.NIM_ADD and not result:
+            raise OSError("Windows 未能注册工作台托盘图标。")
+        return result
 
     def _assert_icon_handle(self) -> None:
         if self._icon_handle:

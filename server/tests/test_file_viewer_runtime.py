@@ -1,4 +1,9 @@
 import subprocess
+import json
+import os
+import sys
+import time
+from pathlib import Path
 
 import pytest
 
@@ -44,6 +49,7 @@ def test_start_file_viewer_uses_bundled_runtime_and_loopback_only(tmp_path, monk
     calls = []
     monkeypatch.setattr(file_viewer_runtime, "_port_in_use", lambda: False)
     monkeypatch.setattr(file_viewer_runtime, "_distribution_root", lambda: root)
+    monkeypatch.setattr(file_viewer_runtime, "_create_process_job", lambda: None)
     monkeypatch.setattr(file_viewer_runtime.subprocess, "Popen", lambda command, **kwargs: calls.append((command, kwargs)) or process)
     monkeypatch.setenv("DBA_FILE_VIEWER_KEY", "viewer-secret")
     viewer_data = tmp_path / data_folder
@@ -85,6 +91,114 @@ def test_start_file_viewer_rejects_an_occupied_port(tmp_path, monkeypatch):
         assert "已被其他程序占用" in str(error)
     else:
         raise AssertionError("occupied viewer port must fail closed")
+
+
+def test_viewer_is_assigned_to_its_lifetime_job_and_released_on_stop(tmp_path, monkeypatch):
+    root = viewer_distribution(tmp_path)
+    process = FakeProcess()
+    assigned = []
+    closed = []
+
+    class Job:
+        def assign(self, pid):
+            assigned.append(pid)
+
+        def close(self):
+            closed.append(True)
+
+    monkeypatch.setattr(file_viewer_runtime, "_port_in_use", lambda: False)
+    monkeypatch.setattr(file_viewer_runtime, "_distribution_root", lambda: root)
+    monkeypatch.setattr(file_viewer_runtime, "_create_process_job", Job)
+    monkeypatch.setattr(file_viewer_runtime.subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(file_viewer_runtime, "_stop_file_viewer_process", lambda _: None)
+    result = file_viewer_runtime.start_file_viewer(tmp_path / "data", tmp_path / "logs")
+    assert assigned == [process.pid]
+    file_viewer_runtime.stop_file_viewer(result)
+    file_viewer_runtime.stop_file_viewer(result)
+    assert closed == [True]
+
+
+def test_failed_job_assignment_cleans_up_new_viewer(tmp_path, monkeypatch):
+    root = viewer_distribution(tmp_path)
+    process = FakeProcess()
+    closed = []
+    stopped = []
+
+    class Job:
+        def assign(self, pid):
+            raise OSError("test-only job assignment failure")
+
+        def close(self):
+            closed.append(True)
+
+    monkeypatch.setattr(file_viewer_runtime, "_port_in_use", lambda: False)
+    monkeypatch.setattr(file_viewer_runtime, "_distribution_root", lambda: root)
+    monkeypatch.setattr(file_viewer_runtime, "_create_process_job", Job)
+    monkeypatch.setattr(file_viewer_runtime.subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(file_viewer_runtime, "_stop_file_viewer_process", stopped.append)
+    with pytest.raises(OSError, match="job assignment failure"):
+        file_viewer_runtime.start_file_viewer(tmp_path / "data", tmp_path / "logs")
+    assert stopped == [process]
+    assert closed == [True]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows process lifetime jobs")
+def test_job_reaps_viewer_tree_after_desktop_host_is_killed(tmp_path):
+    import ctypes
+    from ctypes import wintypes
+    from backend.windows_process_job import ProcessJob
+
+    result_path = tmp_path / "owned-processes.json"
+    child_script = (
+        "import subprocess,sys,time;"
+        "child=subprocess.Popen([sys.executable,'-c','import time;time.sleep(120)']);"
+        "print(child.pid,flush=True);time.sleep(120)"
+    )
+    owner_script = "\n".join([
+        "import sys,subprocess,json,time",
+        "from pathlib import Path",
+        "from backend.windows_process_job import ProcessJob",
+        "job=ProcessJob()",
+        f"viewer=subprocess.Popen([sys.executable,'-c',{child_script!r}],stdout=subprocess.PIPE,text=True)",
+        "job.assign(viewer.pid)",
+        "child_id=int(viewer.stdout.readline())",
+        f"Path({str(result_path)!r}).write_text(json.dumps([viewer.pid,child_id]))",
+        "time.sleep(120)",
+    ])
+    # An outer job guarantees cleanup even if this regression assertion fails.
+    cleanup = ProcessJob()
+    owner = subprocess.Popen(
+        [sys.executable, "-c", owner_script],
+        cwd=Path(file_viewer_runtime.__file__).parent,
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    kernel.WaitForSingleObject.restype = wintypes.DWORD
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    handles = []
+    try:
+        cleanup.assign(owner.pid)
+        deadline = time.monotonic() + 10
+        while not result_path.exists() and owner.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert result_path.exists(), "process lifetime test did not become ready"
+        for pid in json.loads(result_path.read_text()):
+            handle = kernel.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE
+            assert handle, ctypes.WinError(ctypes.get_last_error())
+            handles.append(handle)
+        owner.kill()
+        owner.wait(timeout=5)
+        assert all(kernel.WaitForSingleObject(handle, 5000) == 0 for handle in handles)
+    finally:
+        cleanup.close()
+        owner.wait(timeout=5)
+        owner.stderr.close()
+        for handle in handles:
+            kernel.CloseHandle(handle)
 
 
 def test_start_file_viewer_handles_missing_distribution(tmp_path, monkeypatch):

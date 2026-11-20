@@ -35,6 +35,14 @@ def _port_in_use() -> bool:
         return False
 
 
+def _create_process_job():
+    if os.name != "nt":
+        return None
+    from backend.windows_process_job import ProcessJob
+
+    return ProcessJob()
+
+
 def start_file_viewer(data_dir: Path, log_dir: Path) -> subprocess.Popen | None:
     if os.environ.get("DBA_FILE_VIEWER_DISABLED", "").strip().lower() in {"1", "true", "yes", "on"}:
         return None
@@ -111,18 +119,45 @@ def start_file_viewer(data_dir: Path, log_dir: Path) -> subprocess.Popen | None:
         }
     )
     with (log_dir / "file-viewer.log").open("a", encoding="utf-8", buffering=1) as log:
-        return subprocess.Popen(
-            command,
-            cwd=root,
-            env=viewer_environment,
-            stdin=subprocess.DEVNULL,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-        )
+        job = _create_process_job()
+        process = None
+        try:
+            process = subprocess.Popen(
+                command,
+                cwd=root,
+                env=viewer_environment,
+                stdin=subprocess.DEVNULL,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            )
+            if job is not None:
+                job.assign(process.pid)
+            process._viewer_job = job
+            return process
+        except BaseException:
+            try:
+                if process is not None:
+                    _stop_file_viewer_process(process)
+            finally:
+                if job is not None:
+                    job.close()
+            raise
 
 
 def stop_file_viewer(process: subprocess.Popen | None) -> None:
+    if process is None:
+        return
+    try:
+        _stop_file_viewer_process(process)
+    finally:
+        job = getattr(process, "_viewer_job", None)
+        if job is not None:
+            job.close()
+            process._viewer_job = None
+
+
+def _stop_file_viewer_process(process: subprocess.Popen | None) -> None:
     if process is None or process.poll() is not None:
         return
     if os.name == "nt":

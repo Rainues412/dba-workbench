@@ -74,7 +74,7 @@ def test_tray_loads_the_desktop_icon_at_small_size_and_uses_a_stable_shell_guid(
     monkeypatch.setattr(WorkbenchTrayIcon, "_register_class", lambda self: None)
     monkeypatch.setattr(win32, "LoadImage", lambda *args: loads.append(args) or 123)
     monkeypatch.setattr(win32, "DestroyIcon", lambda _: True)
-    monkeypatch.setattr(win32, "Shell_NotifyIcon", lambda action, data: messages.append((action, data.uFlags, bytes(data.guidItem))))
+    monkeypatch.setattr(win32, "Shell_NotifyIcon", lambda action, data: messages.append((action, data.uFlags, bytes(data.guidItem))) or True)
     path = desktop._tray_icon_path().resolve()
     icon = WorkbenchTrayIcon(path, desktop.APP_TITLE, None)
     icon.visible = True
@@ -114,6 +114,40 @@ def test_desktop_bounds_shutdown_and_cleans_up_viewer(monkeypatch, tmp_path: Pat
         desktop.main()
 
     assert stopped == [viewer]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows notification area")
+def test_tray_identity_is_stable_per_actual_host_and_checks_registration(monkeypatch):
+    from backend import windows_tray
+
+    monkeypatch.setattr(windows_tray.WorkbenchTrayIcon, "_register_class", lambda self: None)
+    path = desktop._tray_icon_path()
+    monkeypatch.setattr(windows_tray, "_host_executable", lambda: "test-host-a.exe")
+    first = windows_tray.WorkbenchTrayIcon(path, desktop.APP_TITLE, None)
+    second = windows_tray.WorkbenchTrayIcon(path, desktop.APP_TITLE, None)
+    monkeypatch.setattr(windows_tray, "_host_executable", lambda: "test-host-b.exe")
+    third = windows_tray.WorkbenchTrayIcon(path, desktop.APP_TITLE, None)
+    assert bytes(first._tray_guid) == bytes(second._tray_guid)
+    assert bytes(first._tray_guid) != bytes(third._tray_guid)
+    monkeypatch.setattr(windows_tray.win32, "Shell_NotifyIcon", lambda *_: False)
+    with pytest.raises(OSError, match="注册工作台托盘"):
+        first._message(windows_tray.win32.NIM_ADD, windows_tray.win32.NIF_TIP)
+    first._hide()  # An already-removed icon must remain safe to clean up.
+
+
+def test_start_tray_waits_for_registration_and_reports_startup_failure(monkeypatch):
+    def registered(server, ready):
+        ready.set_result(None)
+
+    monkeypatch.setattr(desktop, "_run_tray", registered)
+    desktop._start_tray(object()).join(timeout=1)
+
+    def unavailable(server, ready):
+        raise OSError("test-only Shell notification failure")
+
+    monkeypatch.setattr(desktop, "_run_tray", unavailable)
+    with pytest.raises(OSError, match="Shell notification failure"):
+        desktop._start_tray(object())
 
 
 def test_configured_browser_is_used_for_source_launcher(monkeypatch, tmp_path: Path) -> None:
