@@ -54,7 +54,8 @@ async function unlock() {
   const input = await screen.findByLabelText("保险箱主密码");
   fireEvent.change(input, { target: { value: "long-master-password" } });
   fireEvent.submit(input.closest("form")!);
-  await screen.findByText("保险箱已解锁");
+  await screen.findByRole("status", { name: "保险箱状态：已解锁" });
+  expect(screen.queryByText("保险箱已解锁")).not.toBeInTheDocument();
   return client;
 }
 
@@ -359,6 +360,7 @@ describe("vault complete loading, pagination and favorites", () => {
     expect(screen.getByRole("heading", { name: "保险箱已锁定" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Site 1" })).not.toBeInTheDocument();
     expect(key.every((value) => value === 0)).toBe(true);
+    expect(screen.getByText("保险箱已锁定", { selector: ".alert span" })).toBeInTheDocument();
   });
 
   it("ignores a decryption failure that completes after the vault was locked", async () => {

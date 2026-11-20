@@ -576,6 +576,9 @@ body:has(.desktop-shell) .profile-dialog { inset-block: 64px; max-height: calc(1
 .vault-recovery-status { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; padding: .6rem .85rem; background: var(--warning-soft); border-color: color-mix(in srgb, var(--warning) 28%, var(--border)); }
 .vault-recovery-status > span { display: inline-flex; align-items: center; gap: .45rem; color: var(--warning); font-size: .78rem; font-weight: 700; }
 .vault-page-title { display: flex; align-items: center; flex-wrap: wrap; gap: .65rem; }
+.vault-lock-state { display: inline-flex; align-items: center; gap: .38rem; min-height: 32px; padding: .35rem .65rem; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); background: var(--surface-soft); font-size: .78rem; font-weight: 750; line-height: 1.2; white-space: nowrap; }
+.vault-lock-state.is-unlocked { color: var(--success); border-color: color-mix(in srgb, var(--success) 38%, var(--border)); background: var(--success-soft); box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 8%, transparent); }
+.vault-lock-state svg { flex-shrink: 0; }
 .vault-recovery-status > .context-details { flex: 1 1 220px; border: 0; background: transparent; }
 .vault-recovery-status .context-details > summary { justify-content: flex-end; padding: .4rem; }
 .vault-toolbar { gap: .55rem; }

@@ -69,7 +69,7 @@ def test_device_auto_unlock_survives_navigation_but_respects_lock_and_disable(cl
 
 
 @pytest.mark.browser
-def test_desktop_vault_uses_only_the_master_password(live_server, monkeypatch):
+def test_desktop_vault_uses_only_the_master_password(live_server, monkeypatch, tmp_path):
     from backend import auth
 
     monkeypatch.setattr(auth, "_desktop_token", "test-only-desktop-vault-launch")
@@ -143,5 +143,18 @@ def test_desktop_vault_uses_only_the_master_password(live_server, monkeypatch):
             gate.get_by_label("保险箱主密码").fill("test-only-changed-master")
             gate.get_by_role("button", name="解锁", exact=True).click()
             expect(page.get_by_role("heading", name="桌面保险箱测试条目")).to_be_visible()
+            expect(page.get_by_role("status", name="保险箱状态：已解锁")).to_be_visible()
+            expect(page.get_by_text("保险箱已解锁", exact=True)).to_have_count(0)
+            expect(page.get_by_role("alert")).to_have_count(0)
+            for theme, width in [("light", 1440), ("dark", 390), ("dark", 320)]:
+                page.set_viewport_size({"width": width, "height": 1000})
+                page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
+                badge = page.get_by_role("status", name="保险箱状态：已解锁")
+                expect(badge).to_be_visible()
+                assert badge.bounding_box()["height"] >= 32
+                assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+                if width == 1440:
+                    assert page.get_by_role("button", name="立即锁定").bounding_box()["x"] > badge.bounding_box()["x"] + 500
+                page.screenshot(animations="disabled", path=str(tmp_path / f"vault-status-{theme}-{width}.png"))
         finally:
             browser.close()

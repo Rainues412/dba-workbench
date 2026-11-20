@@ -125,7 +125,7 @@ export function Vault() {
     dekRef.current?.fill(0);
     dekRef.current = null;
     setDek(null); setSecrets([]); setRevealed(new Set()); setSelected(new Set()); setEditing(null); setCategoryFilter(null); setPage(1); setEnrolling(false);
-    if (message) setNotice(message);
+    if (message !== undefined) setNotice(message);
   }
 
   useEffect(() => () => {
@@ -302,7 +302,7 @@ export function Vault() {
       await unlockWithMasterPassword(password, profile.data!.profile!, request.signal);
       if (request.signal.aborted) return;
       formElement.reset();
-      setNotice("保险箱已解锁");
+      setNotice("");
     } catch (reason) {
       if (!request.signal.aborted) setError(reason instanceof ApiError ? reason.message : "主密码错误或密钥信封已损坏");
     } finally {
@@ -453,7 +453,7 @@ export function Vault() {
   }
 
   return <VaultPage>
-    <header className="page-header"><div className="page-title-group"><span className="page-title-icon vault"><KeyRound size={24} /></span><div><p className="eyebrow">DATA MODULE</p><div className="vault-page-title"><h1>密码保险箱</h1>{dek && <span className="badge success">已解锁</span>}</div></div></div>{dek && <button className="button" onClick={() => lock("保险箱已锁定")}><LockKeyhole size={17} />立即锁定</button>}</header>
+    <header className="page-header"><div className="page-title-group"><span className="page-title-icon vault"><KeyRound size={24} /></span><div><p className="eyebrow">DATA MODULE</p><div className="vault-page-title"><h1>密码保险箱</h1><span className={`vault-lock-state${dek ? " is-unlocked" : ""}`} role="status" aria-label={`保险箱状态：${dek ? "已解锁" : "已锁定"}`}>{dek ? <ShieldCheck size={16} aria-hidden="true" /> : <LockKeyhole size={15} aria-hidden="true" />}{dek ? "已解锁" : "已锁定"}</span></div></div></div>{dek && <button className="button" onClick={() => lock("保险箱已锁定")}><LockKeyhole size={17} />立即锁定</button>}</header>
     {(notice || error) && <div className={`alert ${error ? "error" : ""}`} role={error ? "alert" : "status"}><span>{!error && <CheckCircle2 size={17} />}{error || notice}</span><button className="icon-button" onClick={() => { setError(""); setNotice(""); }} aria-label="关闭"><X size={17} /></button></div>}
     {!desktopVault && <><section className="panel reauth-panel"><span className="reauth-icon"><ShieldCheck size={23} /></span><div><h2>敏感操作验证</h2></div><form onSubmit={verifySensitiveOperation}>
       <input name="login_password" type="password" minLength={9} maxLength={256} aria-label="敏感操作验证密码" autoComplete="current-password" placeholder="登录密码" required />
