@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type Dispatch, type FormEvent, type ReactNode, type RefObject, type SetStateAction } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, ChevronRight, FolderOpen, MessageSquare, Plus, SquarePen, Trash2, Users, X } from "lucide-react";
+import { CheckCircle2, ChevronRight, MessageSquare, Plus, SquarePen, Trash2, Users, X } from "lucide-react";
 import { ApiError, entityApi, type Entity } from "../api/client";
 import { SearchHighlight } from "./SearchHighlight";
 import { ErrorState, LoadingState } from "./States";
@@ -97,9 +97,12 @@ export function CustomerDirectory({ rows, disabled, searchQuery, focus, onEdit, 
   onEditProject: (selection: ProjectSelection) => void;
   onRemove: (item: Entity) => void;
 }) {
-  return <ul className="customer-directory">{rows.map((item) => <CustomerEntry key={item.id} item={item}
+  return <div className="customer-directory">
+    <div className="customer-directory-columns" aria-hidden="true"><span>客户</span><span>负责人</span><span>客户群聊</span><span>状态</span><span>操作</span></div>
+    <ul className="customer-directory-list" aria-label="客户清单">{rows.map((item) => <CustomerEntry key={item.id} item={item}
     disabled={disabled} searchQuery={searchQuery} focus={!disabled && focus?.customerId === item.id ? focus : null}
-    onEdit={onEdit} onEditProject={onEditProject} onRemove={onRemove} />)}</ul>;
+    onEdit={onEdit} onEditProject={onEditProject} onRemove={onRemove} />)}</ul>
+  </div>;
 }
 
 function CustomerEntry({ item, disabled, searchQuery, focus, onEdit, onEditProject, onRemove }: {
@@ -128,7 +131,6 @@ function CustomerEntry({ item, disabled, searchQuery, focus, onEdit, onEditProje
   const expanded = expandedOverride ?? matching;
   const hasProjects = projects.length > 0;
   const visible = showAll ? projects : projects.slice(0, PREVIEW_PROJECTS);
-  const hasSharedChat = hasChat(profile.chat);
   useLayoutEffect(() => {
     if (!focusKey) return;
     setExpandedOverride(true);
@@ -149,25 +151,25 @@ function CustomerEntry({ item, disabled, searchQuery, focus, onEdit, onEditProje
   </>;
   return <li className="customer-entry">
     <div className="customer-entry-header">
-      {hasProjects ? <button type="button" className="customer-heading customer-disclosure" aria-expanded={expanded} aria-controls={region} disabled={disabled}
+      {hasProjects ? <button type="button" className="customer-heading customer-disclosure" aria-expanded={expanded} aria-controls={region} title={`${expanded ? "收起" : "展开"}${name}的项目`} disabled={disabled}
         onClick={() => { setExpandedOverride(!expanded); setShowAll(false); }}>
         {identity}
       </button> : <div className="customer-heading">{identity}</div>}
-      {(profile.owners.length > 0 || hasSharedChat) && <div className="customer-shared">
-        {profile.owners.length > 0 && <div className="customer-owner-summary">
-          <span className="customer-meta-label"><Users size={14} aria-hidden="true" />负责人</span>
-          <Owners owners={profile.owners} />
-        </div>}
-        {hasSharedChat && <div><span className="customer-meta-label"><MessageSquare size={14} aria-hidden="true" />客户群聊</span><ChatSummary chat={profile.chat} /></div>}
-      </div>}
-      {status && <span className="badge customer-status" data-tone={customerStatusTones.get(status)}>{status}</span>}
+      <div className="customer-shared">
+        <div className="customer-owner-summary" role="group" aria-label="负责人">
+          <span className="customer-meta-label" aria-hidden="true"><Users size={14} />负责人</span>
+          {profile.owners.length ? <Owners owners={profile.owners} /> : <span className="muted">—</span>}
+        </div>
+        <div className="customer-chat-summary" role="group" aria-label="客户群聊"><span className="customer-meta-label" aria-hidden="true"><MessageSquare size={14} />客户群聊</span><ChatSummary chat={profile.chat} /></div>
+      </div>
+      <div className="customer-status-cell" role="group" aria-label="状态">{status ? <span className="badge customer-status" data-tone={customerStatusTones.get(status)}>{status}</span> : <span className="muted">—</span>}</div>
       <div className="customer-entry-actions">
         <button type="button" className="icon-button" aria-label="查看/编辑" title={`编辑 ${name}`} disabled={disabled} onClick={() => onEdit(item.id)}><SquarePen size={16} aria-hidden="true" /></button>
         <button type="button" className="icon-button danger" aria-label="删除" title={`删除 ${name}`} disabled={disabled} onClick={() => onRemove(item)}><Trash2 size={16} /></button>
       </div>
     </div>
     {hasProjects && <div id={region} hidden={!expanded} className="customer-entry-details">{expanded && <>
-      <h3 className="customer-project-list-heading" id={`${region}-heading`}><FolderOpen size={16} aria-hidden="true" />项目清单</h3>
+      <h3 className="sr-only" id={`${region}-heading`}>项目清单</h3>
       <div className="table-wrap"><table className="customer-project-table" aria-labelledby={`${region}-heading`}>
         <thead><tr><th scope="col">项目名</th><th scope="col">项目群聊</th><th scope="col">项目负责人</th><th scope="col" className="customer-project-action"><span className="sr-only">操作</span></th></tr></thead>
         <tbody>{visible.map((project, index) => <tr key={index} aria-current={index === targetIndex ? true : undefined} ref={index === targetIndex ? targetRow : undefined}>

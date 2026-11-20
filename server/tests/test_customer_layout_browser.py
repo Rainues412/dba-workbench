@@ -43,6 +43,8 @@ def test_customer_directory_responsive_and_multi_owner_edit(live_server, tmp_pat
             expect(single_toggle).to_have_attribute("aria-expanded", "false")
             expect(single.get_by_text("电鳗", exact=True)).to_have_count(0)
             single_toggle.press("Enter")
+            expect(single_toggle).to_have_attribute("aria-expanded", "true")
+            expect(single_toggle.locator(".customer-identity svg")).to_have_css("transform", "matrix(0, 1, -1, 0, 0, 0)")
             expect(single.get_by_text("电鳗", exact=True)).to_be_visible()
             expect(single.get_by_text("巡检负责人", exact=True)).to_be_visible()
             expect(single.locator(".customer-avatar")).to_have_text("独")
@@ -108,10 +110,27 @@ def test_customer_directory_responsive_and_multi_owner_edit(live_server, tmp_pat
                 else:
                     assert projects.first.evaluate("row => row.nextElementSibling.offsetTop > row.offsetTop + row.offsetHeight")
                 owner_summary = entry.locator(".customer-owner-summary")
-                label = owner_summary.get_by_text("负责人", exact=True).bounding_box()
-                owner = owner_summary.get_by_text("统一负责人甲", exact=True).bounding_box()
-                assert label["x"] + label["width"] <= owner["x"]
-                assert label["y"] < owner["y"] + owner["height"] and owner["y"] < label["y"] + label["height"]
+                label = owner_summary.get_by_text("负责人", exact=True)
+                columns = page.locator(".customer-directory-columns")
+                if width > 960:
+                    expect(columns).to_be_visible()
+                    expect(label).not_to_be_visible()
+                    for customer_entry in page.locator(".customer-entry").all():
+                        for index, selector in enumerate([".customer-heading", ".customer-owner-summary", ".customer-chat-summary", ".customer-status-cell"]):
+                            heading_box = columns.locator(":scope > span").nth(index).bounding_box()
+                            field_box = customer_entry.locator(selector).bounding_box()
+                            assert abs(heading_box["x"] - field_box["x"]) <= 1
+                        actions = customer_entry.locator(".customer-entry-actions").bounding_box()
+                        heading = columns.locator(":scope > span").last.bounding_box()
+                        assert abs(actions["x"] + actions["width"] - heading["x"] - heading["width"]) <= 1
+                else:
+                    expect(columns).not_to_be_visible()
+                    expect(label).to_be_visible()
+                    expect(entry.locator(".customer-chat-summary .customer-meta-label")).to_be_visible()
+                    label_box = label.bounding_box()
+                    owner = owner_summary.get_by_text("统一负责人甲", exact=True).bounding_box()
+                    assert label_box["x"] + label_box["width"] <= owner["x"]
+                    assert label_box["y"] < owner["y"] + owner["height"] and owner["y"] < label_box["y"] + label_box["height"]
                 expect(single.get_by_text("电鳗", exact=True)).to_be_visible()
                 assert single.locator(".table-wrap").evaluate("element => element.scrollWidth <= element.clientWidth + 1")
                 badges = page.locator(".customer-platform")
