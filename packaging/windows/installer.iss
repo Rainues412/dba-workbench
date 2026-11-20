@@ -5,7 +5,7 @@
   #error OutputDir must be supplied by the build script
 #endif
 #ifndef AppVersion
-  #define AppVersion "1.0.0"
+  #error AppVersion must be supplied by the build script
 #endif
 
 [Setup]

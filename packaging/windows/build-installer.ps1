@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [string]$OutputDirectory,
-    [string]$Version = "1.0.0",
+    [Parameter(Mandatory = $true)]
+    [ValidatePattern('^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$')]
+    [string]$Version,
     [switch]$SkipTests
 )
 
@@ -32,6 +34,18 @@ $env:NUITKA_CACHE_DIR = $cacheRoot
 $env:TEMP = Join-Path $buildRoot "temp"
 $env:TMP = $env:TEMP
 New-Item -ItemType Directory -Force -Path $env:PIP_CACHE_DIR, $env:TEMP | Out-Null
+
+# Rebuild the bundled UI with the same version used for the executable and installer.
+$previousUiVersion = $env:VITE_APP_VERSION
+Push-Location (Join-Path $repoRoot "frontend")
+try {
+    $env:VITE_APP_VERSION = $Version
+    & npm run build
+    if ($LASTEXITCODE -ne 0) { throw "前端构建失败，停止生成安装包。" }
+} finally {
+    $env:VITE_APP_VERSION = $previousUiVersion
+    Pop-Location
+}
 
 if (-not (Test-Path $python)) {
     $bootstrapPython = (Get-Command py.exe -ErrorAction SilentlyContinue)

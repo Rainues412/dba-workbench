@@ -64,7 +64,11 @@ py -3.12 -m venv .runtime\.venv
 .\.runtime\.venv\Scripts\pythonw.exe tools\windows\launch_dba_workbench.py
 ```
 
-源码启动器使用系统的 Microsoft Edge WebView2 Runtime，关闭窗口后仍可从系统托盘重新打开。WebView2 不可用时回退到浏览器。从启动器打开时会自动进入工作台。已有用户可继续使用原登录密码验证保险箱的敏感操作。首次使用保险箱时，如尚未设置敏感操作密码，则按提示设置。保险箱主密码单独设置。
+源码启动器使用系统的 Microsoft Edge WebView2 Runtime，关闭窗口后仍可从系统托盘重新打开。WebView2 不可用时回退到浏览器。从启动器打开时会自动进入工作台。
+
+- 首次创建保险箱时设置主密码和 1–3 道自定义密保问题。已有保险箱使用原主密码解锁后，可补设密保。
+- 在「忘记主密码」中答对全部密保问题后，可使用匹配的本机恢复密钥重置主密码。条目仍使用原来的数据密钥。对话框同时提供备份密钥的离线恢复步骤。
+- 侧栏底部的「设置」支持界面和代码阅读偏好、导航位置、工作区偏好及快捷键查询。在「密码库安全」中可修改主密码、查看保险箱数据位置、设置闲置锁定时长或主动开启 Windows 本机自动解锁。开启后，启动软件或切换页面再进入保险箱时自动解锁。手动或闲置锁定后，切换页面不会自动解锁，须输入主密码或从托盘彻底退出后重新启动。
 
 如需在源码模式预览 Office、PDF 等文件，可通过 `DBA_FILE_VIEWER_HOME` 指向已构建的查看器目录。[查看器构建脚本](packaging/windows/build-file-viewer.ps1)
 
@@ -81,4 +85,4 @@ npm run build
 Pop-Location
 ```
 
-生产前端输出到 `server/frontend_dist`。初始化 Git 子模块并构建前端后，可运行 `.\packaging\windows\build-installer.ps1 -Version "<major.minor.patch>"` 生成安装包。
+生产前端输出到 `server/frontend_dist`。初始化 Git 子模块后，可运行 `.\packaging\windows\build-installer.ps1 -Version "<major.minor.patch>"` 生成安装包。打包时会重新构建前端，「关于」、程序文件和安装包统一使用此版本号；普通源码构建显示「开发版」。
