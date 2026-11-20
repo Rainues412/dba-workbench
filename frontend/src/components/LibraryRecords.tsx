@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Copy, FileText, FolderOpen, Maximize2, Minimize2, MoreHorizontal, Pencil, Pin, Trash2, X } from "lucide-react";
@@ -104,14 +104,13 @@ export function LibraryRecords({ config, rows, selectedId, disabled, searchQuery
   </ul></SelectionMotion>;
 }
 
-export function LibraryPreview({ config, id, open = true, editorOpen, onClose, onEdit, onNotice, onRefresh }: {
+export function LibraryPreview({ config, id, open = true, editorOpen, onClose, onEdit, onRefresh }: {
   config: CrudConfig;
   id: number | null;
   open?: boolean;
   editorOpen: boolean;
   onClose: () => void;
   onEdit: (id: number) => void;
-  onNotice: (message: string) => void;
   onRefresh: () => Promise<void>;
 }) {
   const headingId = useId();
@@ -126,7 +125,14 @@ export function LibraryPreview({ config, id, open = true, editorOpen, onClose, o
   const [expanded, setExpanded] = useState(false);
   const expandedRef = useRef(expanded);
   expandedRef.current = expanded;
-  const [message, setMessage] = useState("");
+  const [feedback, setFeedback] = useState({ text: "" });
+  const message = feedback.text;
+  const setMessage = useCallback((text: string) => setFeedback({ text }), []);
+  useEffect(() => {
+    if (!/^(已|正文已|路径已)/.test(feedback.text)) return;
+    const timer = window.setTimeout(() => setFeedback({ text: "" }), 3000);
+    return () => window.clearTimeout(timer);
+  }, [feedback]);
   const [drawer, setDrawer] = useState(() => typeof window.matchMedia === "function" && window.matchMedia("(max-width: 1399px)").matches);
   const detail = useQuery({
     queryKey: [config.key, "detail", id],
@@ -225,7 +231,7 @@ export function LibraryPreview({ config, id, open = true, editorOpen, onClose, o
     if (screenfull.isEnabled && screenfull.element === readerRef.current) await screenfull.exit();
     onEdit(id!);
   }
-  function notify(value: string) { setMessage(value); onNotice(value); }
+  function notify(value: string) { setMessage(value); }
   async function copyContent() {
     try { await navigator.clipboard.writeText(body); notify(file.data?.truncated && needsFile ? "已复制当前预览片段" : "正文已复制"); }
     catch { notify("复制失败，请手动选择正文复制"); }
@@ -257,22 +263,18 @@ export function LibraryPreview({ config, id, open = true, editorOpen, onClose, o
       </div>
       {config.fileLinks && <section className="library-preview-actions" aria-label="快捷访问">
         <LocalFileLinks row={row} label={title} config={config.fileLinks} disabled={false} onNotice={notify} actionLabel={config.fileLinks.openLabel} compact />
-        {!row[config.fileLinks.pathField] && !(config.fileLinks.urlField && row[config.fileLinks.urlField]) && <p className="muted">未关联本地文件或网址</p>}
       </section>}
     </div>}
     <div className={`library-preview-body${showDocumentInfo && row ? " has-script-inspector" : ""}`}>
       <div className="library-preview-main">
       {message && <p className="library-inline-notice" aria-live="polite">{message}</p>}
-      {id === null ? <EmptyState title="选择一条记录预览" description="点击列表标题即可查看，文件和网址通过独立按钮打开。" />
+      {id === null ? <EmptyState title="选择一条记录预览" description="" />
         : detail.isLoading ? <LoadingState label="正在读取完整记录" />
         : detail.error || !row ? <ErrorState message="预览加载失败，请重试" retry={() => void detail.refetch()} />
         : <>
           <>
               {showSummary && <p className="library-preview-summary">{summary}</p>}
-              {hasLinkedFile && <section className="library-preview-section library-visual-preview" aria-label="原文件预览">
-                <div className="library-content-heading"><h3>原文件预览</h3>
-                  <span className="muted" title={visual.data?.filename}>{visual.data?.filename ? <FileName text={visual.data.filename} path={visual.data.filename} /> : "内置查看器"}</span>
-                </div>
+              {hasLinkedFile && <section className="library-preview-section library-visual-preview" aria-label="原文件预览" title={visual.data?.filename}>
                 {visual.isLoading ? <LoadingState label="正在准备原文件预览" />
                   : visual.error ? <ErrorState message={`原文件预览失败：${visual.error.message}`} retry={() => void visual.refetch()} />
                   : visual.data?.viewer === "markdown" ? <Suspense fallback={<LoadingState label="正在加载 Markdown 查看器" />}><MarkdownFilePreview filename={visual.data.filename} sourceUrl={visual.data.viewer_url} assetUrl={visual.data.asset_url!} expanded={expanded} /></Suspense>
@@ -280,10 +282,10 @@ export function LibraryPreview({ config, id, open = true, editorOpen, onClose, o
                   : null}
               </section>}
               {config.key === "articles" && !hasLinkedFile && <EmptyState title="尚未关联源文件" description="请编辑记录，填写源文件路径后预览。" />}
-              {config.key === "scripts" && (savedContent || needsFile || !hasLinkedFile) && <section className="library-preview-section" aria-label="正文预览"><div className="library-content-heading"><h3>脚本正文（只读）</h3>
+              {config.key === "scripts" && (savedContent || needsFile || !hasLinkedFile) && <section className="library-preview-section" aria-label="正文预览"><div className="library-content-heading"><h3>脚本正文</h3>
                 <button type="button" className="button small" disabled={!body || (needsFile && (file.isFetching || !!file.error))} onClick={() => void copyContent()}><Copy size={14} />{needsFile && file.data?.truncated ? "复制预览" : "复制正文"}</button>
               </div>
-                {needsFile && <p className="library-file-source muted">预览来源：关联文件{file.data ? ` · ${file.data.filename}` : ""}
+                {needsFile && <p className="library-file-source muted"><span title={linkedPath}><FolderOpen size={13} aria-hidden="true" /><FileName text={file.data?.filename || linkedPath} path={linkedPath} /></span>
                   <button type="button" className="button small" disabled={file.isFetching} onClick={() => void file.refetch()}>重新读取</button>
                 </p>}
                 {needsFile && file.isLoading ? <LoadingState label="正在读取关联文件" />

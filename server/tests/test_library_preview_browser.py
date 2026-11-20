@@ -78,7 +78,7 @@ def test_classification_list_preview_and_shortcuts(live_server, tmp_path, monkey
                         expect(preview).not_to_contain_text(body)
                         expect(preview).not_to_contain_text("运维说明摘要")
                     else:
-                        expect(preview).to_contain_text(body)
+                        expect(preview.locator(".script-code-line > span:last-child")).to_have_text(body.splitlines())
                         expect(preview).to_contain_text("运维说明摘要")
                 expect(preview.locator(".library-code img")).to_have_count(0)
                 assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
@@ -90,7 +90,7 @@ def test_classification_list_preview_and_shortcuts(live_server, tmp_path, monkey
                     assert preview.bounding_box()["x"] > page.locator(".data-panel").bounding_box()["x"]
                     expect(page.get_by_role("group", name="数据库分类")).to_be_visible()
                 else:
-                    assert preview.evaluate("element => element.open && element.matches(':modal')")
+                    expect(page.locator("dialog.library-preview[data-app-dialog][open]")).to_be_visible()
                     # Browser transforms can round a viewport-sized dialog by a fraction of a pixel.
                     # The document overflow assertion above still rejects real horizontal scrolling.
                     assert preview.bounding_box()["width"] <= width + 0.5
@@ -179,8 +179,8 @@ def test_path_only_records_preview_real_file_when_viewer_unavailable(live_server
             preview = page.locator(".library-preview")
             changed_body = body
             if module == "scripts":
-                expect(preview).to_contain_text(body)
-                expect(preview).to_contain_text("预览来源：关联文件")
+                expect(preview.locator(".script-code-line > span:last-child")).to_have_text(body.splitlines())
+                expect(preview.locator(".library-file-source")).to_contain_text(target.name)
                 expect(preview.locator(".library-code img")).to_have_count(0)
                 preview.get_by_role("button", name="复制正文", exact=True).click()
                 assert page.evaluate("window.__copied") == body
@@ -194,14 +194,14 @@ def test_path_only_records_preview_real_file_when_viewer_unavailable(live_server
                 changed_body = body + "\n-- 原文件更新后重新读取"
                 target.write_bytes(changed_body.encode(encoding))
                 preview.get_by_role("button", name="重新读取", exact=True).click()
-                expect(preview).to_contain_text(changed_body)
+                expect(preview.locator(".script-code-line > span:last-child")).to_have_text(changed_body.splitlines())
             page.set_viewport_size({"width": 390, "height": 900})
             page.evaluate("document.documentElement.dataset.theme = 'dark'")
             if module == "scripts":
-                expect(preview).to_contain_text(changed_body)
+                expect(preview.locator(".script-code-line > span:last-child")).to_have_text(changed_body.splitlines())
             else:
                 expect(preview.get_by_role("region", name="正文预览", exact=True)).to_have_count(0)
-            assert preview.evaluate("element => element.matches(':modal')")
+            expect(page.locator("dialog.library-preview[data-app-dialog][open]")).to_be_visible()
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             page.screenshot(animations="disabled", path=str(tmp_path / f"{module}-linked-file-dark-390.png"))
             preview.get_by_role("button", name="编辑", exact=True).click()

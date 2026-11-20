@@ -90,7 +90,7 @@ describe("review report CRUD regressions", () => {
     }));
     show(tasksConfig);
     await screen.findByText("筛选任务");
-    expect(screen.getByText("高优先级")).toBeInTheDocument();
+    expect(screen.getByTitle("高优先级")).toHaveTextContent(/^高$/);
     expect(screen.getByText("已逾期", { selector: ".badge" })).toBeInTheDocument();
     expect(screen.getByText(/已逾期 \d+ 天/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "第 2 页" }));

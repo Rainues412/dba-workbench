@@ -378,17 +378,33 @@ function CrudContent({ config }: { config: CrudConfig }) {
   }
 
   return <div className={`page${hasFavorites ? " library-page" : ""}`}>
-    <header className="page-header"><div className="page-title-group"><span className="page-title-icon"><PageIcon size={24} /></span><div><p className="eyebrow">DATA MODULE</p><h1>{taskArchive ? "归档任务" : config.title}</h1></div></div><div className="button-row">{hasFavorites && <ScanImport key={config.key} module={config.key as "scripts" | "articles" | "resources"} onImported={refresh} />}{isTask && <button className="button" onClick={changeTaskView}>{taskArchive ? <ArrowLeft size={17} /> : <Archive size={17} />}{taskArchive ? "返回任务列表" : "查看归档"}</button>}{!taskArchive && <button className="button primary" onClick={() => { setSelectedId(null); setCreating(true); }}><Plus size={17} />{isCustomer ? "新增客户" : "新增"}</button>}</div></header>
+    <header className="page-header"><div className="page-title-group"><span className="page-title-icon"><PageIcon size={24} /></span><div><p className="eyebrow">DATA MODULE</p><h1>{taskArchive ? "归档任务" : config.title}</h1></div></div><div className="button-row">
+      {hasFavorites && <ScanImport key={config.key} module={config.key as "scripts" | "articles" | "resources"} onImported={refresh} />}
+      {isTask && <div className="task-archive-entry">
+        <button className="button" onClick={changeTaskView}>{taskArchive ? <ArrowLeft size={17} /> : <Archive size={17} />}{taskArchive ? "返回任务列表" : "查看归档"}</button>
+        <details className="task-archive-rules" onKeyDown={(event) => {
+          if (event.key === "Escape") { event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); }
+        }}>
+          <summary aria-label="归档规则" title="归档规则"><ChevronDown size={16} aria-hidden="true" /></summary>
+          <div><p>已完成任务保留 15 天后自动归档，可在归档列表查看或恢复。</p><p>已完成及归档任务均按创建时间从新到旧排列。</p></div>
+        </details>
+      </div>}
+      {!taskArchive && <button className="button primary" onClick={() => { setSelectedId(null); setCreating(true); }}><Plus size={17} />{isCustomer ? "新增客户" : "新增"}</button>}
+    </div></header>
     <LibraryLayout module={config.key} enabled={hasFavorites}
       categories={config.classification ? (collapsed, onToggle) => <CategoryNavigation classification={config.classification!} data={facets.data} loading={facets.isLoading} error={!!facets.error} retry={() => void facets.refetch()} database={database} category={category} categoryOptions={config.fields.find((field) => field.name === config.classification?.categoryField)?.options} hideEmptyCategories={config.key === "articles"} onChange={changeClassification} collapsed={collapsed} onToggle={onToggle} /> : undefined}
       previewOpen={previewEnabled} onPreviewClose={closePreview}
-      preview={hasPreview ? <LibraryPreview config={config} id={previewId} open={previewEnabled} editorOpen={creating || selectedId !== null} onClose={closePreview} onEdit={editRecord} onNotice={setNotice} onRefresh={refresh} /> : undefined}>
+      preview={hasPreview ? <LibraryPreview config={config} id={previewId} open={previewEnabled} editorOpen={creating || selectedId !== null} onClose={closePreview} onEdit={editRecord} onRefresh={refresh} /> : undefined}>
     <section className="panel data-panel" ref={panelRef} aria-busy={list.isFetching}>
-      <div className="toolbar"><label className="search-field"><Search size={17} aria-hidden="true" /><span className="sr-only">{searchLabel}</span><input ref={searchInput} value={keyword} onChange={(event) => changeKeyword(event.target.value)} placeholder={searchLabel} /></label>
+      <div className={`toolbar${isTask ? " task-toolbar" : ""}`}><label className="search-field"><Search size={17} aria-hidden="true" /><span className="sr-only">{searchLabel}</span><input ref={searchInput} value={keyword} onChange={(event) => changeKeyword(event.target.value)} placeholder={searchLabel} /></label>
+        {isTask && <div className="task-filters">
+          {!taskArchive && <label><span className="sr-only">状态</span><select aria-label="筛选任务状态" value={status} onChange={(event) => { paginationTop.current = null; setStatus(event.target.value); if (event.target.value === "已完成") setOverdueOnly(false); setPage(1); }}><option value="">全部状态</option>{["待处理", "进行中", "已完成"].map((value) => <option key={value}>{value}</option>)}</select></label>}
+          <label><span className="sr-only">优先级</span><select aria-label="筛选任务优先级" value={priority} onChange={(event) => { paginationTop.current = null; setPriority(event.target.value); setPage(1); }}><option value="">全部优先级</option>{["高", "中", "低"].map((value) => <option key={value} value={value}>{value}优先级</option>)}</select></label>
+          {!taskArchive && <button className={`task-overdue-filter${overdueOnly ? " active" : ""}`} type="button" aria-pressed={overdueOnly} onClick={() => { paginationTop.current = null; setOverdueOnly((value) => !value); if (!overdueOnly && status === "已完成") setStatus(""); setPage(1); }}><AlertTriangle size={16} />仅看逾期</button>}
+        </div>}
         {hasFavorites && <div className="list-filters"><label className="checkbox-label"><input type="checkbox" checked={favoriteOnly} onChange={(event) => { paginationTop.current = null; setFavoriteOnly(event.target.checked); setPage(1); }} />只看收藏</label></div>}
         {hasPreview && <button type="button" className={`button small preview-toggle${previewEnabled ? " active" : ""}`} aria-pressed={previewEnabled} disabled={previewId === null} title={previewId === null ? "点击卡片打开预览" : "点击同一卡片可收起预览"} onClick={() => togglePreview(previewId)}><PanelRight size={16} />预览</button>}
         <span className="result-count" aria-live="polite">{list.isPlaceholderData ? "正在加载…" : <>共 <strong>{list.data?.total ?? 0}</strong> {isCustomer ? "位客户" : "条记录"}</>}</span></div>
-      {isTask && <div className="list-filters task-filters">{isTask && <>{!taskArchive && <label>状态<select aria-label="筛选任务状态" value={status} onChange={(event) => { paginationTop.current = null; setStatus(event.target.value); if (event.target.value === "已完成") setOverdueOnly(false); setPage(1); }}><option value="">全部状态</option>{["待处理", "进行中", "已完成"].map((value) => <option key={value}>{value}</option>)}</select></label>}<label>优先级<select aria-label="筛选任务优先级" value={priority} onChange={(event) => { paginationTop.current = null; setPriority(event.target.value); setPage(1); }}><option value="">全部优先级</option>{["高", "中", "低"].map((value) => <option key={value}>{value}</option>)}</select></label>{!taskArchive && <button className={`task-overdue-filter${overdueOnly ? " active" : ""}`} type="button" aria-pressed={overdueOnly} onClick={() => { paginationTop.current = null; setOverdueOnly((value) => !value); if (!overdueOnly && status === "已完成") setStatus(""); setPage(1); }}><AlertTriangle size={16} />仅看逾期</button>}<span className="muted task-retention-note">{taskArchive ? "归档任务按创建时间从新到旧排列，可查看详情或恢复到任务列表。" : "已完成任务按创建时间从新到旧排列，完成满 15 天自动归档，可通过“查看归档”查看或恢复。"}</span></>}</div>}
       {(database || category) && <div className="active-classification" role="group" aria-label="当前分类筛选">
         <div className="active-classification-tags">
           {database && <span className="active-classification-database" title={database}><DatabaseLabel name={database} /></span>}
@@ -521,7 +537,7 @@ function formatTaskCell(row: Entity, field: string) {
     const priority = String(row.priority ?? "中");
     const tone = priority === "高" ? "high" : priority === "低" ? "low" : "medium";
     const Icon = tone === "high" ? ChevronsUp : tone === "low" ? ChevronDown : Minus;
-    return <span className={`task-priority-badge ${tone}`}><Icon size={14} />{priority}优先级</span>;
+    return <span className={`task-priority-badge ${tone}`} title={`${priority}优先级`}><Icon size={14} aria-hidden="true" />{priority}</span>;
   }
   if (field === "status") return <span className="task-state-cell">{row.is_overdue ? <span className="badge status-danger"><AlertTriangle size={13} />已逾期</span> : null}{formatCell(row.is_archived ? "已归档" : row.status, "status")}</span>;
   if (field === "due_date") {

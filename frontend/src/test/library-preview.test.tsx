@@ -330,7 +330,8 @@ describe("library classification and read-only preview", () => {
     fireEvent.click(await screen.findByRole("button", { name: "预览：仅关联文件" }));
     const preview = screen.getByRole("complementary", { name: "记录预览" });
     await within(preview).findByText(fileBody);
-    expect(within(preview).getByText(/预览来源：关联文件/)).toBeInTheDocument();
+    expect(preview.querySelector(".library-file-source")).toHaveTextContent("old.sql");
+    expect(within(preview).queryByText(/预览来源：关联文件/)).not.toBeInTheDocument();
     expect(preview.querySelector("img")).toBeNull();
     expect(reads).toContain(`${config.path}12/file-preview`);
     fireEvent.click(within(preview).getByRole("button", { name: "编辑" }));
@@ -377,7 +378,8 @@ describe("library classification and read-only preview", () => {
     const frame = await within(preview).findByTitle("原文件预览：layout.pdf");
     expect(frame).toHaveAttribute("src", "http://127.0.0.1:8012/onlinePreview?url=signed");
     expect(frame).toHaveAttribute("sandbox", expect.stringContaining("allow-scripts"));
-    expect(within(preview).getByTitle("layout.pdf")).toHaveTextContent("layout.pdf");
+    expect(within(preview).getByRole("region", { name: "原文件预览" })).toHaveAttribute("title", "layout.pdf");
+    expect(within(preview).queryByRole("heading", { name: "原文件预览" })).not.toBeInTheDocument();
     expect(reads).not.toContain(`${config.path}16/file-preview`);
     expect(within(preview).queryByText("知识库摘要")).not.toBeInTheDocument();
     if (config.key === "scripts") expect(within(preview).getByText("保留的脚本说明")).toBeInTheDocument();

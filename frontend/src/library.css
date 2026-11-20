@@ -171,7 +171,7 @@
 .library-preview-body { display: flex; flex-direction: column; flex: 1; overflow-y: auto; min-width: 0; min-height: 0; padding: .65rem 0; }
 .library-preview-body .empty-state { padding: 3rem .5rem; }
 .library-preview-tools { display: flex; flex: 0 0 auto; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .45rem .8rem; padding: .5rem .8rem; border-bottom: 1px solid var(--border); }
-.library-preview-overview { display: flex; flex: 1 1 280px; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem .65rem; }
+.library-preview-overview { display: flex; flex: 1 1 200px; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem .65rem; }
 .library-preview-overview > .library-record-meta { flex: 1 1 auto; }
 .library-preview-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; margin: 0; color: var(--muted); font-size: .67rem; }
 .library-preview-meta dt { color: var(--muted); }
@@ -221,8 +221,6 @@
 .script-code-number { text-align:right; color:var(--muted); padding-right:.5ch; border-right:1px solid var(--border); user-select:none; }
 .library-code mark { color:#221700; background:#ffce68; }
 .library-visual-preview { display: flex; flex: 1 0 260px; flex-direction: column; min-height: 260px; padding: 0; border-top: 0; container: file-preview / inline-size; }
-.library-visual-preview > .library-content-heading { flex: 0 0 auto; margin-bottom: .4rem; padding-inline: .5rem; }
-.library-visual-preview .library-content-heading .muted { min-width: 0; max-width: 65%; overflow: hidden; text-overflow: ellipsis; font-size: .65rem; white-space: nowrap; }
 .library-visual-frame { flex: 1; width: 100%; min-height: 0; border: 1px solid var(--border); border-radius: 9px; background: #fff; }
 .library-markdown-layout { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); flex: 1; min-width: 0; min-height: 0; }
 .library-markdown { position: relative; grid-column: 1; grid-row: 1; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: .65rem .5rem; border: 1px solid var(--border); border-radius: 9px; color: var(--text); background: var(--surface); font-size: 16px; line-height: 1.8; overflow-wrap: anywhere; }
@@ -339,4 +337,7 @@
   .library-reader.expanded .library-markdown { font-size: 16px; padding: 1rem; }
 }
 .library-file-source { display: flex; align-items: center; justify-content: space-between; gap: 10px; overflow-wrap: anywhere; }
+.library-file-source > span { display: flex; align-items: center; gap: .35rem; min-width: 0; }
+.library-file-source > span > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.library-file-source svg { flex-shrink: 0; }
 .library-file-source .button { flex-shrink: 0; }
