@@ -91,13 +91,9 @@ class DesktopSettings:
             if before["startup_conflict"] and "auto_start" in changes:
                 raise HTTPException(409, "启动项指向其他位置，请先在 Windows 中核对该启动项。")
             enabled = changes.get("auto_start", before["auto_start"])
-            if changes.get("silent_start") and not enabled:
-                raise HTTPException(409, "请先开启开机启动，再开启静默启动。")
             if "close_to_tray" in changes and not self.native_window:
                 raise HTTPException(409, "关闭到托盘需要使用桌面窗口。")
             options = {key: changes.get(key, before[key]) for key in DEFAULTS}
-            if not enabled:
-                options["silent_start"] = False
             old_registration = self.startup.read()
             temporary = self.path.with_suffix(".tmp")
             self.path.parent.mkdir(parents=True, exist_ok=True)

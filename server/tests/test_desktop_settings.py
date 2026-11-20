@@ -35,21 +35,26 @@ def preferences(tmp_path):
 def test_persistence_and_startup_readback(preferences):
     initial = preferences.read()
     assert not initial["auto_start"] and not initial["silent_start"] and initial["close_to_tray"]
-    enabled = preferences.update({"auto_start": True}, initial["revision"])
+    independent = preferences.update({"silent_start": True}, initial["revision"])
+    assert independent["silent_start"] and not independent["auto_start"]
+    assert preferences.startup.read() is None
+    enabled = preferences.update({"auto_start": True}, independent["revision"])
     assert preferences.startup.read() == preferences.startup.command
     silent = preferences.update({"silent_start": True, "close_to_tray": False}, enabled["revision"])
     assert silent["silent_start"] and not silent["close_to_tray"]
     restored = DesktopSettings(preferences.path, preferences.startup).read()
     assert restored["auto_start"] and restored["silent_start"] and not restored["close_to_tray"]
     disabled = preferences.update({"auto_start": False}, silent["revision"])
-    assert not disabled["silent_start"] and not disabled["auto_start"]
+    assert disabled["silent_start"] and not disabled["auto_start"]
     assert preferences.startup.read() is None
+    restored = DesktopSettings(preferences.path, preferences.startup).read()
+    assert restored["silent_start"] and not restored["auto_start"]
+    explicit = preferences.update({"silent_start": False}, disabled["revision"])
+    assert not explicit["silent_start"] and not explicit["auto_start"]
 
 
-def test_stale_writes_conflicts_and_silent_dependency(preferences):
+def test_stale_writes_and_startup_conflicts(preferences):
     initial = preferences.read()
-    with pytest.raises(HTTPException, match="先开启开机启动"):
-        preferences.update({"silent_start": True}, initial["revision"])
     changed = preferences.update({"close_to_tray": False}, initial["revision"])
     with pytest.raises(HTTPException, match="设置已发生变化"):
         preferences.update({"auto_start": True}, initial["revision"])

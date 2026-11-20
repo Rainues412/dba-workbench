@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpenText, Check, Circle, Database, Info, Keyboard, Monitor, PanelLeft, Settings, X } from "lucide-react";
+import { BookOpenText, Check, Circle, Database, Info, Keyboard, Monitor, PanelLeft, Power, Settings, X } from "lucide-react";
 import { api, VAULT_LOCKED_EVENT } from "../api/client";
 import { savePreference, usePreference, type Preference } from "../preferences";
 import { desktopVaultApi, useDesktopVaultUnlocked } from "../vault/desktopVault";
@@ -11,7 +11,7 @@ const sections = [
   ["appearance", "外观与阅读", Monitor, "字号 字体 动画 行号 换行 密度"],
   ["navigation", "导航栏", PanelLeft, "菜单 位置 侧栏 左 右 顶部 底部"],
   ["workspace", "工作区", BookOpenText, "脚本 置顶 文档 信息"],
-  ["window", "窗口与启动", Monitor, "开机 自启 静默 窗口 关闭 最小化 托盘"],
+  ["window", "窗口与启动", Power, "开机 自启 静默 窗口 关闭 最小化 托盘"],
   ["security", "密码库安全", Database, "密码 保险箱 主密码 解锁 锁定 安全 数据位置"],
   ["shortcuts", "快捷键", Keyboard, "按键 搜索 保存 打开"],
   ["about", "关于", Info, "版本 许可 内容"],
@@ -128,12 +128,12 @@ export function WorkbenchSettings({ desktop, onClose }: { desktop: boolean; onCl
           {windowSettings.data && <>
             {([
               ["auto_start", "开机启动", windowSettings.data.startup_conflict ? "启动项指向其他位置，请先在 Windows 中核对。" : "登录当前 Windows 账户后自动运行。"],
-              ["silent_start", "静默启动", "需先开启开机启动。启动时仅显示托盘图标，可从托盘或再次打开软件显示窗口。"],
+              ["silent_start", "静默启动", "启动时仅显示托盘图标，可从托盘或再次打开软件显示窗口。"],
               ["close_to_tray", "关闭时最小化到托盘", windowSettings.data.native_window ? "开启后，关闭窗口仍在后台运行；关闭此选项后将退出软件。" : "此选项需要使用桌面窗口；浏览器模式请从托盘退出软件。"],
             ] as const).map(([name, label, detail]) => <label className="preference-row" key={name}>
               <span><strong>{label}</strong><small>{detail}</small></span>
               <Toggle label={label} checked={windowSettings.data[name]}
-                disabled={windowBusy || windowSettings.isFetching || (name === "auto_start" && windowSettings.data.startup_conflict) || (name === "silent_start" && !windowSettings.data.auto_start) || (name === "close_to_tray" && !windowSettings.data.native_window)}
+                disabled={windowBusy || windowSettings.isFetching || (name === "auto_start" && windowSettings.data.startup_conflict) || (name === "close_to_tray" && !windowSettings.data.native_window)}
                 onChange={(enabled) => void updateWindow(name, enabled)} />
             </label>)}
           </>}

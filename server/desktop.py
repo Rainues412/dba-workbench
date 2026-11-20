@@ -248,12 +248,12 @@ def main() -> None:
     preferences = DesktopSettings(Path(os.environ.get("DBA_DESKTOP_SETTINGS_FILE") or default_preferences), WindowsStartup(name, command))
     app.state.desktop_settings = preferences
     try:
-        current = preferences.read()
+        current = preferences.options()
     except (OSError, ValueError):
         logging.exception("无法读取启动偏好，将显示工作台窗口。")
-        current = {"auto_start": False, "silent_start": False}
+        current = {"silent_start": False}
     force_show = "--show-window" in sys.argv or os.environ.get("DBA_SHOW_WINDOW") == "true"
-    silent_start = current["auto_start"] and current["silent_start"] and not force_show
+    silent_start = current["silent_start"] and not force_show
 
     viewer = start_file_viewer(_data_directory(), log_dir)
     try:

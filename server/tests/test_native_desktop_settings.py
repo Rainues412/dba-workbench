@@ -48,7 +48,7 @@ def _run_smoke(directory: Path):
             self.command = subprocess.list2cmdline(command)
 
         def read(self):
-            return self.command
+            return None
 
     desktop.WindowsStartup = IsolatedStartup
     desktop._tray_icon_path = lambda: directory / "test-icon.ico"
@@ -102,6 +102,8 @@ def _run_smoke(directory: Path):
                 client.post("api/auth/desktop", headers={"X-DBA-Desktop-Token": auth._desktop_token}).raise_for_status()
                 csrf = client.get("api/auth/status").json()["csrf_token"]
                 state = client.get("api/desktop/settings").json()
+                assert not state["auto_start"] and state["silent_start"]
+                result["silent_without_auto_start"] = True
                 response = client.put("api/desktop/settings", headers={"If-Match": str(state["revision"]), "X-CSRF-Token": csrf}, json={"close_to_tray": False})
                 response.raise_for_status()
                 assert response.json()["close_to_tray"] is False
