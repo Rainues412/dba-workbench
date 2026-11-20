@@ -313,6 +313,7 @@ td.row-actions { justify-content: flex-end; white-space: nowrap; }
 .stat-copy strong { margin: .14rem 0; color: var(--text-strong); font-size: 1.55rem; line-height: 1.1; letter-spacing: -.04em; }
 .stat-copy em { overflow: hidden; color: var(--muted-soft); font-size: .64rem; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 .stat-arrow { color: var(--muted-soft); opacity: .55; }
+.dashboard-number { font-variant-numeric: tabular-nums; }
 .tone-blue { --tone: var(--chart-blue); }
 .tone-violet { --tone: var(--chart-violet); }
 .tone-amber { --tone: #e49a2d; }

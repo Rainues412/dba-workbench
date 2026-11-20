@@ -5,6 +5,8 @@ import {
   ListTodo, PackageOpen, ScrollText, ShieldCheck, Sparkles, TriangleAlert,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { motion } from "motion/react";
+import { DashboardNumber, useDashboardEntrance } from "../components/DashboardMetrics";
 import { api, entityApi } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useProfile } from "../auth/profile";
@@ -16,7 +18,6 @@ type Task = { id: number; revision: number; title: string; priority: string; sta
 type DatabaseDistribution = { name: DatabaseName; count: number }[];
 type DatabaseName = "Oracle" | "MySQL" | "PostgreSQL" | "SQL Server" | "Linux" | "Redis" | "MongoDB" | "其他";
 
-const numberFormat = new Intl.NumberFormat("zh-CN");
 const dateFormat = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" });
 
 export function Dashboard() {
@@ -26,6 +27,7 @@ export function Dashboard() {
   const stats = useQuery({ queryKey: ["dashboard", "stats"], queryFn: () => api<Stats>("/api/dashboard/stats") });
   const tasks = useQuery({ queryKey: ["dashboard", "tasks"], queryFn: () => api<Task[]>("/api/dashboard/recent-tasks") });
   const distribution = useQuery({ queryKey: ["dashboard", "database-distribution"], queryFn: () => api<DatabaseDistribution>("/api/dashboard/database-distribution") });
+  const entrance = useDashboardEntrance(Boolean(stats.data && tasks.data && distribution.data) && !stats.error && !tasks.error && !distribution.error);
   if (stats.isLoading || tasks.isLoading || distribution.isLoading) return <Page><LoadingState label="正在整理工作台" /></Page>;
   if (stats.error || tasks.error || distribution.error) return <Page><ErrorState message="概览加载失败" retry={() => { void stats.refetch(); void tasks.refetch(); void distribution.refetch(); }} /></Page>;
 
@@ -59,7 +61,7 @@ export function Dashboard() {
     <section className="stat-grid" aria-label="数据摘要">
       {cards.map(({ label, value, hint, to, icon: Icon, tone }) => <Link className={`stat-card tone-${tone}`} to={to} key={label}>
         <span className="stat-icon"><Icon size={20} strokeWidth={1.9} /></span>
-        <span className="stat-copy"><small>{label}</small><strong>{numberFormat.format(value)}</strong><em>{hint}</em></span>
+        <span className="stat-copy"><small>{label}</small><DashboardNumber value={value} progress={entrance} /><em>{hint}</em></span>
         <ArrowRight className="stat-arrow" size={17} aria-hidden="true" />
       </Link>)}
     </section>
@@ -94,8 +96,8 @@ export function Dashboard() {
           return <article className="database-distribution-item" key={item.name}>
             <DatabaseLabel name={item.name} />
             <div className="database-bar-row">
-              <div className="progress-track"><span style={{ width: `${width}%`, background: meta.color }} /></div>
-              <strong>{numberFormat.format(item.count)}</strong>
+              <div className="progress-track" aria-hidden="true"><motion.span style={{ width: `${width}%`, background: meta.color, scaleX: entrance, originX: 0 }} /></div>
+              <DashboardNumber value={item.count} progress={entrance} />
             </div>
           </article>;
         })}</div>
