@@ -1,11 +1,11 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CrudPage, type CrudConfig } from "../components/CrudPage";
 import { articlesConfig, tasksConfig } from "../pages/entityConfigs";
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 function show(config: CrudConfig) {
   vi.spyOn(window, "scrollBy").mockImplementation(() => undefined);
@@ -18,6 +18,36 @@ function listResponse(path: string, row: Record<string, unknown>, total = 1) {
 }
 
 describe("review report CRUD regressions", () => {
+  it("restarts the success timeout for repeated updates and keeps failures visible", async () => {
+    let failing = false;
+    let row = { id: 6, revision: 1, title: "通知测试", status: "待处理", priority: "中" };
+    vi.stubGlobal("fetch", vi.fn(async (path: string, init?: RequestInit) => {
+      if (init?.method === "PUT") {
+        if (failing) return Response.json({ detail: "更新失败，请重试" }, { status: 500 });
+        row = { ...row, ...JSON.parse(String(init.body)), revision: row.revision + 1 };
+        return Response.json(row);
+      }
+      return listResponse(path, row);
+    }));
+    show(tasksConfig);
+    const complete = await screen.findByRole("button", { name: "完成" });
+    vi.useFakeTimers();
+    fireEvent.click(complete);
+    await act(async () => { await vi.advanceTimersByTimeAsync(2999); });
+    expect(screen.getByText("记录已更新")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "恢复" }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2999); });
+    expect(screen.getByText("记录已更新")).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(screen.queryByText("记录已更新")).not.toBeInTheDocument();
+    failing = true;
+    fireEvent.click(screen.getByRole("button", { name: "完成" }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(screen.getByRole("alert")).toHaveTextContent("更新失败，请重试");
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(screen.getByRole("alert")).toHaveTextContent("更新失败，请重试");
+  });
   it.each([500, 404])("does not show a create/save form after detail HTTP %s; retry updates the existing revision", async (status) => {
     let failing = true;
     const row = { id: 7, revision: 6, title: "已有任务", priority: "高", status: "待处理", due_date: "", description: "" };
@@ -109,6 +139,7 @@ describe("review report CRUD regressions", () => {
     show({ ...articlesConfig, classification: undefined, fileLinks: undefined, columns: [{ name: "title", label: "标题" }] });
     fireEvent.click(await screen.findByRole("button", { name: /^收藏$/ }));
     await screen.findByRole("button", { name: "取消收藏" });
+    expect(screen.queryByText("记录已更新")).not.toBeInTheDocument();
     expect(writes[0].path).toBe("/api/articles/5");
     expect(new Headers(writes[0].init.headers).get("If-Match")).toBe("3");
     expect(JSON.parse(String(writes[0].init.body))).toEqual({ is_favorite: 1 });

@@ -5,6 +5,65 @@ from test_browser_smoke import _api_client, _edge, _login
 
 
 @pytest.mark.browser
+def test_favorite_burst_and_failure_feedback(live_server, tmp_path):
+    client, csrf = _api_client(live_server)
+    client.post("/api/articles/", json={"title": "收藏动效验收"}, headers={"X-CSRF-Token": csrf}).raise_for_status()
+    with sync_playwright() as playwright:
+        browser = _edge(playwright)
+        try:
+            page = browser.new_page()
+            page.set_default_timeout(10_000)
+            _login(page, live_server)
+            page.get_by_role("navigation", name="主导航").get_by_role("link", name="知识库", exact=True).click()
+            favorite = page.locator(".favorite-button")
+            expect(favorite).to_have_attribute("aria-pressed", "false")
+            for theme, width in [("light", 1440), ("dark", 390)]:
+                page.set_viewport_size({"width": width, "height": 900})
+                page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
+                favorite.focus()
+                favorite.press("Space")
+                expect(favorite).to_have_attribute("aria-pressed", "true")
+                expect(page.get_by_text("记录已更新", exact=True)).to_have_count(0)
+                animation = favorite.evaluate("""button => {
+                    const animations = button.getAnimations({subtree: true});
+                    for (const animation of animations) { animation.pause(); animation.currentTime = 252; }
+                    const star = button.querySelector('.favorite-star');
+                    return {durations: animations.map(a => a.effect.getTiming().duration),
+                        transform: getComputedStyle(star).transform, color: getComputedStyle(star).color,
+                        dots: button.querySelectorAll('.favorite-particles > span').length};
+                }""")
+                assert animation["durations"] == [600] * 6
+                assert animation["dots"] == 5
+                assert animation["transform"] == "matrix(1.2, 0, 0, 1.2, 0, 0)"
+                assert animation["color"] == "rgb(233, 161, 27)"
+                assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+                page.screenshot(path=str(tmp_path / f"favorite-burst-{theme}-{width}.png"))
+                favorite.evaluate("button => button.getAnimations({subtree: true}).forEach(a => a.finish())")
+                expect(page.locator(".favorite-button.is-bursting")).to_have_count(0)
+                expect(favorite).to_be_enabled()
+                favorite.click()
+                expect(favorite).to_have_attribute("aria-pressed", "false")
+                expect(page.locator(".favorite-particles")).to_have_count(0)
+
+            page.emulate_media(reduced_motion="reduce")
+            favorite.click()
+            expect(favorite).to_have_attribute("aria-pressed", "true")
+            assert favorite.evaluate("button => button.getAnimations({subtree: true}).length") == 0
+            expect(page.locator(".favorite-particles")).to_have_count(0)
+            favorite.click()
+            expect(favorite).to_have_attribute("aria-pressed", "false")
+            page.route("**/api/articles/*", lambda route: route.fulfill(status=500, json={"detail": "收藏失败，请重试"}) if route.request.method == "PUT" else route.continue_())
+            favorite.click()
+            expect(page.get_by_role("alert")).to_have_text("收藏失败，请重试")
+            expect(favorite).to_have_attribute("aria-pressed", "false")
+            expect(favorite).to_be_enabled()
+            page.wait_for_timeout(3100)
+            expect(page.get_by_role("alert")).to_be_visible()
+        finally:
+            browser.close()
+
+
+@pytest.mark.browser
 @pytest.mark.parametrize("module,name", [
     ("scripts", "脚本库"), ("articles", "知识库"), ("resources", "资源中心"),
 ])

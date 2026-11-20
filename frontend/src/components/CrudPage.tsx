@@ -69,7 +69,14 @@ function CrudContent({ config }: { config: CrudConfig }) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [projectEdit, setProjectEdit] = useState<ProjectSelection | null>(null);
   const [creating, setCreating] = useState(false);
-  const [notice, setNotice] = useState("");
+  const [notification, setNotification] = useState({ message: "", error: false });
+  const notice = notification.message;
+  const setNotice = useCallback((message: string, error = false) => setNotification({ message, error }), []);
+  useEffect(() => {
+    if (!notification.message || notification.error) return;
+    const timer = window.setTimeout(() => setNotification({ message: "", error: false }), 3000);
+    return () => window.clearTimeout(timer);
+  }, [notification]);
   const [projectJump, setProjectJump] = useState<{ key: string; mode: "list" | "drawer" } | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLElement>(null);
@@ -357,13 +364,17 @@ function CrudContent({ config }: { config: CrudConfig }) {
       setNotice("记录已删除");
       await refresh();
     } catch (reason) {
-      setNotice(reason instanceof ApiError ? reason.message : "删除失败");
+      setNotice(reason instanceof ApiError ? reason.message : "删除失败", true);
     }
   }
 
   async function quickUpdate(row: Entity, payload: Record<string, unknown>) {
-    try { await entityApi.update(config.path, row.id, row.revision, payload); setNotice("记录已更新"); await refresh(); }
-    catch (reason) { setNotice(reason instanceof ApiError ? reason.message : "更新失败"); if (reason instanceof ApiError && reason.status === 409) await refresh(); }
+    try {
+      await entityApi.update(config.path, row.id, row.revision, payload);
+      setNotice(Object.keys(payload).every((key) => key === "is_favorite" || key === "is_pinned") ? "" : "记录已更新");
+      await refresh();
+    }
+    catch (reason) { setNotice(reason instanceof ApiError ? reason.message : "更新失败", true); if (reason instanceof ApiError && reason.status === 409) await refresh(); }
   }
 
   return <div className={`page${hasFavorites ? " library-page" : ""}`}>
@@ -385,7 +396,7 @@ function CrudContent({ config }: { config: CrudConfig }) {
         </div>
         <button className="classification-clear" title="清除数据库和分类筛选" onClick={() => changeClassification("", "")}><RotateCcw size={14} aria-hidden="true" />清除分类</button>
       </div>}
-      {notice && <div className="alert" role="status"><span><CheckCircle2 size={17} />{notice}</span><button className="icon-button" aria-label="关闭通知" onClick={() => setNotice("")}><X size={17} /></button></div>}
+      {notice && <div className={`alert${notification.error ? " error" : ""}`} role={notification.error ? "alert" : "status"}><span>{notification.error ? <AlertTriangle size={17} /> : <CheckCircle2 size={17} />}{notice}</span><button className="icon-button" aria-label="关闭通知" onClick={() => setNotice("")}><X size={17} /></button></div>}
       {list.isLoading ? <TableSkeleton /> : list.error ? <ErrorState message="数据加载失败" retry={() => void list.refetch()} /> : !list.data?.items.length ? <EmptyState title={isTask && taskArchive ? "没有已归档任务" : `没有${config.title}数据`} description={isTask && taskArchive ? "已完成任务保留 15 天后自动归档，可在此查看或恢复。" : database || category || keyword ? "当前分类或搜索条件下没有记录，可切换分类、清空搜索或新增记录。" : "可通过右上角按钮创建第一条记录。"} /> : <>
         {hasFavorites ? <LibraryRecords config={config} rows={list.data.items} selectedId={previewEnabled ? previewId : null} disabled={list.isPlaceholderData} searchQuery={debouncedKeyword} onPreview={togglePreview} onEdit={editRecord} onUpdate={quickUpdate} onRemove={remove} onNotice={setNotice} /> : isCustomer ? <CustomerDirectory key={debouncedKeyword} searchQuery={debouncedKeyword} focus={projectTarget && jumpMode === "list" ? { customerId: projectCustomer, name: projectTarget, key: location.key } : null} rows={list.data.items} disabled={list.isPlaceholderData} onEdit={editRecord} onEditProject={setProjectEdit} onRemove={remove} /> : <div className="table-wrap"><table className={isTask ? "task-table" : undefined}><thead><tr>{config.columns.map((column) => <th key={column.name}>{column.label}</th>)}<th className="actions-heading"><span className="sr-only">操作</span></th></tr></thead><tbody>{list.data.items.map((row) => <tr className={isTask ? taskRowClass(row) : undefined} key={row.id}>{config.columns.map((column, index) => <td key={column.name} data-label={column.label}><span className={index === 0 ? "primary-cell" : undefined}>{index === 0 && config.fileLinks ? <LocalFileLinks row={row} label={String(row[column.name] ?? "")} config={config.fileLinks} disabled={list.isPlaceholderData} onNotice={setNotice} /> : isTask ? formatTaskCell(row, column.name) : formatCell(row[column.name], column.name)}</span></td>)}<td className="row-actions" data-label="操作">{hasFavorites && <button className="icon-button" aria-label={row.is_favorite ? "取消收藏" : "收藏"} disabled={list.isPlaceholderData} onClick={() => void quickUpdate(row, { is_favorite: row.is_favorite ? 0 : 1 })}><Star size={15} fill={row.is_favorite ? "currentColor" : "none"} /></button>}{config.key === "articles" && <button className="icon-button" aria-label={row.is_pinned ? "取消置顶" : "置顶"} disabled={list.isPlaceholderData} onClick={() => void quickUpdate(row, { is_pinned: row.is_pinned ? 0 : 1 })}><Pin size={15} fill={row.is_pinned ? "currentColor" : "none"} /></button>}{isTask && <button className="button small" disabled={list.isPlaceholderData} onClick={() => void quickUpdate(row, { status: row.status === "已完成" ? "待处理" : "已完成" })}>{row.status === "已完成" ? <><Undo2 size={14} />恢复</> : <><CheckCircle2 size={14} />完成</>}</button>}<button className="button small" disabled={list.isPlaceholderData} onClick={() => { setCreating(false); setSelectedId(row.id); }}><Pencil size={14} />查看/编辑</button><button className="button small danger" disabled={list.isPlaceholderData} onClick={() => void remove(row)}><Trash2 size={14} />删除</button></td></tr>)}</tbody></table></div>}
       </>}

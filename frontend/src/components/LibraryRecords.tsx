@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Copy, FileText, FolderOpen, Maximize2, Minimize2, MoreHorizontal, Pencil, Pin, Star, Trash2, X } from "lucide-react";
+import { Copy, FileText, FolderOpen, Maximize2, Minimize2, MoreHorizontal, Pencil, Pin, Trash2, X } from "lucide-react";
 import screenfull from "screenfull";
 import { api, Entity } from "../api/client";
 import type { CrudConfig } from "./CrudPage";
@@ -15,6 +15,7 @@ import { usePreference } from "../preferences";
 import { ScriptCodePreview } from "./ScriptCodePreview";
 import { useDesktopWindow } from "./DesktopWindowControls";
 import { AppDialog } from "./AppDialog";
+import { FavoriteButton } from "./FavoriteButton";
 
 const MarkdownFilePreview = lazy(() => import("./MarkdownFilePreview").then((module) => ({ default: module.MarkdownFilePreview })));
 
@@ -84,7 +85,7 @@ export function LibraryRecords({ config, rows, selectedId, disabled, searchQuery
                 : description && <p className="library-record-description" title={description}>{description}</p>}
             </div>
             <div className="library-record-actions">
-              <button type="button" className={`icon-button${row.is_favorite ? " is-favorite" : ""}`} aria-label={row.is_favorite ? "取消收藏" : "收藏"} title={row.is_favorite ? "取消收藏" : "收藏"} disabled={disabled} onClick={() => void onUpdate(row, { is_favorite: row.is_favorite ? 0 : 1 })}><Star size={16} fill={row.is_favorite ? "currentColor" : "none"} /></button>
+              <FavoriteButton active={Boolean(row.is_favorite)} disabled={disabled} onToggle={() => onUpdate(row, { is_favorite: row.is_favorite ? 0 : 1 })} />
               {config.key === "articles" && <button type="button" className={`icon-button${row.is_pinned ? " is-pinned" : ""}`} aria-label={row.is_pinned ? "取消置顶" : "置顶"} title={row.is_pinned ? "取消置顶" : "置顶"} disabled={disabled} onClick={() => void onUpdate(row, { is_pinned: row.is_pinned ? 0 : 1 })}><Pin size={15} fill={row.is_pinned ? "currentColor" : "none"} /></button>}
               <button type="button" className="icon-button" aria-label="查看/编辑" title={`编辑：${title}`} disabled={disabled} onClick={() => onEdit(row.id)}><Pencil size={15} /></button>
               <details className="library-more"><summary aria-label={`更多操作：${title}`} title="更多操作"><MoreHorizontal size={17} /></summary><div>

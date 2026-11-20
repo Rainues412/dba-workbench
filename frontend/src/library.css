@@ -123,7 +123,29 @@
 .library-updated { display: block; margin-left: auto; color: var(--muted-soft); font-size: .65rem; white-space: nowrap; }
 .library-record-actions { display: flex; flex: 0 0 auto; align-items: center; justify-content: flex-end; gap: .1rem; }
 .library-record-actions .icon-button, .library-more summary { width: 28px; height: 28px; min-width: 28px; padding: .3rem; }
-.library-record-actions .is-favorite { color: var(--warning); }
+.library-record-actions .favorite-button { position: relative; color: var(--muted); transition: color 150ms ease; }
+.library-record-actions .is-favorite { color: #e9a11b; }
+.library-record-actions .favorite-button.is-bursting { transition: none; }
+.favorite-star { overflow: visible; transform-origin: center; }
+.favorite-button.is-bursting .favorite-star { animation: favorite-bounce 600ms cubic-bezier(.34, 1.56, .64, 1); }
+.favorite-particles { position: absolute; inset: 0; pointer-events: none; }
+.favorite-particles > span { position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: #f5bc35; animation: favorite-scatter 600ms ease-out both; }
+@keyframes favorite-bounce {
+  0% { transform: scale(1); color: var(--muted); animation-timing-function: ease-in-out; }
+  17% { transform: scale(.8); animation-timing-function: cubic-bezier(.34, 1.56, .64, 1); }
+  42% { transform: scale(1.2); color: #e9a11b; animation-timing-function: cubic-bezier(.22, 1, .36, 1); }
+  100% { transform: scale(1); color: #e9a11b; }
+}
+@keyframes favorite-scatter {
+  0%, 40% { opacity: 0; transform: translate(var(--burst-start-x), var(--burst-start-y)) scale(.75); }
+  42% { opacity: 1; }
+  67% { opacity: 1; transform: translate(calc(var(--burst-x) * .8), calc(var(--burst-y) * .8)) scale(.85); }
+  100% { opacity: 0; transform: translate(var(--burst-x), var(--burst-y)) scale(.3); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .favorite-button.is-bursting .favorite-star { animation: none; }
+  .favorite-particles { display: none; }
+}
 .library-record-actions .is-pinned { color: var(--primary); }
 .library-more { position: relative; }
 .library-more summary { display: grid; place-items: center; list-style: none; color: var(--muted); border-radius: 6px; cursor: pointer; }
