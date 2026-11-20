@@ -299,7 +299,8 @@ export function LibraryPreview({ config, id, open = true, editorOpen, onClose, o
       </aside>}
     </div>
   </div>;
-  if (drawer && (id === null || !open || editorOpen)) return null;
-  return drawer ? <AppDialog className={`library-preview library-preview-drawer${expanded && desktop ? " desktop-expanded-drawer" : ""}`} labelledBy={headingId} onClose={dismissPreview} dimBackground={false}>{content}</AppDialog>
+  // LibraryLayout retains the viewer until its exit transition finishes.
+  if (drawer && (id === null || editorOpen)) return null;
+  return drawer ? <AppDialog className={`library-preview library-preview-drawer${!open ? " is-closing" : ""}${expanded && desktop ? " desktop-expanded-drawer" : ""}`} labelledBy={headingId} onClose={dismissPreview} dimBackground={false} inert={!open}>{content}</AppDialog>
     : <aside className="panel library-preview" aria-label="记录预览" onKeyDown={(event) => { if (event.key === "Escape" && !expanded) void closePreview(); }}>{content}</aside>;
 }

@@ -3,17 +3,18 @@ import { createPortal } from "react-dom";
 import { preferenceEvent } from "../preferences";
 
 // Keep desktop window controls available while the dialog blocks the workspace.
-export function AppDialog({ children, className, labelledBy, onClose, initialFocus, dimBackground = true }: {
+export function AppDialog({ children, className, labelledBy, onClose, initialFocus, dimBackground = true, inert = false }: {
   children: ReactNode;
   className: string;
   labelledBy: string;
   onClose: () => void;
   initialFocus?: RefObject<HTMLElement | null>;
   dimBackground?: boolean;
+  inert?: boolean;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const close = useRef(onClose);
-  close.current = onClose;
+  close.current = inert ? () => undefined : onClose;
   const [bounds, setBounds] = useState({ top: 0, left: 0, right: 0, bottom: 0 });
 
   useLayoutEffect(() => {
@@ -71,7 +72,7 @@ export function AppDialog({ children, className, labelledBy, onClose, initialFoc
     "--window-controls-right": `${bounds.right}px`,
     "--window-controls-bottom": `${bounds.bottom}px`,
   } as CSSProperties;
-  return createPortal(<div className="app-dialog-layer" data-desktop={bounds.top > 0 ? "" : undefined} style={style}>
+  return createPortal(<div className="app-dialog-layer" data-desktop={bounds.top > 0 ? "" : undefined} style={style} inert={inert} aria-hidden={inert || undefined}>
     {dimBackground && <div className="app-dialog-shade" aria-hidden="true" />}
     <div className="app-dialog-dismiss" aria-hidden="true" onPointerDown={(event) => { if (event.button === 0) close.current(); }} />
     <dialog open data-app-dialog ref={dialog} className={className} aria-labelledby={labelledBy} tabIndex={-1}>

@@ -247,6 +247,7 @@
 .library-history textarea { font-family: Consolas, monospace; }
 .library-preview-drawer { position: fixed; inset: 0 0 0 auto; width: min(600px, 100vw); max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; padding: 0; border: 0; color: var(--text); background: var(--surface); box-shadow: var(--shadow-lg); opacity: 0; transform: translateX(16px); transition: opacity 180ms ease, transform 220ms cubic-bezier(.22, 1, .36, 1), display 220ms allow-discrete, overlay 220ms allow-discrete; }
 .library-preview-drawer[open] { opacity: 1; transform: translateX(0); }
+.library-preview-drawer.is-closing { opacity: 0; transform: translateX(16px); pointer-events: none; }
 .app-dialog-layer > .library-preview-drawer { inset:var(--app-dialog-top) 0 0 auto; height:calc(100dvh - var(--app-dialog-top)); max-height:calc(100dvh - var(--app-dialog-top)); margin:0; }
 .app-dialog-layer > .desktop-expanded-drawer { width:100vw; }
 .library-preview-pane:has(.desktop-expanded) { transform:none; transition:none; }

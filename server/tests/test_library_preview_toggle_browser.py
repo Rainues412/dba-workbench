@@ -11,10 +11,25 @@ from test_library_resizable_browser import _drag
 def _sample_widths(page):
     page.evaluate("""() => {
       window.__previewWidths = [];
+      window.__previewOpacities = [];
       const panel = document.querySelector('.library-panels > [data-panel]:has(> .library-preview-pane)');
       const started = performance.now();
       function sample(now) {
         window.__previewWidths.push(panel.getBoundingClientRect().width);
+        window.__previewOpacities.push(Number(getComputedStyle(panel.querySelector('.library-preview-pane')).opacity));
+        if (now - started < 320) requestAnimationFrame(sample);
+      }
+      requestAnimationFrame(sample);
+    }""")
+
+
+def _sample_drawer(page):
+    page.evaluate("""() => {
+      window.__drawerOpacities = [];
+      const drawer = document.querySelector('.library-preview-drawer');
+      const started = performance.now();
+      function sample(now) {
+        if (drawer.isConnected) window.__drawerOpacities.push(Number(getComputedStyle(drawer).opacity));
         if (now - started < 320) requestAnimationFrame(sample);
       }
       requestAnimationFrame(sample);
@@ -64,6 +79,7 @@ def test_title_toggles_animate_reset_width_and_keep_list_state(live_server, tmp_
             page.wait_for_timeout(100)
             closing = page.evaluate("window.__previewWidths")
             assert any(3 < value < width - 3 for value in closing), closing
+            assert any(0 < opacity < 1 for opacity in page.evaluate('window.__previewOpacities'))
             assert pane.bounding_box()["width"] < 1
             assert page.locator(".library-resize-handle").bounding_box()["width"] < 1
             assert page.evaluate("window.__originalList === document.querySelector('.library-record-list')")
@@ -76,6 +92,7 @@ def test_title_toggles_animate_reset_width_and_keep_list_state(live_server, tmp_
             page.wait_for_timeout(350)
             opening = page.evaluate("window.__previewWidths")
             assert any(3 < value < width - 3 for value in opening), opening
+            assert any(0 < opacity < 1 for opacity in page.evaluate('window.__previewOpacities'))
             assert abs(pane.bounding_box()["width"] - default_width) < 2
             assert abs(page.locator(".library-categories").bounding_box()["width"] - categories) < 1
             second.click()
@@ -100,8 +117,14 @@ def test_title_toggles_animate_reset_width_and_keep_list_state(live_server, tmp_
             dialog = page.get_by_role("dialog")
             expect(dialog).to_be_visible()
             expect(dialog.locator(".library-markdown").get_by_role("heading", name="第1条正文")).to_be_visible()
+            page.wait_for_timeout(250)
+            _sample_drawer(page)
             dialog.get_by_role("button", name="关闭预览", exact=True).click()
+            assert page.locator('.library-preview-drawer').count() == 1
+            expect(page.locator('.app-dialog-layer')).to_have_attribute('aria-hidden', 'true')
             expect(page.locator(".library-preview")).to_have_count(0)
+            drawer_closing = page.evaluate('window.__drawerOpacities')
+            assert any(0 < opacity < 1 for opacity in drawer_closing), drawer_closing
             expect(first).to_be_focused()
             first.click()
             expect(page.get_by_role("dialog")).to_be_visible()
