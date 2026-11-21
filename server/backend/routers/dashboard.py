@@ -82,23 +82,3 @@ def get_database_distribution():
             ORDER BY database_types.sort_order
         """).fetchall()
         return [dict(row) for row in rows]
-
-
-@router.get("/favorite-scripts")
-def get_favorite_scripts():
-    """Get favorited scripts."""
-    with get_db_ctx() as conn:
-        rows = conn.execute(
-            "SELECT id, title, db_type, tags FROM scripts WHERE is_favorite = 1 ORDER BY updated_at DESC LIMIT 10"
-        ).fetchall()
-        return [dict(r) for r in rows]
-
-
-@router.get("/recent-articles")
-def get_recent_articles():
-    """Get recently updated articles."""
-    with get_db_ctx() as conn:
-        rows = conn.execute(
-            "SELECT id, title, category, updated_at FROM articles ORDER BY updated_at DESC LIMIT 5"
-        ).fetchall()
-        return [dict(r) for r in rows]

@@ -143,22 +143,6 @@ def open_path(req: OpenRequest):
     return {"ok": True, "action": "open", "path": str(target)}
 
 
-@router.post("/check")
-def check_path(req: OpenRequest):
-    """Check whether a path exists (used to mark broken links in UI)."""
-    require_local_action("check")
-    p = _normalize(req.path)
-    if p.lower().startswith(("http://", "https://")):
-        audit_local_action("check", "success")
-        return {"exists": True, "type": "url"}
-    target = _target(p)
-    audit_local_action("check", "success", target)
-    return {
-        "type": "dir" if target.is_dir() else ("file" if target.is_file() else "missing"),
-        "exists": True,
-    }
-
-
 @router.post("/pick-folder")
 def pick_folder(req: PickFolderRequest):
     """Open a native folder picker dialog and return the selected path."""

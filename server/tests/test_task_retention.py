@@ -63,8 +63,11 @@ def test_completed_edits_do_not_restart_retention_and_restore_respects_revision(
     restored = client.put(f"/api/tasks/{row['id']}", json={"status": "待处理"}, headers={"If-Match": str(updated["revision"])}).json()
     assert restored["completed_at"] is None and restored["is_archived"] == 0
     assert client.get("/api/tasks/", params={"archived": True}).json()["total"] == 0
-    completed = client.post(f"/api/tasks/{row['id']}/toggle-status", headers={"If-Match": str(restored["revision"])}).json()
-    completed = client.post(f"/api/tasks/{row['id']}/toggle-status", headers={"If-Match": str(completed["revision"])}).json()
+    client.put(
+        f"/api/tasks/{row['id']}",
+        json={"status": "已完成"},
+        headers={"If-Match": str(restored["revision"])},
+    ).raise_for_status()
     current = client.get(f"/api/tasks/{row['id']}").json()
     assert current["status"] == "已完成" and current["completed_at"] != original["completed_at"]
     assert current["is_archived"] == 0

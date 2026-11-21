@@ -32,7 +32,7 @@ def test_packaged_runtime_restores_persisted_directory_permissions(monkeypatch, 
     allowed = tmp_path / "documents"
     allowed.mkdir()
     (tmp_path / "local-capabilities.json").write_text(
-        json.dumps({"allowed_roots": [str(allowed)]}),
+        json.dumps({"allowed_roots": [str(allowed)], "allowed_actions": ["check", "open"]}),
         encoding="utf-8",
     )
     monkeypatch.setenv("DBA_DATA_DIR", str(data_dir))
@@ -43,6 +43,7 @@ def test_packaged_runtime_restores_persisted_directory_permissions(monkeypatch, 
 
     assert os.environ["DBA_LOCAL_CAPABILITIES"] == "true"
     assert os.environ["DBA_ALLOWED_ROOTS"] == str(allowed.resolve())
+    assert "check" not in os.environ["DBA_ALLOWED_LOCAL_ACTIONS"].split(",")
 
 
 def test_tray_exit_stops_server_and_icon() -> None:

@@ -93,7 +93,7 @@ def test_empty_local_opening_configuration_is_rejected(launcher):
 def test_explicit_scan_permission_stays_scoped_to_roots(launcher, tmp_path, monkeypatch):
     import json
 
-    launcher.LOCAL_CONFIG.write_text(json.dumps({"allowed_roots": [str(tmp_path)], "allowed_actions": ["edit", "folder", "open", "scan", "pick-folder"]}), encoding="utf-8")
+    launcher.LOCAL_CONFIG.write_text(json.dumps({"allowed_roots": [str(tmp_path)], "allowed_actions": ["check", "edit", "folder", "open", "scan", "pick-folder"]}), encoding="utf-8")
     monkeypatch.setattr(launcher, "LOG_DIR", tmp_path)
     monkeypatch.setattr(launcher, "LOG_PATH", tmp_path / "server.log")
     monkeypatch.setattr(launcher.time, "sleep", lambda _: None)

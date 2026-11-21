@@ -16,7 +16,7 @@ def _enable_local_capabilities(
     monkeypatch: pytest.MonkeyPatch,
     root: Path,
     *,
-    actions: str = "check,edit,folder,open,pick-folder,scan",
+    actions: str = "edit,folder,open,pick-folder,scan",
     extensions: str = "",
 ) -> Settings:
     from backend import local_capabilities
@@ -38,7 +38,6 @@ def _enable_local_capabilities(
     ("method", "path", "payload"),
     [
         ("post", "/api/launcher/path", {"path": r"D:\blocked.txt"}),
-        ("post", "/api/launcher/check", {"path": r"D:\blocked.txt"}),
         ("post", "/api/launcher/pick-folder", {}),
         ("post", "/api/scan/run", {"paths": [r"D:\blocked.txt"]}),
         ("post", "/api/scan/commit", {"items": []}),
@@ -77,6 +76,7 @@ def test_packaged_picker_enrolls_only_the_selected_directory(
     assert client.post("/api/scan/run", json={"paths": [str(outside)]}).status_code == 403
     saved = json.loads(config_file.read_text(encoding="utf-8"))
     assert saved["allowed_roots"] == [str(selected.resolve())]
+    assert "check" not in saved["allowed_actions"]
     assert "run" not in saved["allowed_actions"]
 
 
@@ -91,18 +91,21 @@ def test_allowed_root_rejects_outside_traversal_and_unc(
     outside.write_text("blocked", encoding="utf-8")
     _enable_local_capabilities(monkeypatch, allowed)
 
-    assert client.post("/api/launcher/check", json={"path": str(inside)}).status_code == 200
-    assert client.post("/api/launcher/check", json={"path": str(outside)}).status_code == 403
+    opened = []
+    monkeypatch.setattr(os, "startfile", opened.append)
+    assert client.post("/api/launcher/path", json={"path": str(inside)}).status_code == 200
+    assert client.post("/api/launcher/path", json={"path": str(outside)}).status_code == 403
     assert (
         client.post(
-            "/api/launcher/check",
+            "/api/launcher/path",
             json={"path": str(allowed / ".." / "outside.txt")},
         ).status_code
         == 403
     )
     assert client.post(
-        "/api/launcher/check", json={"path": r"\\server\share\secret.txt"}
+        "/api/launcher/path", json={"path": r"\\server\share\secret.txt"}
     ).status_code == 403
+    assert opened == [str(inside.resolve())]
 
 
 def test_open_edit_and_folder_use_native_apps_without_shell_interpolation(client, tmp_path, monkeypatch):
@@ -145,12 +148,15 @@ def test_symlink_cannot_escape_allowed_root(
     if created.returncode != 0:
         pytest.fail("failed to create a temporary directory junction")
     _enable_local_capabilities(monkeypatch, allowed)
+    opened = []
+    monkeypatch.setattr(os, "startfile", opened.append)
 
     try:
         response = client.post(
-            "/api/launcher/check", json={"path": str(link / "secret.txt")}
+            "/api/launcher/path", json={"path": str(link / "secret.txt")}
         )
         assert response.status_code == 403
+        assert not opened
     finally:
         os.rmdir(link)
 
@@ -169,7 +175,7 @@ def test_run_requires_action_and_extension_allowlists(
     _enable_local_capabilities(
         monkeypatch,
         allowed,
-        actions="check,run",
+        actions="run",
         extensions=".py,.ps1",
     )
     launched = []
@@ -258,16 +264,17 @@ def test_local_actions_emit_non_secret_audit_events(
     _enable_local_capabilities(monkeypatch, allowed)
     from backend.local_capabilities import audit_logger
 
+    monkeypatch.setattr(os, "startfile", lambda _: None)
     audit_logger.addHandler(caplog.handler)
     try:
         with caplog.at_level(logging.INFO, logger="dba.audit"):
-            response = client.post("/api/launcher/check", json={"path": str(target)})
+            response = client.post("/api/launcher/path", json={"path": str(target)})
     finally:
         audit_logger.removeHandler(caplog.handler)
 
     assert response.status_code == 200
     audit_text = " ".join(record.getMessage() for record in caplog.records)
-    assert "action=check" in audit_text
+    assert "action=open" in audit_text
     assert "result=success" in audit_text
     assert "secret-name" not in audit_text
     assert "secret-content" not in audit_text
@@ -276,6 +283,10 @@ def test_local_actions_emit_non_secret_audit_events(
 def test_local_capability_configuration_is_explicit(tmp_path: Path) -> None:
     root = tmp_path / "root"
     root.mkdir()
+
+    legacy = Settings.from_env({"DBA_ALLOWED_LOCAL_ACTIONS": "Check,open"})
+    assert legacy.allowed_local_actions == ("open",)
+    assert Settings.from_env({"DBA_ALLOWED_LOCAL_ACTIONS": "check"}).allowed_local_actions == ()
 
     with pytest.raises(ValueError, match="DBA_ALLOWED_ROOTS"):
         Settings.from_env({"DBA_LOCAL_CAPABILITIES": "true"})

@@ -54,7 +54,7 @@ def _configure_local_capabilities(data_dir: Path) -> None:
         if roots:
             os.environ["DBA_LOCAL_CAPABILITIES"] = "true"
             os.environ["DBA_ALLOWED_ROOTS"] = os.pathsep.join(roots)
-            os.environ["DBA_ALLOWED_LOCAL_ACTIONS"] = "check,edit,folder,open,pick-folder,scan"
+            os.environ["DBA_ALLOWED_LOCAL_ACTIONS"] = "edit,folder,open,pick-folder,scan"
     except (OSError, ValueError, TypeError, json.JSONDecodeError):
         pass
 

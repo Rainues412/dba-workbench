@@ -7,9 +7,6 @@ from backend.concurrency import expected_revision, raise_write_conflict
 
 router = APIRouter()
 
-KINDS = ["安装包", "软件工具", "驱动/固件", "文档资料", "脚本工具", "网址", "其他"]
-
-
 class ResourceCreate(BaseModel):
     name: str
     kind: str = "安装包"
@@ -109,11 +106,6 @@ def create_resource(data: ResourceCreate):
         return dict(row)
 
 
-@router.get("/kinds")
-def get_kinds():
-    return KINDS
-
-
 @router.get("/{rid}")
 def get_resource(rid: int):
     with get_db_ctx() as conn:
@@ -159,22 +151,3 @@ def delete_resource(rid: int, if_match: str | None = Header(None)):
             raise_write_conflict(conn, "resources", rid)
         conn.commit()
         return {"ok": True}
-
-
-@router.post("/{rid}/toggle-favorite")
-def toggle_favorite(rid: int, if_match: str | None = Header(None)):
-    with get_db_ctx() as conn:
-        expected = expected_revision(if_match)
-        row = conn.execute("SELECT is_favorite FROM resources WHERE id = ?", (rid,)).fetchone()
-        if not row:
-            raise HTTPException(404, "Resource not found")
-        new_val = 0 if row["is_favorite"] else 1
-        changed = conn.execute(
-            """UPDATE resources SET is_favorite = ?, updated_at = CURRENT_TIMESTAMP,
-                      revision = revision + 1 WHERE id = ? AND revision = ?""",
-            (new_val, rid, expected),
-        )
-        if changed.rowcount != 1:
-            raise_write_conflict(conn, "resources", rid)
-        conn.commit()
-        return {"is_favorite": new_val, "revision": expected + 1}

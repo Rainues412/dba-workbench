@@ -53,7 +53,7 @@ def enroll_allowed_root(raw_path: str) -> Path:
             target.parent.mkdir(parents=True, exist_ok=True)
             payload = {
                 "allowed_roots": list(allowed_roots()),
-                "allowed_actions": ["check", "edit", "folder", "open", "pick-folder", "scan"],
+                "allowed_actions": ["edit", "folder", "open", "pick-folder", "scan"],
             }
             temporary = target.with_suffix(target.suffix + ".tmp")
             temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")

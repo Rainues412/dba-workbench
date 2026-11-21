@@ -166,28 +166,3 @@ def delete_task(task_id: int, if_match: str | None = Header(None)):
             raise_write_conflict(conn, "tasks", task_id)
         conn.commit()
         return {"ok": True}
-
-
-@router.post("/{task_id}/toggle-status")
-def toggle_status(task_id: int, if_match: str | None = Header(None)):
-    """Cycle task status: 待处理 → 进行中 → 已完成 → 待处理."""
-    with get_db_ctx() as conn:
-        expected = expected_revision(if_match)
-        row = conn.execute("SELECT status FROM tasks WHERE id = ?", (task_id,)).fetchone()
-        if not row:
-            raise HTTPException(404, "Task not found")
-
-        cycle = {"待处理": "进行中", "进行中": "已完成", "已完成": "待处理"}
-        new_status = cycle.get(row["status"], "待处理")
-        # 用静态 SQL + CASE 避免 f-string 拼接
-        changed = conn.execute(
-            """UPDATE tasks SET status = ?,
-                      completed_at = CASE WHEN ? = '已完成' THEN datetime('now') ELSE NULL END,
-                      updated_at = CURRENT_TIMESTAMP, revision = revision + 1
-               WHERE id = ? AND revision = ?""",
-            (new_status, new_status, task_id, expected),
-        )
-        if changed.rowcount != 1:
-            raise_write_conflict(conn, "tasks", task_id)
-        conn.commit()
-        return {"status": new_status, "revision": expected + 1}

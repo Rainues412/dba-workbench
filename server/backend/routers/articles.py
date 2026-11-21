@@ -173,23 +173,3 @@ def delete_article(article_id: int, if_match: str | None = Header(None)):
             raise_write_conflict(conn, "articles", article_id)
         conn.commit()
         return {"ok": True}
-
-
-@router.post("/{article_id}/toggle-favorite")
-def toggle_favorite(article_id: int, if_match: str | None = Header(None)):
-    """Toggle favorite status."""
-    with get_db_ctx() as conn:
-        expected = expected_revision(if_match)
-        row = conn.execute("SELECT is_favorite FROM articles WHERE id = ?", (article_id,)).fetchone()
-        if not row:
-            raise HTTPException(404, "Article not found")
-        new_val = 0 if row["is_favorite"] else 1
-        changed = conn.execute(
-            """UPDATE articles SET is_favorite = ?, updated_at = CURRENT_TIMESTAMP,
-                      revision = revision + 1 WHERE id = ? AND revision = ?""",
-            (new_val, article_id, expected),
-        )
-        if changed.rowcount != 1:
-            raise_write_conflict(conn, "articles", article_id)
-        conn.commit()
-        return {"is_favorite": new_val, "revision": expected + 1}

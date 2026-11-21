@@ -9,7 +9,7 @@ from typing import Mapping, Optional, Tuple
 
 VALID_MODES = {"local", "development", "lan"}
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
-LOCAL_ACTIONS = {"check", "edit", "folder", "open", "pick-folder", "run", "scan"}
+LOCAL_ACTIONS = {"edit", "folder", "open", "pick-folder", "run", "scan"}
 RUN_EXTENSIONS = {".bat", ".cmd", ".ps1", ".py", ".sh"}
 
 
@@ -111,15 +111,17 @@ class Settings:
             if not path.is_dir():
                 raise ValueError(f"DBA_ALLOWED_ROOTS contains an invalid directory: {root}")
 
-        allowed_local_actions = tuple(
+        configured_actions = tuple(
             action.lower()
             for action in _csv(
                 env.get(
                     "DBA_ALLOWED_LOCAL_ACTIONS",
-                    "check,edit,folder,open,pick-folder,scan",
+                    "edit,folder,open,pick-folder,scan",
                 )
             )
         )
+        # Older configurations may still list the removed path-check action.
+        allowed_local_actions = tuple(action for action in configured_actions if action != "check")
         unknown_actions = set(allowed_local_actions) - LOCAL_ACTIONS
         if unknown_actions:
             raise ValueError(

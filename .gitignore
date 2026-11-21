@@ -9,6 +9,8 @@ test-results/
 # Local runtime: virtual environment, logs, and temporary files
 .runtime/
 .venv/
+/local-capabilities.json
+/local-capabilities.json.tmp
 
 # Frontend dependencies; source, lockfile, and production build are tracked
 frontend/node_modules/
