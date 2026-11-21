@@ -106,9 +106,12 @@ def test_classification_list_preview_and_shortcuts(live_server, tmp_path, monkey
                 notice = page.get_by_role("status").filter(has_text="已打开所在文件夹") if module == "resources" else preview.locator(".library-inline-notice")
                 expect(notice).to_contain_text("已打开所在文件夹")
                 assert commands[-1] == ["explorer", "/select,", str(target.resolve())]
-                preview.get_by_role("button", name=f"复制路径：{title}", exact=True).click()
-                notice = page.get_by_role("status").filter(has_text="路径已复制") if module == "resources" else preview.locator(".library-inline-notice")
-                expect(notice).to_contain_text("路径已复制")
+                copy_path = preview.get_by_role("button", name=f"复制路径：{title}", exact=True)
+                copy_path.click()
+                if module == "resources":
+                    expect(page.get_by_role("status").filter(has_text="路径已复制")).to_be_visible()
+                else:
+                    expect(copy_path.locator("[data-copied]")).to_be_visible()
                 assert page.evaluate("window.__copied") == str(target)
                 if module == "scripts":
                     preview.get_by_role("button", name="复制正文", exact=True).click()

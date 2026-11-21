@@ -81,7 +81,7 @@ def test_resizable_preview_preserves_categories_filters_and_file_actions(live_se
             reads = []
             page.on("request", lambda request: reads.append(request.url) if "/api/" in request.url else None)
             before, url = _sizes(page), page.url
-            assert page.get_by_role("separator").bounding_box()["width"] <= 4.1
+            assert page.get_by_role("separator", name="调整文件列表和预览宽度").bounding_box()["width"] <= 4.1
             # The library still accepts grabs just outside the thinner visible separator.
             _drag(page, -180, offset=4)
             after = _sizes(page)
@@ -154,7 +154,7 @@ def test_resizable_preview_preserves_categories_filters_and_file_actions(live_se
             for theme, width in [("light", 1024), ("dark", 390)]:
                 page.set_viewport_size({"width": width, "height": 900})
                 page.evaluate("value => document.documentElement.dataset.theme = value", theme)
-                expect(page.get_by_role("separator")).to_have_count(0)
+                expect(page.get_by_role("separator", name="调整文件列表和预览宽度")).to_have_count(0)
                 page.get_by_role("button", name="收起分类浏览", exact=True).click()
                 page.get_by_role("button", name="展开分类浏览", exact=True).click()
                 page.locator(".library-record-title").first.click()

@@ -62,7 +62,7 @@ def test_input_drag_and_filename_polish(live_server, tmp_path):
             page.mouse.down()
             rect = group.bounding_box()
             page.mouse.move(rect["x"] + rect["width"] * .85, y, steps=15)
-            expect(page.get_by_role("status")).to_contain_text("松开收起预览")
+            expect(page.get_by_role("status").filter(has_text="松开收起预览")).to_be_visible()
             page.mouse.up()
             expect(group).to_have_attribute("data-preview-open", "false")
             expect(page.locator(".library-drag-shield")).to_have_count(0)

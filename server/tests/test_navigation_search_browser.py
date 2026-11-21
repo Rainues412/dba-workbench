@@ -121,6 +121,8 @@ def test_search_highlights_and_previews_source_off_page(live_server, tmp_path, m
         browser = _edge(playwright)
         try:
             page = browser.new_page(viewport={"width": 1800, "height": 1000})
+            # Keep the off-page target stable while repeated previews record script usage.
+            page.add_init_script("localStorage.setItem('dba-preference:autoPinScripts', 'false')")
             _login(page, live_server)
             for module in ["articles", "scripts"]:
                 for theme, width in [("light", 1800), ("dark", 1800), ("light", 390), ("dark", 390)]:

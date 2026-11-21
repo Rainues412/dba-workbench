@@ -196,13 +196,13 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
                     if request.method == "POST" and request.url.endswith("/api/vault/items") else None)
             sample_csv = b'name,url,username,password\r\nCSV Example,https://csv.test,csv-user,test-only-csv-secret\r\nCSV Example,https://csv.test,csv-user,test-only-csv-secret\r\n'
             page.get_by_role("button", name="导入 Edge 密码", exact=True).click()
-            page.get_by_label("选择 Edge CSV").set_input_files({"name": "sample.csv", "mimeType": "text/csv", "buffer": sample_csv})
-            assert page.get_by_label("选择 Edge CSV").input_value().endswith("sample.csv")
-            page.get_by_text("待导入 2 条", exact=False).wait_for()
+            page.get_by_label("CSV 文件", exact=True).set_input_files({"name": "sample.csv", "mimeType": "text/csv", "buffer": sample_csv})
+            assert page.get_by_label("CSV 文件", exact=True).input_value().endswith("sample.csv")
+            expect(page.locator(".import-counts")).to_contain_text("待处理 2 条")
             assert len(writes) == 0
             page.get_by_role("button", name="确认加密导入", exact=True).click()
             page.get_by_text("导入完成：新增 1 条，跳过重复 1 条", exact=False).wait_for()
-            assert page.get_by_label("选择 Edge CSV").input_value() == ""
+            assert page.get_by_label("CSV 文件", exact=True).input_value() == ""
             assert len(writes) == 1
             assert "test-only-csv-secret" not in writes[0]
             assert "csv-user" not in writes[0]
@@ -210,8 +210,8 @@ def test_edge_setup_crud_and_vault_starts_locked(live_server: str) -> None:
             page.get_by_role("button", name="关闭 Edge 导入", exact=True).click()
             page.get_by_role("heading", name="CSV Example", exact=True).wait_for()
             page.get_by_role("button", name="导入 Edge 密码", exact=True).click()
-            page.get_by_label("选择 Edge CSV").set_input_files({"name": "sample.csv", "mimeType": "text/csv", "buffer": sample_csv})
-            page.get_by_text("待导入 2 条", exact=False).wait_for()
+            page.get_by_label("CSV 文件", exact=True).set_input_files({"name": "sample.csv", "mimeType": "text/csv", "buffer": sample_csv})
+            expect(page.locator(".import-counts")).to_contain_text("待处理 2 条")
             page.get_by_role("button", name="确认加密导入", exact=True).click()
             page.get_by_text("导入完成：新增 0 条，跳过重复 2 条", exact=False).wait_for()
             assert len(writes) == 1
