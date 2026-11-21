@@ -61,13 +61,24 @@ describe("dashboard task queue", () => {
 
     expect(await screen.findByRole("link", { name: "1 项逾期" })).toBeInTheDocument();
     expect(screen.getByText("已逾期")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "完成任务：处理逾期任务" }));
+    const button = screen.getByRole("button", { name: "完成任务：处理逾期任务" });
+    vi.useFakeTimers();
+    button.focus();
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(button).toHaveAttribute("data-phase", "pending");
+    await act(async () => { await vi.advanceTimersByTimeAsync(240); });
+    expect(button).toHaveAttribute("data-phase", "success");
+    await act(async () => { await client.invalidateQueries({ queryKey: ["dashboard", "tasks"] }); await vi.advanceTimersByTimeAsync(10); });
+    expect(button).toBeInTheDocument();
 
-    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes).toHaveLength(1);
     expect(writes[0].path).toBe("/api/tasks/7");
     expect(new Headers(writes[0].init?.headers).get("If-Match")).toBe("3");
     expect(JSON.parse(String(writes[0].init?.body))).toEqual({ status: "已完成" });
-    expect(await screen.findByText("任务队列已清空")).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(550); });
+    expect(screen.getByText("任务队列已清空")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看全部" })).toHaveFocus();
   });
 
   it("shows each real task status independently of overdue warnings", async () => {

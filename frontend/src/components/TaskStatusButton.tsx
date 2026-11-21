@@ -19,16 +19,18 @@ export async function playTaskStatusFeedback(request: Promise<unknown>, reducedM
   if (!reducedMotion) await wait(500);
 }
 
-export function TaskStatusButton({ completed = false, phase, disabled, onClick }: {
+export function TaskStatusButton({ completed = false, phase, disabled, accessibleLabel, title, onClick }: {
   completed?: boolean;
   phase?: TaskStatusPhase;
   disabled?: boolean;
+  accessibleLabel?: string;
+  title?: string;
   onClick: (trigger: HTMLButtonElement) => void;
 }) {
   const label = completed ? "恢复" : "完成";
   const feedback = phase === "pending" ? "处理中…" : phase === "success" ? completed ? "任务已恢复" : "任务已完成" : "";
   return <span className="task-morph-slot">
-    <button className="button small task-morph" type="button" data-phase={phase} aria-label={label} aria-disabled={phase ? true : undefined} disabled={disabled}
+    <button className="button small task-morph" type="button" data-phase={phase} aria-label={accessibleLabel ?? label} title={title} aria-disabled={phase ? true : undefined} disabled={disabled}
       onClick={(event) => { if (!phase) onClick(event.currentTarget); }}>
       <span className="task-morph-label" aria-hidden="true">{completed ? <Undo2 size={14} /> : <CheckCircle2 size={14} />}{label}</span>
       {phase === "pending" && <span className="task-morph-spinner" aria-hidden="true" />}

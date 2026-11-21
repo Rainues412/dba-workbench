@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight, BookOpenText, Building2, CalendarDays, CheckCircle2, Clock3, Database, KeyRound,
@@ -12,21 +12,27 @@ import { useAuth } from "../auth/AuthContext";
 import { useProfile } from "../auth/profile";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { DatabaseLabel, databaseMeta } from "../components/DatabaseLabel";
+import { TaskStatusButton, playTaskStatusFeedback, useTaskStatusReducedMotion, type TaskStatusPhase } from "../components/TaskStatusButton";
 
 type Stats = Record<"script_count" | "article_count" | "task_total" | "task_pending" | "task_overdue" | "customer_count" | "resource_count" | "password_count", number>;
 type Task = { id: number; revision: number; title: string; priority: string; status: string; due_date?: string; is_overdue: number };
 type DatabaseDistribution = { name: DatabaseName; count: number }[];
+type TaskCompletion = { task: Task; position: number; phase: TaskStatusPhase };
 type DatabaseName = "Oracle" | "MySQL" | "PostgreSQL" | "SQL Server" | "Linux" | "Redis" | "MongoDB" | "其他";
 
 const dateFormat = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric" });
 const weekdayFormat = new Intl.DateTimeFormat("zh-CN", { weekday: "long" });
 
+const recentTasksKey = ["dashboard", "tasks"] as const;
 export function Dashboard() {
   const client = useQueryClient();
-  const [processing, setProcessing] = useState<Set<number>>(new Set());
+  const completions = useRef(new Map<number, TaskCompletion>());
+  const [processing, setProcessing] = useState(completions.current);
+  const viewAllTasks = useRef<HTMLAnchorElement>(null);
+  const reducedMotion = useTaskStatusReducedMotion();
   const [quickError, setQuickError] = useState("");
   const stats = useQuery({ queryKey: ["dashboard", "stats"], queryFn: () => api<Stats>("/api/dashboard/stats") });
-  const tasks = useQuery({ queryKey: ["dashboard", "tasks"], queryFn: () => api<Task[]>("/api/dashboard/recent-tasks") });
+  const tasks = useQuery({ queryKey: recentTasksKey, queryFn: ({ signal }) => api<Task[]>("/api/dashboard/recent-tasks", { signal }) });
   const distribution = useQuery({ queryKey: ["dashboard", "database-distribution"], queryFn: () => api<DatabaseDistribution>("/api/dashboard/database-distribution") });
   const entrance = useDashboardEntrance(Boolean(stats.data && tasks.data && distribution.data) && !stats.error && !tasks.error && !distribution.error);
   if (stats.isLoading || tasks.isLoading || distribution.isLoading) return <Page><LoadingState label="正在整理工作台" /></Page>;
@@ -43,17 +49,37 @@ export function Dashboard() {
   ];
   const largestDatabaseCount = Math.max(1, ...(distribution.data ?? []).map((item) => item.count));
 
-  async function completeTask(task: Task) {
+  function setCompletion(id: number, completion?: TaskCompletion) {
+    const next = new Map(completions.current);
+    if (completion) next.set(id, completion);
+    else next.delete(id);
+    completions.current = next;
+    setProcessing(next);
+  }
+
+  async function completeTask(task: Task, position: number, trigger: HTMLButtonElement) {
+    if (completions.current.has(task.id)) return;
     setQuickError("");
-    setProcessing((current) => new Set(current).add(task.id));
+    setCompletion(task.id, { task, position, phase: "pending" });
     try {
-      await entityApi.update("/api/tasks/", task.id, task.revision, { status: "已完成" });
-      await client.invalidateQueries({ queryKey: ["dashboard"] });
+      await playTaskStatusFeedback(entityApi.update("/api/tasks/", task.id, task.revision, { status: "已完成" }), reducedMotion,
+        () => setCompletion(task.id, { task, position, phase: "success" }));
+      await client.cancelQueries({ queryKey: recentTasksKey });
+      if (document.activeElement === trigger) viewAllTasks.current?.focus({ preventScroll: true });
+      client.setQueryData<Task[]>(recentTasksKey, (current) => current?.filter((item) => item.id !== task.id));
     } catch {
       setQuickError("任务处理失败，请刷新后重试。");
+      return;
     } finally {
-      setProcessing((current) => { const next = new Set(current); next.delete(task.id); return next; });
+      setCompletion(task.id);
     }
+    await Promise.all([client.invalidateQueries({ queryKey: ["dashboard"] }), client.invalidateQueries({ queryKey: ["tasks"] })]);
+  }
+
+  const recentTasks = [...(tasks.data ?? [])];
+  // A concurrent refresh may already omit a task whose success animation is still playing.
+  for (const { task, position } of [...processing.values()].sort((first, second) => first.position - second.position)) {
+    if (!recentTasks.some((item) => item.id === task.id)) recentTasks.splice(position, 0, task);
   }
 
   return <Page>
@@ -70,10 +96,10 @@ export function Dashboard() {
       <section className="panel task-panel">
         <div className="panel-title">
           <div><p className="eyebrow">PRIORITY QUEUE</p><h2>近期未完成任务</h2></div>
-          <div className="task-panel-heading-actions">{data.task_overdue > 0 && <Link className="dashboard-overdue-summary" to="/tasks"><TriangleAlert size={14} />{data.task_overdue} 项逾期</Link>}<Link className="text-link" to="/tasks">查看全部 <ArrowRight size={15} /></Link></div>
+          <div className="task-panel-heading-actions">{data.task_overdue > 0 && <Link className="dashboard-overdue-summary" to="/tasks"><TriangleAlert size={14} />{data.task_overdue} 项逾期</Link>}<Link ref={viewAllTasks} className="text-link" to="/tasks">查看全部 <ArrowRight size={15} /></Link></div>
         </div>
         {quickError && <div className="alert error" role="alert">{quickError}</div>}
-        {!tasks.data?.length ? <EmptyState title="任务队列已清空" description="暂时没有待处理任务，可以专注处理当前工作。" icon={CheckCircle2} /> : <ul className="task-list dashboard-task-list" aria-label="未完成任务列表" tabIndex={tasks.data.length > 6 ? 0 : undefined}>{tasks.data.map((task) => {
+        {!recentTasks.length ? <EmptyState title="任务队列已清空" description="暂时没有待处理任务，可以专注处理当前工作。" icon={CheckCircle2} /> : <ul className="task-list dashboard-task-list" aria-label="未完成任务列表" tabIndex={recentTasks.length > 6 ? 0 : undefined}>{recentTasks.map((task, position) => {
           const priority = getPriorityMeta(task.priority);
           return <li className={`task-priority-${priority.tone}`} key={task.id}>
             <span className={`task-status-icon${task.is_overdue ? " overdue" : ""}`}>{task.is_overdue ? <TriangleAlert size={17} /> : <Clock3 size={17} />}</span>
@@ -83,7 +109,7 @@ export function Dashboard() {
               <span className={`badge${task.status === "进行中" ? " status-info" : ""}`}>{task.status}</span>
               {Boolean(task.is_overdue) && <span className="badge danger">已逾期</span>}
             </span>
-            <button className="task-quick-complete" type="button" title="标记为已完成" aria-label={`完成任务：${task.title}`} disabled={processing.has(task.id)} onClick={() => void completeTask(task)}><CheckCircle2 size={16} /><span>{processing.has(task.id) ? "处理中" : "完成"}</span></button>
+            <TaskStatusButton phase={processing.get(task.id)?.phase} title="标记为已完成" accessibleLabel={`完成任务：${task.title}`} onClick={(trigger) => void completeTask(task, position, trigger)} />
           </li>;
         })}</ul>}
       </section>
