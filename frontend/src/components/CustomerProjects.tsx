@@ -1,7 +1,9 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type Dispatch, type FormEvent, type ReactNode, type RefObject, type SetStateAction } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, ChevronRight, MessageSquare, Plus, SquarePen, Trash2, Users, X } from "lucide-react";
+import { useReducedMotion } from "motion/react";
 import { ApiError, entityApi, type Entity } from "../api/client";
+import { usePreference } from "../preferences";
 import { SearchHighlight } from "./SearchHighlight";
 import { ErrorState, LoadingState } from "./States";
 
@@ -97,30 +99,35 @@ export function CustomerDirectory({ rows, disabled, searchQuery, focus, onEdit, 
   onEditProject: (selection: ProjectSelection) => void;
   onRemove: (item: Entity) => void;
 }) {
+  const systemReducedMotion = useReducedMotion();
+  const reduceMotion = usePreference("reduceMotion") === "true" || !!systemReducedMotion;
   return <div className="customer-directory">
     <div className="customer-directory-columns" aria-hidden="true"><span>客户</span><span>负责人</span><span>客户群聊</span><span>状态</span><span>操作</span></div>
     <ul className="customer-directory-list" aria-label="客户清单">{rows.map((item) => <CustomerEntry key={item.id} item={item}
-    disabled={disabled} searchQuery={searchQuery} focus={!disabled && focus?.customerId === item.id ? focus : null}
+    disabled={disabled} searchQuery={searchQuery} focus={!disabled && focus?.customerId === item.id ? focus : null} reduceMotion={reduceMotion}
     onEdit={onEdit} onEditProject={onEditProject} onRemove={onRemove} />)}</ul>
   </div>;
 }
 
-function CustomerEntry({ item, disabled, searchQuery, focus, onEdit, onEditProject, onRemove }: {
+function CustomerEntry({ item, disabled, searchQuery, focus, reduceMotion, onEdit, onEditProject, onRemove }: {
   item: Entity;
   disabled: boolean;
   searchQuery: string;
   focus: ProjectFocus | null;
+  reduceMotion: boolean;
   onEdit: (id: number) => void;
   onEditProject: (selection: ProjectSelection) => void;
   onRemove: (item: Entity) => void;
 }) {
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null);
+  const [animateDisclosure, setAnimateDisclosure] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const tableViewport = useRef<HTMLDivElement>(null);
+  const previousHeight = useRef<number | null>(null);
   const targetRow = useRef<HTMLTableRowElement>(null);
   const revealed = useRef<string | null>(null);
   const region = useId();
   const name = String(item.name);
-  const [animateDisclosure, setAnimateDisclosure] = useState(false);
   const status = String(item.status ?? "");
   const profile = readProfile(item);
   const matching = !!(item.matched_projects as string[] | undefined)?.length;
@@ -134,16 +141,30 @@ function CustomerEntry({ item, disabled, searchQuery, focus, onEdit, onEditProje
   const visible = showAll ? projects : projects.slice(0, PREVIEW_PROJECTS);
   useLayoutEffect(() => {
     if (!focusKey) return;
+    setAnimateDisclosure(false);
     setExpandedOverride(true);
     if (needsAll) setShowAll(true);
   }, [focusKey, needsAll]);
   useLayoutEffect(() => {
+    const viewport = tableViewport.current;
+    const from = previousHeight.current;
+    previousHeight.current = null;
+    if (!viewport || from === null || reduceMotion || !expanded) return;
+    const to = viewport.getBoundingClientRect().height;
+    if (from === to) return;
+    const animation = viewport.animate?.([{ height: `${from}px` }, { height: `${to}px` }], { duration: 200, easing: "ease-in-out" });
+    return () => animation?.cancel();
+  }, [showAll, expanded, focusKey, reduceMotion]);
+  useLayoutEffect(() => {
     const row = targetRow.current;
     if (!focusKey || !row || revealed.current === focusKey) return;
     revealed.current = focusKey;
-    setAnimateDisclosure(false);
     row.scrollIntoView?.({ block: "center", inline: "nearest", behavior: "instant" });
   }, [focusKey, expanded, showAll]);
+  function toggleProjectCount() {
+    previousHeight.current = reduceMotion ? null : tableViewport.current?.getBoundingClientRect().height ?? null;
+    setShowAll((current) => !current);
+  }
   const identity = <>
     <span className="customer-avatar" aria-hidden="true">{Array.from(name)[0]}</span>
     <span className="customer-identity">
@@ -177,7 +198,7 @@ function CustomerEntry({ item, disabled, searchQuery, focus, onEdit, onEditProje
     {hasProjects && <div id={region} className="customer-entry-disclosure" data-expanded={expanded} data-animate={animateDisclosure} inert={!expanded} aria-hidden={!expanded || undefined}>
       <div className="customer-entry-disclosure-content">{(expanded || expandedOverride !== null) && <div className="customer-entry-details">
       <h3 className="sr-only" id={`${region}-heading`}>项目清单</h3>
-      <div className="table-wrap"><table className="customer-project-table" aria-labelledby={`${region}-heading`}>
+      <div className="customer-project-table-viewport" ref={tableViewport}><div className="table-wrap"><table className="customer-project-table" aria-labelledby={`${region}-heading`}>
         <thead><tr><th scope="col">项目名</th><th scope="col">项目群聊</th><th scope="col">项目负责人</th><th scope="col" className="customer-project-action"><span className="sr-only">操作</span></th></tr></thead>
         <tbody>{visible.map((project, index) => <tr key={index} aria-current={index === targetIndex ? true : undefined} ref={index === targetIndex ? targetRow : undefined}>
           <td data-label="项目名"><strong title={project.name}><SearchHighlight text={project.name} query={searchQuery} /></strong></td>
@@ -186,8 +207,8 @@ function CustomerEntry({ item, disabled, searchQuery, focus, onEdit, onEditProje
           <td className="customer-project-action"><button type="button" className="icon-button" aria-label={`编辑项目 ${project.name}`} title="编辑项目" disabled={disabled}
             onClick={() => onEditProject({ customerId: item.id, revision: item.revision, index: allProjects.indexOf(project), name: project.name })}><SquarePen size={13} aria-hidden="true" /></button></td>
         </tr>)}</tbody>
-      </table></div>
-      {projects.length > PREVIEW_PROJECTS && <button type="button" className="button small customer-more" onClick={() => setShowAll(!showAll)}>{showAll ? "收起" : `查看更多（全部 ${projects.length} 个项目）`}</button>}
+      </table></div></div>
+      {projects.length > PREVIEW_PROJECTS && <button type="button" className="button small customer-more" onClick={toggleProjectCount}>{showAll ? "收起" : `查看更多（全部 ${projects.length} 个项目）`}</button>}
       </div>}</div>
     </div>}
   </li>;

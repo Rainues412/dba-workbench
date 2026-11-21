@@ -57,6 +57,12 @@ describe("customer project directory", () => {
     fireEvent.click(screen.getByRole("button", { name: /查看更多/ }));
     expect(within(table).getAllByRole("row")).toHaveLength(8);
     expect(within(table).getByRole("button", { name: "编辑项目 项目 7" })).toBeVisible();
+    const showLess = screen.getByRole("button", { name: "收起" });
+    showLess.focus();
+    fireEvent.click(showLess);
+    expect(within(table).getAllByRole("row")).toHaveLength(6);
+    expect(screen.getByRole("button", { name: /查看更多/ })).toHaveFocus();
+    fireEvent.click(showLess);
     fireEvent.click(toggle);
     fireEvent.click(toggle);
     expect(screen.getByRole("table")).toBeVisible();

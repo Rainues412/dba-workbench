@@ -792,6 +792,7 @@ body:has(.desktop-shell) .profile-dialog { inset-block: 64px; max-height: calc(1
 :root[data-theme="dark"] .customer-status[data-tone="paused"] { --customer-status-text: #f6c77a; --customer-status-bg: #48351c; }
 :root[data-theme="dark"] .customer-status[data-tone="ended"] { --customer-status-text: #c1ccdb; --customer-status-bg: #2b3546; }
 .customer-entry-actions { grid-column: 5; justify-self: end; display: flex; gap: .2rem; }
+.customer-project-table-viewport { overflow: clip; }
 .customer-entry-details { margin: 0 .95rem .75rem 3.65rem; padding: .7rem .8rem; border-radius: 9px; background: var(--surface-soft); box-shadow: inset 3px 0 var(--primary); }
 .customer-shared { display: contents; font-size: .82rem; }
 .customer-shared > div { min-width: 0; }
