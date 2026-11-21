@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowRight, BookOpenText, Building2, CheckCircle2, Clock3, Database, KeyRound,
-  ListTodo, PackageOpen, ScrollText, Sparkles, TriangleAlert,
+  ArrowRight, BookOpenText, Building2, CalendarDays, CheckCircle2, Clock3, Database, KeyRound,
+  ListTodo, PackageOpen, ScrollText, TriangleAlert,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { motion } from "motion/react";
@@ -18,7 +18,8 @@ type Task = { id: number; revision: number; title: string; priority: string; sta
 type DatabaseDistribution = { name: DatabaseName; count: number }[];
 type DatabaseName = "Oracle" | "MySQL" | "PostgreSQL" | "SQL Server" | "Linux" | "Redis" | "MongoDB" | "其他";
 
-const dateFormat = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" });
+const dateFormat = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric" });
+const weekdayFormat = new Intl.DateTimeFormat("zh-CN", { weekday: "long" });
 
 export function Dashboard() {
   const client = useQueryClient();
@@ -120,10 +121,33 @@ function DashboardHero() {
   const greeting = greetingForHour(now.getHours());
   return <section className="dashboard-hero">
     <div className="hero-copy">
-      <p className="eyebrow">WORKBENCH</p>
-      <div className="hero-kicker"><Sparkles size={15} /> {dateFormat.format(now)}</div>
       <h1>{displayName ? `${greeting}，${displayName}` : greeting}</h1>
+      <div className="hero-kicker"><CalendarDays size={15} aria-hidden="true" /> {dateFormat.format(now)} · {weekdayFormat.format(now)}</div>
     </div>
+    <svg className="hero-data-art" viewBox="0 0 570 175" fill="none" aria-hidden="true" focusable="false">
+      <g stroke="currentColor" strokeWidth="1.2" opacity=".28">
+        <path d="M10 113H141Q151 113 151 103V66Q151 56 161 56H271M24 145H213Q223 145 223 135V113Q223 103 233 103H326M121 23H189Q199 23 199 33V56M336 56H393Q403 56 403 46V24Q403 14 413 14H570M365 103H443Q453 103 453 113V143Q453 153 463 153H570M403 56V95Q403 105 413 105H506" />
+        <g fill="currentColor" fillOpacity=".12">
+          <rect x="271" y="35" width="65" height="43" rx="9" />
+          <rect x="326" y="82" width="39" height="43" rx="8" />
+          <rect x="506" y="85" width="43" height="40" rx="8" />
+        </g>
+      </g>
+      <g stroke="currentColor" strokeWidth="1.2" opacity=".4">
+        <ellipse cx="303.5" cy="47" rx="13" ry="4" />
+        <path d="M290.5 47V64C290.5 69.3 316.5 69.3 316.5 64V47M290.5 55.5C290.5 60.8 316.5 60.8 316.5 55.5" />
+        <path d="M339 94H352M339 101H352M339 108H347M518 98H537M518 105H531" strokeLinecap="round" />
+      </g>
+      <g fill="currentColor" opacity=".4">
+        <circle cx="151" cy="113" r="3" />
+        <circle cx="199" cy="56" r="3" />
+        <circle cx="223" cy="145" r="3" />
+        <circle cx="403" cy="56" r="3.5" />
+        <circle cx="453" cy="103" r="3" />
+        <circle cx="480" cy="14" r="2.5" />
+        <circle cx="496" cy="153" r="2.5" />
+      </g>
+    </svg>
   </section>;
 }
 
