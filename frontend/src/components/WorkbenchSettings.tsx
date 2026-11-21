@@ -15,7 +15,7 @@ const sections = [
   ["window", "窗口与启动", Power, "开机 自启 静默 窗口 关闭 最小化 托盘"],
   ["security", "密码库安全", Database, "密码 保险箱 主密码 解锁 锁定 安全 数据位置"],
   ["shortcuts", "快捷键", Keyboard, "按键 搜索 保存 打开"],
-  ["about", "关于", Info, "版本 许可 内容"],
+  ["about", "关于", Info, "版本 内容"],
 ] as const;
 const shortcuts = [
   ["快捷操作", "Ctrl Shift P"], ["打开设置", "Ctrl ,"], ["全局搜索", "Ctrl K"],
@@ -167,8 +167,7 @@ export function WorkbenchSettings({ desktop, onClose }: { desktop: boolean; onCl
         {active === "about" && <><div className="product-identity"><Database /><div><h3>DBA 工作台</h3><span>本地数据库工作空间</span></div></div>
           <dl className="product-facts"><dt>版本</dt><dd>{import.meta.env.VITE_APP_VERSION || "开发版"}</dd><dt>内容</dt>
             <dd>{stats.data ? `${stats.data.script_count} 个脚本 · ${stats.data.article_count} 篇文章` : stats.isError ? "暂时无法读取" : "正在读取…"}</dd>
-            <dt>数据保护</dt><dd>服务仅供本机访问；保险箱凭据加密保存，解锁后查看。</dd>
-            <dt>许可声明</dt><dd>DBA 工作台暂未指定开源许可证。第三方组件遵循各自许可证。</dd></dl>
+            <dt>数据保护</dt><dd>服务仅供本机访问；保险箱凭据加密保存，解锁后查看。</dd></dl>
         </>}
       </section>
     </div>
