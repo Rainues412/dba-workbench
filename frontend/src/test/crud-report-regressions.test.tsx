@@ -136,7 +136,7 @@ describe("review report CRUD regressions", () => {
       reads.push(path);
       return listResponse(path, row);
     }));
-    show({ ...articlesConfig, classification: undefined, fileLinks: undefined, columns: [{ name: "title", label: "标题" }] });
+    show({ ...articlesConfig, classification: undefined, fileLinks: undefined });
     fireEvent.click(await screen.findByRole("button", { name: /^收藏$/ }));
     await screen.findByRole("button", { name: "取消收藏" });
     expect(screen.queryByText("记录已更新")).not.toBeInTheDocument();

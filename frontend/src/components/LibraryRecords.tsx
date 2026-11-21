@@ -20,7 +20,7 @@ import { FavoriteButton } from "./FavoriteButton";
 const MarkdownFilePreview = lazy(() => import("./MarkdownFilePreview").then((module) => ({ default: module.MarkdownFilePreview })));
 
 function recordTitle(config: CrudConfig, row: Entity) {
-  return String(row[config.columns[0].name] || "未命名记录");
+  return String(row[config.titleField] || "未命名记录");
 }
 
 function RecordMeta({ config, row }: { config: CrudConfig; row: Entity }) {

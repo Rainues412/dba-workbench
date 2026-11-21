@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Archive, ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, ChevronsUp, FolderOpen, Minus, PanelRight, Pencil, Pin, Plus, RotateCcw, Search, Star, Trash2, Undo2, X } from "lucide-react";
+import { AlertTriangle, Archive, ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, ChevronsUp, FolderOpen, Minus, PanelRight, Pencil, Plus, RotateCcw, Search, Trash2, Undo2, X } from "lucide-react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import { api, ApiError, Entity, entityApi } from "../api/client";
@@ -9,7 +9,6 @@ import { CategoryNavigation } from "./CategoryNavigation";
 import { DatabaseLabel } from "./DatabaseLabel";
 import type { Classification, Facets } from "./CategoryNavigation";
 import { Pagination } from "./Pagination";
-import { LocalFileLinks } from "./LocalFileLinks";
 import { LibraryPreview, LibraryRecords } from "./LibraryRecords";
 import { LibraryLayout } from "./LibraryLayout";
 import type { FileLinksConfig } from "./LocalFileLinks";
@@ -35,10 +34,18 @@ export type CrudConfig = {
   path: string;
   icon: LucideIcon;
   fields: Field[];
-  columns: { name: string; label: string }[];
+  titleField: "title" | "name";
   classification?: Classification;
   fileLinks?: FileLinksConfig;
 };
+
+const taskColumns = [
+  { name: "title", label: "任务" },
+  { name: "priority", label: "优先级" },
+  { name: "status", label: "状态" },
+  { name: "due_date", label: "截止日期" },
+  { name: "created_at", label: "创建时间" },
+] as const;
 
 type LibraryPreviewState = { id: number | null; open: boolean };
 
@@ -357,7 +364,7 @@ function CrudContent({ config }: { config: CrudConfig }) {
   }
 
   async function remove(row: Entity) {
-    if (!window.confirm(`确定删除“${String(row[config.columns[0].name] ?? "该记录")}”吗？`)) return;
+    if (!window.confirm(`确定删除“${String(row[config.titleField] ?? "该记录")}”吗？`)) return;
     try {
       await entityApi.remove(config.path, row.id, row.revision);
       if (previewId === row.id) changePreview(null, false);
@@ -414,7 +421,28 @@ function CrudContent({ config }: { config: CrudConfig }) {
       </div>}
       {notice && <div className={`alert${notification.error ? " error" : ""}`} role={notification.error ? "alert" : "status"}><span>{notification.error ? <AlertTriangle size={17} /> : <CheckCircle2 size={17} />}{notice}</span><button className="icon-button" aria-label="关闭通知" onClick={() => setNotice("")}><X size={17} /></button></div>}
       {list.isLoading ? <TableSkeleton /> : list.error ? <ErrorState message="数据加载失败" retry={() => void list.refetch()} /> : !list.data?.items.length ? <EmptyState title={isTask && taskArchive ? "没有已归档任务" : `没有${config.title}数据`} description={isTask && taskArchive ? "已完成任务保留 15 天后自动归档，可在此查看或恢复。" : database || category || keyword ? "当前分类或搜索条件下没有记录，可切换分类、清空搜索或新增记录。" : "可通过右上角按钮创建第一条记录。"} /> : <>
-        {hasFavorites ? <LibraryRecords config={config} rows={list.data.items} selectedId={previewEnabled ? previewId : null} disabled={list.isPlaceholderData} searchQuery={debouncedKeyword} onPreview={togglePreview} onEdit={editRecord} onUpdate={quickUpdate} onRemove={remove} onNotice={setNotice} /> : isCustomer ? <CustomerDirectory key={debouncedKeyword} searchQuery={debouncedKeyword} focus={projectTarget && jumpMode === "list" ? { customerId: projectCustomer, name: projectTarget, key: location.key } : null} rows={list.data.items} disabled={list.isPlaceholderData} onEdit={editRecord} onEditProject={setProjectEdit} onRemove={remove} /> : <div className="table-wrap"><table className={isTask ? "task-table" : undefined}><thead><tr>{config.columns.map((column) => <th key={column.name}>{column.label}</th>)}<th className="actions-heading"><span className="sr-only">操作</span></th></tr></thead><tbody>{list.data.items.map((row) => <tr className={isTask ? taskRowClass(row) : undefined} key={row.id}>{config.columns.map((column, index) => <td key={column.name} data-label={column.label}><span className={index === 0 ? "primary-cell" : undefined}>{index === 0 && config.fileLinks ? <LocalFileLinks row={row} label={String(row[column.name] ?? "")} config={config.fileLinks} disabled={list.isPlaceholderData} onNotice={setNotice} /> : isTask ? formatTaskCell(row, column.name) : formatCell(row[column.name], column.name)}</span></td>)}<td className="row-actions" data-label="操作">{hasFavorites && <button className="icon-button" aria-label={row.is_favorite ? "取消收藏" : "收藏"} disabled={list.isPlaceholderData} onClick={() => void quickUpdate(row, { is_favorite: row.is_favorite ? 0 : 1 })}><Star size={15} fill={row.is_favorite ? "currentColor" : "none"} /></button>}{config.key === "articles" && <button className="icon-button" aria-label={row.is_pinned ? "取消置顶" : "置顶"} disabled={list.isPlaceholderData} onClick={() => void quickUpdate(row, { is_pinned: row.is_pinned ? 0 : 1 })}><Pin size={15} fill={row.is_pinned ? "currentColor" : "none"} /></button>}{isTask && <button className="button small" disabled={list.isPlaceholderData} onClick={() => void quickUpdate(row, { status: row.status === "已完成" ? "待处理" : "已完成" })}>{row.status === "已完成" ? <><Undo2 size={14} />恢复</> : <><CheckCircle2 size={14} />完成</>}</button>}<button className="button small" disabled={list.isPlaceholderData} onClick={() => { setCreating(false); setSelectedId(row.id); }}><Pencil size={14} />查看/编辑</button><button className="button small danger" disabled={list.isPlaceholderData} onClick={() => void remove(row)}><Trash2 size={14} />删除</button></td></tr>)}</tbody></table></div>}
+        {hasFavorites ? <LibraryRecords config={config} rows={list.data.items} selectedId={previewEnabled ? previewId : null} disabled={list.isPlaceholderData} searchQuery={debouncedKeyword} onPreview={togglePreview} onEdit={editRecord} onUpdate={quickUpdate} onRemove={remove} onNotice={setNotice} />
+          : isCustomer ? <CustomerDirectory key={debouncedKeyword} searchQuery={debouncedKeyword} focus={projectTarget && jumpMode === "list" ? { customerId: projectCustomer, name: projectTarget, key: location.key } : null} rows={list.data.items} disabled={list.isPlaceholderData} onEdit={editRecord} onEditProject={setProjectEdit} onRemove={remove} />
+          : <div className="table-wrap">
+            <table className="task-table">
+              <thead><tr>
+                {taskColumns.map((column) => <th key={column.name}>{column.label}</th>)}
+                <th className="actions-heading"><span className="sr-only">操作</span></th>
+              </tr></thead>
+              <tbody>{list.data.items.map((row) => <tr className={taskRowClass(row)} key={row.id}>
+                {taskColumns.map((column) => <td key={column.name} data-label={column.label}>
+                  <span className={column.name === "title" ? "primary-cell" : undefined}>{formatTaskCell(row, column.name)}</span>
+                </td>)}
+                <td className="row-actions" data-label="操作">
+                  <button className="button small" disabled={list.isPlaceholderData} onClick={() => void quickUpdate(row, { status: row.status === "已完成" ? "待处理" : "已完成" })}>
+                    {row.status === "已完成" ? <><Undo2 size={14} />恢复</> : <><CheckCircle2 size={14} />完成</>}
+                  </button>
+                  <button className="button small" disabled={list.isPlaceholderData} onClick={() => { setCreating(false); setSelectedId(row.id); }}><Pencil size={14} />查看/编辑</button>
+                  <button className="button small danger" disabled={list.isPlaceholderData} onClick={() => void remove(row)}><Trash2 size={14} />删除</button>
+                </td>
+              </tr>)}</tbody>
+            </table>
+          </div>}
       </>}
       {list.data && !list.error && <Pagination page={list.data.page} pages={list.data.pages} total={list.data.total} pageSize={pageSize} onChange={changePage} onPageSizeChange={(size) => { clearProjectTarget(); paginationTop.current = null; setPageSize(size); setPage(1); }} />}
     </section>
@@ -518,20 +546,12 @@ function FieldInput({ field, value }: { field: Field; value: unknown }) {
   </label>;
 }
 
-function formatCell(value: unknown, field: string) {
-  if (value === null || value === undefined || value === "") return <span className="muted">—</span>;
-  const text = String(value);
-  if (field === "status") return <span className={`badge status-${statusTone(text)}`}>{text}</span>;
-  if (field === "priority") return <span className={`badge priority-${text}`}>{text}</span>;
-  return text;
-}
-
 function taskRowClass(row: Entity) {
   const priority = row.priority === "高" ? "high" : row.priority === "低" ? "low" : "medium";
   return `task-row task-priority-${priority}${row.is_overdue ? " is-overdue" : ""}${row.status === "已完成" ? " is-completed" : ""}`;
 }
 
-function formatTaskCell(row: Entity, field: string) {
+function formatTaskCell(row: Entity, field: typeof taskColumns[number]["name"]) {
   if (field === "title") return <span className="task-title-cell"><strong>{String(row.title ?? "未命名任务")}</strong>{row.description ? <small>{String(row.description)}</small> : null}</span>;
   if (field === "priority") {
     const priority = String(row.priority ?? "中");
@@ -539,13 +559,19 @@ function formatTaskCell(row: Entity, field: string) {
     const Icon = tone === "high" ? ChevronsUp : tone === "low" ? ChevronDown : Minus;
     return <span className={`task-priority-badge ${tone}`} title={`${priority}优先级`}><Icon size={14} aria-hidden="true" />{priority}</span>;
   }
-  if (field === "status") return <span className="task-state-cell">{row.is_overdue ? <span className="badge status-danger"><AlertTriangle size={13} />已逾期</span> : null}{formatCell(row.is_archived ? "已归档" : row.status, "status")}</span>;
+  if (field === "status") {
+    const status = row.is_archived ? "已归档" : String(row.status ?? "");
+    return <span className="task-state-cell">
+      {row.is_overdue ? <span className="badge status-danger"><AlertTriangle size={13} />已逾期</span> : null}
+      {status ? <span className={`badge status-${statusTone(status)}`}>{status}</span> : <span className="muted">—</span>}
+    </span>;
+  }
   if (field === "due_date") {
     if (!row.due_date) return <span className="muted">未设置</span>;
     const date = String(row.due_date);
     return <span className={`task-due-cell${row.is_overdue ? " overdue" : ""}`}><span><CalendarDays size={14} />{date}</span>{row.is_overdue ? <small>已逾期 {overdueDays(date)} 天</small> : null}</span>;
   }
-  return formatCell(row[field], field);
+  return String(row.created_at ?? "") || <span className="muted">—</span>;
 }
 
 function overdueDays(value: string) {

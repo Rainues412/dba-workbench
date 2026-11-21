@@ -237,7 +237,7 @@ describe("library classification and read-only preview", () => {
   });
 
   it.each([articlesConfig, scriptsConfig, resourcesConfig])("$key keeps record metadata concise and preserves its file actions", async (config) => {
-    const row = { id: 1, revision: 1, [config.columns[0].name]: "条目布局", [config.classification!.databaseField]: "Oracle", [config.classification!.categoryField!]: "安装部署", [config.fileLinks!.pathField]: "D:/docs/record.sql", version: 1, tags: "Oracle,ORACLE,安装部署,v1,RAC,RAC,ASM,备份,恢复" };
+    const row = { id: 1, revision: 1, [config.titleField]: "条目布局", [config.classification!.databaseField]: "Oracle", [config.classification!.categoryField!]: "安装部署", [config.fileLinks!.pathField]: "D:/docs/record.sql", version: 1, tags: "Oracle,ORACLE,安装部署,v1,RAC,RAC,ASM,备份,恢复" };
     vi.stubGlobal("fetch", vi.fn(async (path: string) => path.endsWith("facets") ? Response.json({ total: 1, items: [] }) : list([row])));
     show(config);
     await screen.findByText("条目布局", { exact: true });
@@ -283,7 +283,7 @@ describe("library classification and read-only preview", () => {
   it.each([articlesConfig, scriptsConfig, resourcesConfig])("$key restores classification from the URL and clears it without removing unrelated parameters", async (config) => {
     const classification = config.classification!;
     const category = "自定义分类 / 恢复&核验";
-    const row = { id: 1, revision: 1, [config.columns[0].name]: "筛选记录", [classification.databaseField]: "Oracle", [classification.categoryField!]: category };
+    const row = { id: 1, revision: 1, [config.titleField]: "筛选记录", [classification.databaseField]: "Oracle", [classification.categoryField!]: category };
     const requests: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (path: string) => {
       if (path.endsWith("facets")) return Response.json({ total: 1, items: [{ ...row, count: 1 }] });
@@ -423,7 +423,7 @@ describe("library classification and read-only preview", () => {
     expect(reads).not.toContain("/api/resources/1");
   });
   it.each([articlesConfig, scriptsConfig])("$key loads detail on demand and keeps external file actions separate", async (config) => {
-    const titleField = config.columns[0].name;
+    const titleField = config.titleField;
     const row = { id: 7, revision: 4, [titleField]: "快速访问测试", [config.fileLinks!.pathField]: "D:/test/record.sql", wb_db: "Oracle", db_type: "Oracle" };
     const requests: Array<{ path: string; init?: RequestInit }> = [];
     vi.stubGlobal("fetch", vi.fn(async (path: string, init?: RequestInit) => {
