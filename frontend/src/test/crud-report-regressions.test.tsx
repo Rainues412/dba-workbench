@@ -19,6 +19,30 @@ function listResponse(path: string, row: Record<string, unknown>, total = 1) {
 }
 
 describe("review report CRUD regressions", () => {
+  it("keeps rows while paging and preserves them with a retry notice after a background failure", async () => {
+    let resolveNext: ((response: Response) => void) | undefined;
+    let failing = false;
+    vi.stubGlobal("fetch", vi.fn((path: string) => {
+      if (failing) return Promise.resolve(Response.json({}, { status: 500 }));
+      if (new URL(path, "http://localhost").searchParams.get("page") === "2") return new Promise<Response>((resolve) => { resolveNext = resolve; });
+      return Promise.resolve(listResponse(path, { id: 1, revision: 1, title: "第一页任务", priority: "高", status: "待处理" }, 20));
+    }));
+    const client = show(tasksConfig);
+    await screen.findByText("第一页任务");
+    fireEvent.click(screen.getByRole("button", { name: "第 2 页" }));
+    expect(screen.getByText("第一页任务")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "正在加载列表" })).not.toBeInTheDocument();
+    expect(screen.getByText("正在更新 ·")).toBeInTheDocument();
+    await waitFor(() => expect(resolveNext).toBeDefined());
+    await act(async () => resolveNext!(listResponse("/api/tasks/?page=2", { id: 2, revision: 1, title: "第二页任务", priority: "中", status: "待处理" }, 20)));
+    await screen.findByText("第二页任务");
+    failing = true;
+    await act(async () => { await client.invalidateQueries({ queryKey: ["tasks"] }); });
+    expect(await screen.findByText("更新失败，当前显示上次加载的内容。")).toBeInTheDocument();
+    expect(screen.getByText("第二页任务")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "第 2 页" })).toHaveAttribute("aria-current", "page");
+  });
+
   it("waits for the request before confirming a task and keeps failures in that row", async () => {
     let finish = () => {};
     let row = { id: 6, revision: 1, title: "反馈测试", status: "待处理", priority: "中" };

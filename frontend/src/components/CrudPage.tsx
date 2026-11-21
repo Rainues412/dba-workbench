@@ -16,7 +16,7 @@ import { ScanImport } from "./ScanImport";
 import { EntityDetails } from "./EntityDetails";
 import { CustomerDirectory, CustomerFields, CustomerProjectDrawer, CustomerProjectEditor, projectInCustomerList, customerProfilePayload, makeCustomerDraft, type ProjectSelection } from "./CustomerProjects";
 import { DateField } from "./DateField";
-import { EmptyState, ErrorState, LoadingState, TableSkeleton } from "./States";
+import { ContentSkeleton, EmptyState, ErrorState, TableSkeleton } from "./States";
 import { TaskStatusButton, playTaskStatusFeedback, useTaskStatusReducedMotion, type TaskStatusPhase } from "./TaskStatusButton";
 
 type Field = {
@@ -469,7 +469,7 @@ function CrudContent({ config }: { config: CrudConfig }) {
         </div>}
         {hasFavorites && <div className="list-filters"><label className="checkbox-label"><input type="checkbox" checked={favoriteOnly} onChange={(event) => { paginationTop.current = null; setFavoriteOnly(event.target.checked); setPage(1); }} />只看收藏</label></div>}
         {hasPreview && <button type="button" className={`button small preview-toggle${previewEnabled ? " active" : ""}`} aria-pressed={previewEnabled} disabled={previewId === null} title={previewId === null ? "点击卡片打开预览" : "点击同一卡片可收起预览"} onClick={() => togglePreview(previewId)}><PanelRight size={16} />预览</button>}
-        <span className="result-count" aria-live="polite">{list.isPlaceholderData ? "正在加载…" : <>共 <strong>{list.data?.total ?? 0}</strong> {isCustomer ? "位客户" : "条记录"}</>}</span></div>
+        <span className="result-count" aria-live="polite">{list.isPending ? "正在加载…" : <>{list.isFetching && <span className="fetching-hint">正在更新 · </span>}共 <strong>{list.data?.total ?? 0}</strong> {isCustomer ? "位客户" : "条记录"}</>}</span></div>
       {(database || category) && <div className="active-classification" role="group" aria-label="当前分类筛选">
         <div className="active-classification-tags">
           {database && <span className="active-classification-database" title={database}><DatabaseLabel name={database} /></span>}
@@ -478,7 +478,9 @@ function CrudContent({ config }: { config: CrudConfig }) {
         <button className="classification-clear" title="清除数据库和分类筛选" onClick={() => changeClassification("", "")}><RotateCcw size={14} aria-hidden="true" />清除分类</button>
       </div>}
       {notice && <div className={`alert${notification.error ? " error" : ""}`} role={notification.error ? "alert" : "status"}><span>{notification.error ? <AlertTriangle size={17} /> : <CheckCircle2 size={17} />}{notice}</span><button className="icon-button" aria-label="关闭通知" onClick={() => setNotice("")}><X size={17} /></button></div>}
-      {list.isLoading ? <TableSkeleton /> : list.error ? <ErrorState message="数据加载失败" retry={() => void list.refetch()} /> : !rows.length ? <EmptyState title={isTask && taskArchive ? "没有已归档任务" : `没有${config.title}数据`} description={isTask && taskArchive ? "已完成任务保留 15 天后自动归档，可在此查看或恢复。" : database || category || keyword ? "当前分类或搜索条件下没有记录，可切换分类、清空搜索或新增记录。" : "可通过右上角按钮创建第一条记录。"} /> : <>
+      {list.error && list.data && <div className="alert error" role="status">更新失败，当前显示上次加载的内容。<button className="button small" onClick={() => void list.refetch()}>重试</button></div>}
+      <div className={`data-content${!list.isPending ? " content-reveal" : ""}`}>
+      {list.isPending ? <TableSkeleton variant={isTask ? "tasks" : isCustomer ? "customers" : "library"} /> : list.error && !list.data ? <ErrorState message="数据加载失败" retry={() => void list.refetch()} /> : !rows.length ? <EmptyState title={isTask && taskArchive ? "没有已归档任务" : `没有${config.title}数据`} description={isTask && taskArchive ? "已完成任务保留 15 天后自动归档，可在此查看或恢复。" : database || category || keyword ? "当前分类或搜索条件下没有记录，可切换分类、清空搜索或新增记录。" : "可通过右上角按钮创建第一条记录。"} /> : <>
         {hasFavorites ? <LibraryRecords config={config} rows={rows} selectedId={previewEnabled ? previewId : null} disabled={list.isPlaceholderData} searchQuery={debouncedKeyword} onPreview={togglePreview} onEdit={editRecord} onUpdate={quickUpdate} onRemove={remove} onNotice={setNotice} />
           : isCustomer ? <CustomerDirectory key={debouncedKeyword} searchQuery={debouncedKeyword} focus={projectTarget && jumpMode === "list" ? { customerId: projectCustomer, name: projectTarget, key: location.key } : null} rows={rows} disabled={list.isPlaceholderData} onEdit={editRecord} onEditProject={setProjectEdit} onRemove={remove} />
           : <div className="table-wrap">
@@ -505,7 +507,8 @@ function CrudContent({ config }: { config: CrudConfig }) {
             </table>
           </div>}
       </>}
-      {list.data && !list.error && <Pagination page={list.data.page} pages={list.data.pages} total={list.data.total} pageSize={pageSize} onChange={changePage} onPageSizeChange={(size) => { clearProjectTarget(); paginationTop.current = null; setPageSize(size); setPage(1); }} />}
+      </div>
+      {list.data && <Pagination page={list.data.page} pages={list.data.pages} total={list.data.total} pageSize={pageSize} onChange={changePage} onPageSizeChange={(size) => { clearProjectTarget(); paginationTop.current = null; setPageSize(size); setPage(1); }} />}
     </section>
     </LibraryLayout>
     {projectTarget && jumpMode === "drawer" && <CustomerProjectDrawer customerId={projectCustomer} projectName={projectTarget}
@@ -581,7 +584,7 @@ function Editor({ config, item, loading, editing, useNativeDialog, loadError, on
       if (!busy) event.currentTarget.querySelector("form")?.requestSubmit();
     }}>
       <div className="modal-header"><div><p className="eyebrow">{editing ? "EDIT RECORD" : "CREATE RECORD"}</p><h2 id="editor-title">{editing ? `编辑${config.title}` : `新增${config.title}`}</h2></div><button className="icon-button modal-close" onClick={onClose} aria-label="关闭"><X size={19} /></button></div>
-      {loading ? <LoadingState /> : loadError || (editing && !item) ? <ErrorState message="详情加载失败，未进入新增模式，请重试" retry={onRetry} /> : isCustomer ? <form className="customer-edit-form" onSubmit={submit}>
+      {loading ? <ContentSkeleton label="正在加载详情" /> : loadError || (editing && !item) ? <ErrorState message="详情加载失败，未进入新增模式，请重试" retry={onRetry} /> : isCustomer ? <form className="customer-edit-form" onSubmit={submit}>
         <div className="customer-edit-content form-grid"><CustomerFields item={item} draft={draft} setDraft={setDraft} /></div>
         <footer className="customer-edit-footer">{saveError}{actions}</footer>
       </form> : <form className="form-grid" onSubmit={submit}>

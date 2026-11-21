@@ -181,7 +181,7 @@
 .library-preview-section .record-links { max-width: 100%; }
 .library-preview-section .record-path-line { min-width: 0; flex-wrap: wrap; margin-top: .55rem; }
 .library-preview-section .record-path-link { max-width: 100%; }
-.library-preview-actions { padding: 0; flex: 0 1 auto; min-width: 0; }
+.library-preview-actions { display: flex; align-items: center; flex: 0 1 auto; flex-wrap: wrap; gap: .2rem; min-width: 0; padding: 0; }
 .library-preview-actions .compact-file-links { margin: 0; align-items: center; gap: .45rem; }
 .library-preview-actions .record-path-line { margin: 0; align-items: center; gap: .45rem; }
 .library-preview-actions .record-title-link, .library-preview-actions .record-path-link, .library-preview-actions .record-copy-path { display: inline-flex; align-items: center; gap: .35rem; min-height: 28px; padding: .25rem .5rem; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--muted); font-size: .72rem; text-decoration: none; }

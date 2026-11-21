@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Clipboard, Download, Eye, EyeOff, Globe2, KeyRound, LockKeyhole, Pencil, Plus, RefreshCw, Search, ShieldCheck, Star, Trash2, UserRound, X } from "lucide-react";
 import { ApiError, api, jsonBody, Page, setVaultAccessToken, VAULT_LOCKED_EVENT } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { EmptyState, ErrorState, LoadingState } from "../components/States";
+import { CardsSkeleton, ContentSkeleton, EmptyState, ErrorState, LoadingState } from "../components/States";
 import { Pagination } from "../components/Pagination";
 import { EdgePasswordImport } from "../components/EdgePasswordImport";
 import { VaultCategoryInput } from "../components/VaultCategoryInput";
@@ -196,7 +196,7 @@ export function Vault() {
     return () => { cancelled = true; };
   }, [dek, items.data]);
 
-  if (profile.isLoading) return <VaultPage><LoadingState label="读取保险箱状态" /></VaultPage>;
+  if (profile.isLoading) return <VaultPage><ContentSkeleton label="读取保险箱状态" className="panel vault-profile-skeleton" /></VaultPage>;
   if (profile.error && !profile.data) return <VaultPage><ErrorState message="保险箱状态加载失败" retry={() => void profile.refetch()} /></VaultPage>;
 
   async function verifySensitiveOperation(event: FormEvent<HTMLFormElement>) {
@@ -508,7 +508,7 @@ export function Vault() {
             <button className="button small" disabled={deleting || !selected.size} onClick={() => setSelected(new Set())}>取消选择</button>
             <button className="button small danger" disabled={deleting || !selected.size} onClick={() => void removeEntries(visible.filter((entry) => selected.has(entry.cipher.item_key)))}><Trash2 size={14} />{deleting ? "正在删除…" : "删除所选"}</button>
           </div>}
-          {items.isLoading ? <LoadingState /> : items.error ? <ErrorState message="密文列表加载失败" retry={() => void items.refetch()} /> : !filtered.length ? <EmptyState title={search || favoritesOnly || categoryFilter !== null ? "没有匹配的条目" : "保险箱为空"} description={search || favoritesOnly || categoryFilter !== null ? "尝试调整搜索、收藏或分类筛选。" : "新增条目，或迁移旧版保险箱数据。"} icon={ShieldCheck} /> : <div className="vault-grid">{visible.map((entry) => {
+          {items.isLoading ? <CardsSkeleton /> : items.error ? <ErrorState message="密文列表加载失败" retry={() => void items.refetch()} /> : !filtered.length ? <EmptyState title={search || favoritesOnly || categoryFilter !== null ? "没有匹配的条目" : "保险箱为空"} description={search || favoritesOnly || categoryFilter !== null ? "尝试调整搜索、收藏或分类筛选。" : "新增条目，或迁移旧版保险箱数据。"} icon={ShieldCheck} /> : <div className="vault-grid content-reveal">{visible.map((entry) => {
             const isRevealed = revealed.has(entry.cipher.item_key);
             const isSelected = selected.has(entry.cipher.item_key);
             return <article className={`vault-card${isSelected ? " is-selected" : ""}`} key={entry.cipher.item_key}>

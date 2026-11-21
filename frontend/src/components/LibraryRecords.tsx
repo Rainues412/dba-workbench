@@ -9,7 +9,7 @@ import { DatabaseLabel } from "./DatabaseLabel";
 import { EntityDetails } from "./EntityDetails";
 import { LocalFileLinks } from "./LocalFileLinks";
 import { CopyFeedbackButton } from "./CopyFeedbackButton";
-import { EmptyState, ErrorState, LoadingState } from "./States";
+import { ContentSkeleton, EmptyState, ErrorState } from "./States";
 import { FileName } from "./FileName";
 import { SelectionIndicator, SelectionMotion } from "./SelectionMotion";
 import { usePreference } from "../preferences";
@@ -268,15 +268,15 @@ export function LibraryPreview({ config, id, open = true, editorOpen, onClose, o
       <div className="library-preview-main">
       {message && <p className="library-inline-notice" aria-live="polite">{message}</p>}
       {id === null ? <EmptyState title="选择一条记录预览" description="" />
-        : detail.isLoading ? <LoadingState label="正在读取完整记录" />
+        : detail.isLoading ? <ContentSkeleton label="正在读取完整记录" />
         : detail.error || !row ? <ErrorState message="预览加载失败，请重试" retry={() => void detail.refetch()} />
         : <>
           <>
               {showSummary && <p className="library-preview-summary">{summary}</p>}
               {hasLinkedFile && <section className="library-preview-section library-visual-preview" aria-label="原文件预览" title={visual.data?.filename}>
-                {visual.isLoading ? <LoadingState label="正在准备原文件预览" />
+                {visual.isLoading ? <ContentSkeleton label="正在准备原文件预览" />
                   : visual.error ? <ErrorState message={`原文件预览失败：${visual.error.message}`} retry={() => void visual.refetch()} />
-                  : visual.data?.viewer === "markdown" ? <Suspense fallback={<LoadingState label="正在加载 Markdown 查看器" />}><MarkdownFilePreview filename={visual.data.filename} sourceUrl={visual.data.viewer_url} assetUrl={visual.data.asset_url!} expanded={expanded} /></Suspense>
+                  : visual.data?.viewer === "markdown" ? <Suspense fallback={<ContentSkeleton label="正在加载 Markdown 查看器" />}><MarkdownFilePreview filename={visual.data.filename} sourceUrl={visual.data.viewer_url} assetUrl={visual.data.asset_url!} expanded={expanded} /></Suspense>
                   : visual.data ? <iframe className="library-visual-frame" title={`原文件预览：${visual.data.filename}`} src={visual.data.viewer_url} sandbox="allow-downloads allow-forms allow-popups allow-same-origin allow-scripts" referrerPolicy="no-referrer" />
                   : null}
               </section>}
@@ -289,7 +289,7 @@ export function LibraryPreview({ config, id, open = true, editorOpen, onClose, o
                 {needsFile && <p className="library-file-source muted"><span title={linkedPath}><FolderOpen size={13} aria-hidden="true" /><FileName text={file.data?.filename || linkedPath} path={linkedPath} /></span>
                   <button type="button" className="button small" disabled={file.isFetching} onClick={() => void file.refetch()}>重新读取</button>
                 </p>}
-                {needsFile && file.isLoading ? <LoadingState label="正在读取关联文件" />
+                {needsFile && file.isLoading ? <ContentSkeleton label="正在读取关联文件" />
                   : needsFile && file.error ? <ErrorState message={`关联文件预览失败：${file.error.message}`} retry={() => void file.refetch()} />
                   : <>
                     {needsFile && file.data?.truncated && <p className="library-inline-notice" role="status">文件较大，仅显示前 512 KB 预览；请快捷打开查看完整内容。</p>}

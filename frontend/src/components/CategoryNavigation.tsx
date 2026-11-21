@@ -1,7 +1,7 @@
 import { FolderOpen, Layers3, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { databaseMeta } from "./DatabaseLabel";
 import { DatabaseFilter } from "./DatabaseFilter";
-import { ErrorState, LoadingState } from "./States";
+import { ErrorState, SkeletonBlock, SkeletonState } from "./States";
 import { motion } from "motion/react";
 import { SelectionIndicator, SelectionMotion } from "./SelectionMotion";
 
@@ -52,7 +52,7 @@ export function CategoryNavigation({ classification, data, loading, error, retry
     <div role="group" aria-label="数据库分类">
       <DatabaseFilter value={database} names={databaseNames} counts={databaseCounts} total={data?.total ?? 0} onChange={(value) => onChange(value, "")} />
     </div>
-    {loading && <LoadingState label="正在读取分类" />}
+    {loading && <SkeletonState label="正在读取分类" className="skeleton-categories">{Array.from({ length: 3 }, (_, index) => <SkeletonBlock key={index} />)}</SkeletonState>}
     {error && <ErrorState message="分类加载失败" retry={retry} />}
     {categoryField && <div className="category-filter-row" role="group" aria-label={categoryLabel}>
       <span className="category-filter-label"><FolderOpen size={15} />{categoryLabel}</span>

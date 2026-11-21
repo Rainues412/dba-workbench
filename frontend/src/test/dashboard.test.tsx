@@ -29,6 +29,46 @@ it("greets the signed-in user and updates across local time periods", () => {
 });
 
 describe("dashboard task queue", () => {
+  it("keeps the greeting visible and reveals each section independently, including failure and retry", async () => {
+    const pending = new Map<string, (response: Response) => void>();
+    vi.stubGlobal("fetch", vi.fn((path: string) => new Promise<Response>((resolve) => pending.set(path, resolve))));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    render(<MemoryRouter><QueryClientProvider client={client}><Dashboard /></QueryClientProvider></MemoryRouter>);
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("dba-owner");
+    expect(screen.getByRole("status", { name: "正在加载近期任务" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "正在加载数据库分布" })).toBeInTheDocument();
+    await act(async () => pending.get("/api/dashboard/stats")!(Response.json({ script_count: 128, article_count: 0, task_pending: 0, task_overdue: 0, customer_count: 0, resource_count: 0, password_count: 0 })));
+    expect(screen.getByRole("region", { name: "数据摘要" })).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("status", { name: "正在加载近期任务" })).toBeInTheDocument();
+    await act(async () => pending.get("/api/dashboard/database-distribution")!(Response.json({}, { status: 500 })));
+    expect(await screen.findByText("数据库分布加载失败")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "数据摘要" })).toHaveAttribute("aria-busy", "false");
+    expect(screen.queryByRole("status", { name: "正在加载数据库分布" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /脚本资产/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(screen.getByRole("status", { name: "正在加载数据库分布" })).toBeInTheDocument());
+    await act(async () => {
+      pending.get("/api/dashboard/database-distribution")!(Response.json([{ name: "MongoDB", count: 2 }]));
+      pending.get("/api/dashboard/recent-tasks")!(Response.json([]));
+    });
+    await waitFor(() => expect(screen.queryByRole("status", { name: "正在加载数据库分布" })).not.toBeInTheDocument());
+    expect(screen.getByText("MongoDB")).toBeInTheDocument();
+    expect(await screen.findByText("任务队列已清空")).toBeInTheDocument();
+  });
+
+  it("starts cached numbers and bars together from zero without a skeleton", () => {
+    const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, gcTime: 0 } } });
+    client.setQueryData(["dashboard", "stats"], { script_count: 128, article_count: 0, task_pending: 0, task_overdue: 0, customer_count: 0, resource_count: 0, password_count: 0 });
+    client.setQueryData(["dashboard", "tasks"], []);
+    client.setQueryData(["dashboard", "database-distribution"], [{ name: "MongoDB", count: 2 }]);
+    render(<MemoryRouter><QueryClientProvider client={client}><Dashboard /></QueryClientProvider></MemoryRouter>);
+    const card = screen.getByRole("link", { name: /脚本资产/ });
+    expect(card.querySelector(".dashboard-number > [aria-hidden=true]")).toHaveTextContent("0");
+    expect(document.querySelector(".progress-track > span")).toHaveStyle({ transform: "scaleX(0)" });
+    expect(document.querySelector(".skeleton-block")).toBeNull();
+  });
+
   it("renders MongoDB as its own database distribution item", async () => {
     vi.stubGlobal("fetch", vi.fn(async (path: string) => {
       if (path === "/api/dashboard/stats") return Response.json({ script_count: 1, article_count: 1, task_total: 0, task_pending: 0, task_overdue: 0, customer_count: 0, resource_count: 0, password_count: 0 });
@@ -39,8 +79,8 @@ describe("dashboard task queue", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
     render(<MemoryRouter><QueryClientProvider client={client}><Dashboard /></QueryClientProvider></MemoryRouter>);
 
-    expect(await screen.findByText("MongoDB")).toBeInTheDocument();
-    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(await screen.findByText("2")).toBeInTheDocument();
+    expect(screen.getByText("MongoDB")).toBeInTheDocument();
   });
 
   it("shows overdue tasks and supports quick completion", async () => {

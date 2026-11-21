@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import {
   BookOpenText, Building2, LayoutDashboard,
@@ -38,6 +38,14 @@ export function Shell() {
   const { session, logout } = useAuth();
   const desktopWindow = useDesktopWindow();
   const location = useLocation();
+  const content = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    if (location.pathname === "/" || !content.current) return;
+    // Restart only the visual entrance; keep the outlet and its local state mounted.
+    content.current.style.animationName = "none";
+    void content.current.offsetWidth;
+    content.current.style.animationName = "";
+  }, [location.pathname]);
   const navigate = useNavigate();
   const position = usePreference("navigation");
   const horizontal = position === "top" || position === "bottom";
@@ -156,7 +164,7 @@ export function Shell() {
           <DesktopDragRegion actions={desktopWindow}><span title={current.label}>{current.label}</span></DesktopDragRegion>
           <div className="topbar-actions">{topbarActions}</div>
         </header>}
-        <main className="main-content"><Outlet /></main>
+        <main className={`main-content${location.pathname === "/" ? " dashboard-content" : ""}`} ref={content}><Outlet /></main>
       </div>
       {dialog === "commands" && <WorkbenchCommands commands={commands} onClose={() => setDialog(null)} />}
       {dialog === "settings" && <WorkbenchSettings desktop={Boolean(session?.vault_password_only)} onClose={() => setDialog(null)} />}
