@@ -34,7 +34,7 @@ def test_article_preview_survives_editor_and_reload(live_server, tmp_path, monke
             page.get_by_role("button", name=f"预览：{title}", exact=True).click()
             preview = page.locator(".library-preview")
             document = preview.locator(".library-markdown")
-            original = document.get_by_role("heading", name="原文件正文")
+            original = document.get_by_role("heading", name="原文件正文", include_hidden=True)
             expect(original).to_be_visible()
             page.evaluate("window.originalPreview = document.querySelector('.library-markdown')")
             document.evaluate("element => element.scrollTop = 180")

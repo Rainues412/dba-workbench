@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { FileText, FolderOpen, Maximize2, Minimize2, MoreHorizontal, Pencil, Pin, Trash2, X } from "lucide-react";
@@ -122,6 +122,13 @@ export function LibraryPreview({ config, id, open = true, editorOpen, onClose, o
   const showDocumentInfo = usePreference("showDocumentInfo") === "true" && config.key === "scripts";
   const readerRef = useRef<HTMLDivElement>(null);
   const fullscreenTrigger = useRef<HTMLButtonElement>(null);
+  const editTrigger = useRef<HTMLButtonElement>(null);
+  const restoreEditFocus = useRef(false);
+  useLayoutEffect(() => {
+    if (editorOpen || !restoreEditFocus.current) return;
+    restoreEditFocus.current = false;
+    editTrigger.current?.focus({ preventScroll: true });
+  }, [editorOpen]);
   const savedPageScroll = useRef(0);
   const [expanded, setExpanded] = useState(false);
   const expandedRef = useRef(expanded);
@@ -230,6 +237,7 @@ export function LibraryPreview({ config, id, open = true, editorOpen, onClose, o
   }
   async function editRecord() {
     if (screenfull.isEnabled && screenfull.element === readerRef.current) await screenfull.exit();
+    restoreEditFocus.current = true;
     onEdit(id!);
   }
   function notify(value: string) { setMessage(value); }
@@ -250,7 +258,7 @@ export function LibraryPreview({ config, id, open = true, editorOpen, onClose, o
     }}>
     <header className="library-preview-heading"><h2 id={headingId} title={title}><FileName text={title} path={linkedPath} /></h2><div>
       <button ref={fullscreenTrigger} type="button" className="icon-button" aria-label={expanded ? "退出大屏阅读" : "大屏阅读"} title={canExpand ? expanded ? "退出大屏阅读（Esc）" : "大屏阅读" : "当前浏览器不支持全屏阅读"} disabled={!row || !canExpand} onClick={() => void toggleReading()}>{expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button>
-      <button type="button" className="button small" disabled={!row || detail.isLoading || !!detail.error} onClick={() => void editRecord()}><Pencil size={14} />编辑</button>
+      <button ref={editTrigger} type="button" className="button small" disabled={!row || detail.isLoading || !!detail.error} onClick={() => void editRecord()}><Pencil size={14} />编辑</button>
       <button type="button" className="icon-button" aria-label="关闭预览" title="关闭预览" onClick={closePreview}><X size={19} /></button>
     </div></header>
     {row && !detail.isLoading && !detail.error && <div className="library-preview-tools">
@@ -314,7 +322,7 @@ export function LibraryPreview({ config, id, open = true, editorOpen, onClose, o
     </div>
   </div>;
   // LibraryLayout retains the viewer until its exit transition finishes.
-  if (drawer && (id === null || editorOpen)) return null;
-  return drawer ? <AppDialog className={`library-preview library-preview-drawer${!open ? " is-closing" : ""}${expanded && desktop ? " desktop-expanded-drawer" : ""}`} labelledBy={headingId} onClose={dismissPreview} dimBackground={false} inert={!open}>{content}</AppDialog>
+  if (drawer && id === null) return null;
+  return drawer ? <AppDialog className={`library-preview library-preview-drawer${!open ? " is-closing" : ""}${expanded && desktop ? " desktop-expanded-drawer" : ""}`} labelledBy={headingId} onClose={dismissPreview} dimBackground={false} inert={!open || editorOpen}>{content}</AppDialog>
     : <aside className="panel library-preview" aria-label="记录预览" onKeyDown={(event) => { if (event.key === "Escape" && !expanded) void closePreview(); }}>{content}</aside>;
 }
