@@ -1,9 +1,9 @@
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Archive, ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, ChevronsUp, FolderOpen, Minus, PanelRight, Pencil, Plus, RotateCcw, Search, Trash2, Undo2, X } from "lucide-react";
+import { AlertTriangle, Archive, ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, ChevronsUp, FolderOpen, Minus, PanelRight, Pencil, Plus, RotateCcw, Search, Trash2, X } from "lucide-react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
-import { api, ApiError, Entity, entityApi } from "../api/client";
+import { api, ApiError, Entity, entityApi, type Page } from "../api/client";
 import { usePreference } from "../preferences";
 import { CategoryNavigation } from "./CategoryNavigation";
 import { DatabaseLabel } from "./DatabaseLabel";
@@ -17,6 +17,7 @@ import { EntityDetails } from "./EntityDetails";
 import { CustomerDirectory, CustomerFields, CustomerProjectDrawer, CustomerProjectEditor, projectInCustomerList, customerProfilePayload, makeCustomerDraft, type ProjectSelection } from "./CustomerProjects";
 import { DateField } from "./DateField";
 import { EmptyState, ErrorState, LoadingState, TableSkeleton } from "./States";
+import { TaskStatusButton, playTaskStatusFeedback, useTaskStatusReducedMotion, type TaskStatusPhase } from "./TaskStatusButton";
 
 type Field = {
   name: string;
@@ -38,6 +39,10 @@ export type CrudConfig = {
   classification?: Classification;
   fileLinks?: FileLinksConfig;
 };
+
+type TaskAction =
+  | { phase: TaskStatusPhase; row: Entity; position: number; view: string }
+  | { phase: "error"; message: string };
 
 const taskColumns = [
   { name: "title", label: "任务" },
@@ -68,6 +73,10 @@ function CrudContent({ config }: { config: CrudConfig }) {
   const category = config.classification?.categoryField ? searchParams.get("category") ?? "" : "";
   const [status, setStatus] = useState("");
   const [taskArchive, setTaskArchive] = useState(false);
+  const [taskActions, setTaskActions] = useState(() => new Map<number, TaskAction>());
+  const updatingTasks = useRef(new Set<number>());
+  const taskRefresh = useRef<Promise<unknown>>(Promise.resolve());
+  const reduceTaskMotion = useTaskStatusReducedMotion();
   const [priority, setPriority] = useState("");
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [favoriteOnly, setFavoriteOnly] = useState(false);
@@ -132,8 +141,10 @@ function CrudContent({ config }: { config: CrudConfig }) {
     queryFn: () => api<Facets>(`${config.path}facets`),
     enabled: !!config.classification,
   });
+  const listKey = [config.key, page, pageSize, debouncedKeyword, filters] as const;
+  const taskView = isTask ? JSON.stringify(listKey) : "";
   const list = useQuery({
-    queryKey: [config.key, page, pageSize, debouncedKeyword, filters],
+    queryKey: listKey,
     queryFn: ({ signal }) => entityApi.list<Entity>(config.path, page, debouncedKeyword, filters, pageSize, signal),
     placeholderData: (previousData, previousQuery) => {
       const previousFilters = previousQuery?.queryKey[4] as Record<string, string> | undefined;
@@ -328,11 +339,16 @@ function CrudContent({ config }: { config: CrudConfig }) {
     setCreating(false); setSelectedId(id);
   }
   async function refresh() {
-    await Promise.all([client.invalidateQueries({
+    const invalidate = () => Promise.all([client.invalidateQueries({
       queryKey: [config.key],
       // File previews issue new viewer URLs on each read. Keep the active file in place while refreshing record metadata.
       predicate: ({ queryKey: [, kind, id] }) => id !== previewId || (kind !== "visual-preview" && kind !== "file-preview"),
     }), client.invalidateQueries({ queryKey: ["dashboard"] })]);
+    if (!isTask) { await invalidate(); return; }
+    // Keep a later task refresh from cancelling the list read for an earlier task.
+    const next = taskRefresh.current.then(invalidate);
+    taskRefresh.current = next.catch(() => undefined);
+    await next;
   }
 
   async function save(payload: Record<string, unknown>, current?: Entity) {
@@ -384,6 +400,48 @@ function CrudContent({ config }: { config: CrudConfig }) {
     catch (reason) { setNotice(reason instanceof ApiError ? reason.message : "更新失败", true); if (reason instanceof ApiError && reason.status === 409) await refresh(); }
   }
 
+  function setTaskAction(id: number, action?: TaskAction) {
+    setTaskActions((current) => {
+      const next = new Map(current);
+      if (action) next.set(id, action);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  async function updateTask(row: Entity, position: number, trigger: HTMLButtonElement) {
+    if (updatingTasks.current.has(row.id) || list.isPlaceholderData) return;
+    updatingTasks.current.add(row.id);
+    const snapshot = { row, position, view: taskView };
+    const nextStatus = row.status === "已完成" ? "待处理" : "已完成";
+    setTaskAction(row.id, { ...snapshot, phase: "pending" });
+    try {
+      await playTaskStatusFeedback(entityApi.update(config.path, row.id, row.revision, { status: nextStatus }), reduceTaskMotion,
+        () => setTaskAction(row.id, { ...snapshot, phase: "success" }));
+      await refresh();
+      const refreshed = client.getQueryData<Page<Entity>>(listKey);
+      if (document.activeElement === trigger && refreshed && !refreshed.items.some((task) => task.id === row.id)) {
+        searchInput.current?.focus({ preventScroll: true });
+      }
+      setTaskAction(row.id);
+    } catch (reason) {
+      setTaskAction(row.id, { phase: "error", message: reason instanceof ApiError ? reason.message : "更新任务失败，请重试" });
+      if (reason instanceof ApiError && reason.status === 409) await refresh();
+    } finally {
+      updatingTasks.current.delete(row.id);
+    }
+  }
+
+  const rows = [...(list.data?.items ?? [])];
+  // Pin a changing row through background or concurrent refreshes until its feedback finishes.
+  const activeTaskActions = [...taskActions.values()].filter((action): action is Exclude<TaskAction, { phase: "error" }> => action.phase !== "error");
+  for (const action of activeTaskActions.sort((first, second) => first.position - second.position)) {
+    if (action.view !== taskView) continue;
+    const index = rows.findIndex((row) => row.id === action.row.id);
+    if (index === -1) rows.splice(action.position, 0, action.row);
+    else rows[index] = action.row;
+  }
+
   return <div className={`page${hasFavorites ? " library-page" : ""}`}>
     <header className="page-header"><div className="page-title-group"><span className="page-title-icon"><PageIcon size={24} /></span><div><p className="eyebrow">DATA MODULE</p><h1>{taskArchive ? "归档任务" : config.title}</h1></div></div><div className="button-row">
       {hasFavorites && <ScanImport key={config.key} module={config.key as "scripts" | "articles" | "resources"} onImported={refresh} />}
@@ -420,27 +478,30 @@ function CrudContent({ config }: { config: CrudConfig }) {
         <button className="classification-clear" title="清除数据库和分类筛选" onClick={() => changeClassification("", "")}><RotateCcw size={14} aria-hidden="true" />清除分类</button>
       </div>}
       {notice && <div className={`alert${notification.error ? " error" : ""}`} role={notification.error ? "alert" : "status"}><span>{notification.error ? <AlertTriangle size={17} /> : <CheckCircle2 size={17} />}{notice}</span><button className="icon-button" aria-label="关闭通知" onClick={() => setNotice("")}><X size={17} /></button></div>}
-      {list.isLoading ? <TableSkeleton /> : list.error ? <ErrorState message="数据加载失败" retry={() => void list.refetch()} /> : !list.data?.items.length ? <EmptyState title={isTask && taskArchive ? "没有已归档任务" : `没有${config.title}数据`} description={isTask && taskArchive ? "已完成任务保留 15 天后自动归档，可在此查看或恢复。" : database || category || keyword ? "当前分类或搜索条件下没有记录，可切换分类、清空搜索或新增记录。" : "可通过右上角按钮创建第一条记录。"} /> : <>
-        {hasFavorites ? <LibraryRecords config={config} rows={list.data.items} selectedId={previewEnabled ? previewId : null} disabled={list.isPlaceholderData} searchQuery={debouncedKeyword} onPreview={togglePreview} onEdit={editRecord} onUpdate={quickUpdate} onRemove={remove} onNotice={setNotice} />
-          : isCustomer ? <CustomerDirectory key={debouncedKeyword} searchQuery={debouncedKeyword} focus={projectTarget && jumpMode === "list" ? { customerId: projectCustomer, name: projectTarget, key: location.key } : null} rows={list.data.items} disabled={list.isPlaceholderData} onEdit={editRecord} onEditProject={setProjectEdit} onRemove={remove} />
+      {list.isLoading ? <TableSkeleton /> : list.error ? <ErrorState message="数据加载失败" retry={() => void list.refetch()} /> : !rows.length ? <EmptyState title={isTask && taskArchive ? "没有已归档任务" : `没有${config.title}数据`} description={isTask && taskArchive ? "已完成任务保留 15 天后自动归档，可在此查看或恢复。" : database || category || keyword ? "当前分类或搜索条件下没有记录，可切换分类、清空搜索或新增记录。" : "可通过右上角按钮创建第一条记录。"} /> : <>
+        {hasFavorites ? <LibraryRecords config={config} rows={rows} selectedId={previewEnabled ? previewId : null} disabled={list.isPlaceholderData} searchQuery={debouncedKeyword} onPreview={togglePreview} onEdit={editRecord} onUpdate={quickUpdate} onRemove={remove} onNotice={setNotice} />
+          : isCustomer ? <CustomerDirectory key={debouncedKeyword} searchQuery={debouncedKeyword} focus={projectTarget && jumpMode === "list" ? { customerId: projectCustomer, name: projectTarget, key: location.key } : null} rows={rows} disabled={list.isPlaceholderData} onEdit={editRecord} onEditProject={setProjectEdit} onRemove={remove} />
           : <div className="table-wrap">
             <table className="task-table">
               <thead><tr>
                 {taskColumns.map((column) => <th key={column.name}>{column.label}</th>)}
                 <th className="actions-heading"><span className="sr-only">操作</span></th>
               </tr></thead>
-              <tbody>{list.data.items.map((row) => <tr className={taskRowClass(row)} key={row.id}>
+              <tbody>{rows.map((row, position) => {
+                const action = taskActions.get(row.id);
+                const phase = action?.phase === "pending" || action?.phase === "success" ? action.phase : undefined;
+                return <tr className={taskRowClass(row)} key={row.id}>
                 {taskColumns.map((column) => <td key={column.name} data-label={column.label}>
                   <span className={column.name === "title" ? "primary-cell" : undefined}>{formatTaskCell(row, column.name)}</span>
                 </td>)}
                 <td className="row-actions" data-label="操作">
-                  <button className="button small" disabled={list.isPlaceholderData} onClick={() => void quickUpdate(row, { status: row.status === "已完成" ? "待处理" : "已完成" })}>
-                    {row.status === "已完成" ? <><Undo2 size={14} />恢复</> : <><CheckCircle2 size={14} />完成</>}
-                  </button>
-                  <button className="button small" disabled={list.isPlaceholderData} onClick={() => { setCreating(false); setSelectedId(row.id); }}><Pencil size={14} />查看/编辑</button>
-                  <button className="button small danger" disabled={list.isPlaceholderData} onClick={() => void remove(row)}><Trash2 size={14} />删除</button>
+                  <TaskStatusButton completed={row.status === "已完成"} phase={phase} disabled={list.isPlaceholderData} onClick={(trigger) => void updateTask(row, position, trigger)} />
+                  <button className="button small" disabled={list.isPlaceholderData || !!phase} onClick={() => { setCreating(false); setSelectedId(row.id); }}><Pencil size={14} />查看/编辑</button>
+                  <button className="button small danger" disabled={list.isPlaceholderData || !!phase} onClick={() => void remove(row)}><Trash2 size={14} />删除</button>
+                  {action?.phase === "error" && <p className="task-action-error" role="alert">{action.message}</p>}
                 </td>
-              </tr>)}</tbody>
+              </tr>;
+              })}</tbody>
             </table>
           </div>}
       </>}

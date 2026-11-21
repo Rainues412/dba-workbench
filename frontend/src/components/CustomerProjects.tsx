@@ -120,6 +120,7 @@ function CustomerEntry({ item, disabled, searchQuery, focus, onEdit, onEditProje
   const revealed = useRef<string | null>(null);
   const region = useId();
   const name = String(item.name);
+  const [animateDisclosure, setAnimateDisclosure] = useState(false);
   const status = String(item.status ?? "");
   const profile = readProfile(item);
   const matching = !!(item.matched_projects as string[] | undefined)?.length;
@@ -140,6 +141,7 @@ function CustomerEntry({ item, disabled, searchQuery, focus, onEdit, onEditProje
     const row = targetRow.current;
     if (!focusKey || !row || revealed.current === focusKey) return;
     revealed.current = focusKey;
+    setAnimateDisclosure(false);
     row.scrollIntoView?.({ block: "center", inline: "nearest", behavior: "instant" });
   }, [focusKey, expanded, showAll]);
   const identity = <>
@@ -152,7 +154,11 @@ function CustomerEntry({ item, disabled, searchQuery, focus, onEdit, onEditProje
   return <li className="customer-entry">
     <div className="customer-entry-header">
       {hasProjects ? <button type="button" className="customer-heading customer-disclosure" aria-expanded={expanded} aria-controls={region} title={`${expanded ? "收起" : "展开"}${name}的项目`} disabled={disabled}
-        onClick={() => { setExpandedOverride(!expanded); setShowAll(false); }}>
+        onClick={() => {
+          setAnimateDisclosure(true);
+          setExpandedOverride(!expanded);
+          if (!expanded) setShowAll(false);
+        }}>
         {identity}
       </button> : <div className="customer-heading">{identity}</div>}
       <div className="customer-shared">
@@ -168,7 +174,8 @@ function CustomerEntry({ item, disabled, searchQuery, focus, onEdit, onEditProje
         <button type="button" className="icon-button danger" aria-label="删除" title={`删除 ${name}`} disabled={disabled} onClick={() => onRemove(item)}><Trash2 size={16} /></button>
       </div>
     </div>
-    {hasProjects && <div id={region} hidden={!expanded} className="customer-entry-details">{expanded && <>
+    {hasProjects && <div id={region} className="customer-entry-disclosure" data-expanded={expanded} data-animate={animateDisclosure} inert={!expanded} aria-hidden={!expanded || undefined}>
+      <div className="customer-entry-disclosure-content">{(expanded || expandedOverride !== null) && <div className="customer-entry-details">
       <h3 className="sr-only" id={`${region}-heading`}>项目清单</h3>
       <div className="table-wrap"><table className="customer-project-table" aria-labelledby={`${region}-heading`}>
         <thead><tr><th scope="col">项目名</th><th scope="col">项目群聊</th><th scope="col">项目负责人</th><th scope="col" className="customer-project-action"><span className="sr-only">操作</span></th></tr></thead>
@@ -181,7 +188,8 @@ function CustomerEntry({ item, disabled, searchQuery, focus, onEdit, onEditProje
         </tr>)}</tbody>
       </table></div>
       {projects.length > PREVIEW_PROJECTS && <button type="button" className="button small customer-more" onClick={() => setShowAll(!showAll)}>{showAll ? "收起" : `查看更多（全部 ${projects.length} 个项目）`}</button>}
-    </>}</div>}
+      </div>}</div>
+    </div>}
   </li>;
 }
 

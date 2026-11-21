@@ -1,8 +1,10 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
+import { motion } from "motion/react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { SearchHighlight } from "./SearchHighlight";
+import { SelectionIndicator, SelectionMotion } from "./SelectionMotion";
 
 const modules = [
   ["scripts", "脚本库"], ["articles", "知识库"], ["resources", "资源中心"],
@@ -107,11 +109,11 @@ export function GlobalSearch() {
         aria-autocomplete="list"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
-        aria-activedescendant={activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined}
+        aria-activedescendant={open && activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined}
       />
       <kbd>Ctrl K</kbd>
     </label>
-    {open && <div ref={list} id={listId} className="global-search-dropdown" role="listbox" aria-label="全局搜索结果" aria-busy={loading}>
+    {open && <SelectionMotion><motion.div layoutScroll ref={list} id={listId} className="global-search-dropdown" role="listbox" aria-label="全局搜索结果" aria-busy={loading}>
       {loading ? <div className="global-search-state" role="status">搜索中…</div>
         : error ? <div className="global-search-state error-text" role="alert">{error}</div>
         : !items.length ? <div className="global-search-state">没有匹配记录</div>
@@ -129,12 +131,13 @@ export function GlobalSearch() {
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => choose(item)}
           >
+            {activeIndex === index && <SelectionIndicator className="global-search-indicator" radius="inherit" transition={{ type: "tween", duration: .14, ease: "easeOut" }} />}
             <span className="global-search-result-copy">
               <span className="global-search-result-title" title={displayTitle}><SearchHighlight text={displayTitle} query={query} /></span>
               {item.customer_name && <span className="global-search-result-customer" title={item.customer_name}>{item.customer_name}</span>}
             </span>
             <span className="global-search-result-module">{item.moduleLabel}</span>
           </button>})}
-    </div>}
+    </motion.div></SelectionMotion>}
   </div>;
 }

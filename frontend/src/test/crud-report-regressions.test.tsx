@@ -11,6 +11,7 @@ function show(config: CrudConfig) {
   vi.spyOn(window, "scrollBy").mockImplementation(() => undefined);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   render(<MemoryRouter><QueryClientProvider client={client}><CrudPage config={config} /></QueryClientProvider></MemoryRouter>);
+  return client;
 }
 function listResponse(path: string, row: Record<string, unknown>, total = 1) {
   const page = Number(new URL(path, "http://localhost").searchParams.get("page"));
@@ -18,35 +19,62 @@ function listResponse(path: string, row: Record<string, unknown>, total = 1) {
 }
 
 describe("review report CRUD regressions", () => {
-  it("restarts the success timeout for repeated updates and keeps failures visible", async () => {
-    let failing = false;
-    let row = { id: 6, revision: 1, title: "通知测试", status: "待处理", priority: "中" };
+  it("waits for the request before confirming a task and keeps failures in that row", async () => {
+    let finish = () => {};
+    let row = { id: 6, revision: 1, title: "反馈测试", status: "待处理", priority: "中" };
+    let writes = 0;
     vi.stubGlobal("fetch", vi.fn(async (path: string, init?: RequestInit) => {
       if (init?.method === "PUT") {
-        if (failing) return Response.json({ detail: "更新失败，请重试" }, { status: 500 });
-        row = { ...row, ...JSON.parse(String(init.body)), revision: row.revision + 1 };
-        return Response.json(row);
+        if (++writes > 1) return Response.json({ detail: "更新失败，请重试" }, { status: 500 });
+        return new Promise<Response>((resolve) => { finish = () => {
+          row = { ...row, ...JSON.parse(String(init.body)), revision: row.revision + 1 };
+          resolve(Response.json(row));
+        }; });
       }
       return listResponse(path, row);
     }));
     show(tasksConfig);
     const complete = await screen.findByRole("button", { name: "完成" });
+    const task = within(screen.getByRole("row", { name: /反馈测试/ }));
     vi.useFakeTimers();
     fireEvent.click(complete);
-    await act(async () => { await vi.advanceTimersByTimeAsync(2999); });
-    expect(screen.getByText("记录已更新")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "恢复" }));
-    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-    await act(async () => { await vi.advanceTimersByTimeAsync(2999); });
-    expect(screen.getByText("记录已更新")).toBeInTheDocument();
-    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-    expect(screen.queryByText("记录已更新")).not.toBeInTheDocument();
-    failing = true;
     fireEvent.click(screen.getByRole("button", { name: "完成" }));
-    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-    expect(screen.getByRole("alert")).toHaveTextContent("更新失败，请重试");
+    await act(async () => { await vi.advanceTimersByTimeAsync(700); });
+    expect(writes).toBe(1);
+    expect(complete).toHaveAttribute("data-phase", "pending");
+    await act(async () => { finish(); await vi.advanceTimersByTimeAsync(499); });
+    expect(complete).toHaveAttribute("data-phase", "success");
+    expect(task.getByRole("status")).toHaveTextContent("任务已完成");
+    await act(async () => { await vi.advanceTimersByTimeAsync(40); });
+    fireEvent.click(task.getByRole("button", { name: "恢复" }));
     await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
-    expect(screen.getByRole("alert")).toHaveTextContent("更新失败，请重试");
+    expect(task.getByRole("alert")).toHaveTextContent("更新失败，请重试");
+    expect(task.getByRole("button", { name: "恢复" })).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("holds a filtered row through a concurrent refresh and then focuses the search", async () => {
+    let completed = false;
+    const row = { id: 6, revision: 1, title: "筛选任务", status: "待处理", is_overdue: true };
+    vi.stubGlobal("fetch", vi.fn(async (path: string, init?: RequestInit) => {
+      if (init?.method === "PUT") { completed = true; return Response.json({ ...row, status: "已完成", revision: 2 }); }
+      if (completed) return Response.json({ items: [], total: 0, page: 1, page_size: 10, pages: 1 });
+      return listResponse(path, row);
+    }));
+    const client = show(tasksConfig);
+    await screen.findByText("筛选任务");
+    fireEvent.click(screen.getByRole("button", { name: "仅看逾期" }));
+    const complete = screen.getByRole("button", { name: "完成" });
+    await waitFor(() => expect(complete).toBeEnabled());
+    vi.useFakeTimers();
+    complete.focus();
+    fireEvent.click(complete);
+    await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+    expect(complete).toHaveAttribute("data-phase", "success");
+    await act(async () => { await client.invalidateQueries({ queryKey: ["tasks"] }); await vi.advanceTimersByTimeAsync(10); });
+    expect(complete).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(550); });
+    expect(screen.queryByText("筛选任务")).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "按标题搜索任务" })).toHaveFocus();
   });
   it.each([500, 404])("does not show a create/save form after detail HTTP %s; retry updates the existing revision", async (status) => {
     let failing = true;

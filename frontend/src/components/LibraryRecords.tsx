@@ -1,13 +1,14 @@
 import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Copy, FileText, FolderOpen, Maximize2, Minimize2, MoreHorizontal, Pencil, Pin, Trash2, X } from "lucide-react";
+import { FileText, FolderOpen, Maximize2, Minimize2, MoreHorizontal, Pencil, Pin, Trash2, X } from "lucide-react";
 import screenfull from "screenfull";
 import { api, Entity } from "../api/client";
 import type { CrudConfig } from "./CrudPage";
 import { DatabaseLabel } from "./DatabaseLabel";
 import { EntityDetails } from "./EntityDetails";
 import { LocalFileLinks } from "./LocalFileLinks";
+import { CopyFeedbackButton } from "./CopyFeedbackButton";
 import { EmptyState, ErrorState, LoadingState } from "./States";
 import { FileName } from "./FileName";
 import { SelectionIndicator, SelectionMotion } from "./SelectionMotion";
@@ -232,10 +233,6 @@ export function LibraryPreview({ config, id, open = true, editorOpen, onClose, o
     onEdit(id!);
   }
   function notify(value: string) { setMessage(value); }
-  async function copyContent() {
-    try { await navigator.clipboard.writeText(body); notify(file.data?.truncated && needsFile ? "已复制当前预览片段" : "正文已复制"); }
-    catch { notify("复制失败，请手动选择正文复制"); }
-  }
   function dismissPreview() {
     if (expanded && desktop) {
       setExpanded(false);
@@ -262,7 +259,9 @@ export function LibraryPreview({ config, id, open = true, editorOpen, onClose, o
         {Boolean(row.updated_at) && <dl className="library-preview-meta"><dt>更新于</dt><dd title={String(row.updated_at)}>{String(row.updated_at).replace("T", " ").slice(0, 16)}</dd></dl>}
       </div>
       {config.fileLinks && <section className="library-preview-actions" aria-label="快捷访问">
-        <LocalFileLinks row={row} label={title} config={config.fileLinks} disabled={false} onNotice={notify} actionLabel={config.fileLinks.openLabel} compact />
+        <LocalFileLinks key={row.id} row={row} label={title} config={config.fileLinks} disabled={false} onNotice={notify} actionLabel={config.fileLinks.openLabel} compact inlineCopyFeedback />
+        {config.key === "articles" && savedContent.trim() && <CopyFeedbackButton key={`content-${row.id}`} value={savedContent} className="button small" label="复制正文"
+          onCopied={() => notify("")} onError={() => notify("复制失败，请在编辑窗口手动复制正文")} />}
       </section>}
     </div>}
     <div className={`library-preview-body${showDocumentInfo && row ? " has-script-inspector" : ""}`}>
@@ -283,7 +282,9 @@ export function LibraryPreview({ config, id, open = true, editorOpen, onClose, o
               </section>}
               {config.key === "articles" && !hasLinkedFile && <EmptyState title="尚未关联源文件" description="请编辑记录，填写源文件路径后预览。" />}
               {config.key === "scripts" && (savedContent || needsFile || !hasLinkedFile) && <section className="library-preview-section" aria-label="正文预览"><div className="library-content-heading"><h3>脚本正文</h3>
-                <button type="button" className="button small" disabled={!body || (needsFile && (file.isFetching || !!file.error))} onClick={() => void copyContent()}><Copy size={14} />{needsFile && file.data?.truncated ? "复制预览" : "复制正文"}</button>
+                <CopyFeedbackButton key={row.id} value={body} className="button small" disabled={!body || (needsFile && (file.isFetching || !!file.error))}
+                  label={needsFile && file.data?.truncated ? "复制预览" : "复制正文"} successLabel={needsFile && file.data?.truncated ? "已复制预览片段" : "已复制"}
+                  onCopied={() => notify("")} onError={() => notify("复制失败，请手动选择正文复制")} />
               </div>
                 {needsFile && <p className="library-file-source muted"><span title={linkedPath}><FolderOpen size={13} aria-hidden="true" /><FileName text={file.data?.filename || linkedPath} path={linkedPath} /></span>
                   <button type="button" className="button small" disabled={file.isFetching} onClick={() => void file.refetch()}>重新读取</button>

@@ -388,6 +388,8 @@ describe("library classification and read-only preview", () => {
 
   it("shows file permission failures and retries without disabling file shortcuts", async () => {
     let denied = true;
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
     const row = { id: 13, revision: 1, title: "读取失败", content: "", file_path: "D:/docs/file.sql" };
     vi.stubGlobal("fetch", vi.fn(async (path: string) => {
       if (path.endsWith("facets")) return Response.json({ total: 1, items: [] });
@@ -405,7 +407,12 @@ describe("library classification and read-only preview", () => {
     denied = false;
     fireEvent.click(within(within(preview).getByRole("region", { name: "正文预览" })).getByRole("button", { name: "重试" }));
     await within(preview).findByText("已恢复读取");
-    expect(within(preview).getByRole("button", { name: "复制预览" })).toBeEnabled();
+    const copy = within(preview).getByRole("button", { name: "复制预览" });
+    expect(copy).toBeEnabled();
+    fireEvent.click(copy);
+    await waitFor(() => expect(copy.querySelector("[data-copied]")).toBeInTheDocument());
+    expect(copy).toHaveTextContent("已复制预览片段");
+    expect(writeText).toHaveBeenCalledWith("已恢复读取");
   });
   it("resources keep direct access and folder shortcuts without any preview entry", async () => {
     const reads: string[] = [];
@@ -426,6 +433,8 @@ describe("library classification and read-only preview", () => {
     const titleField = config.titleField;
     const row = { id: 7, revision: 4, [titleField]: "快速访问测试", [config.fileLinks!.pathField]: "D:/test/record.sql", wb_db: "Oracle", db_type: "Oracle" };
     const requests: Array<{ path: string; init?: RequestInit }> = [];
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
     vi.stubGlobal("fetch", vi.fn(async (path: string, init?: RequestInit) => {
       requests.push({ path, init });
       if (path.endsWith("facets")) return Response.json({ total: 1, items: [] });
@@ -448,7 +457,14 @@ describe("library classification and read-only preview", () => {
     const launched = requests.find(({ path }) => path === "/api/launcher/path")!;
     expect(JSON.parse(String(launched.init?.body))).toEqual({ path: "D:/test/record.sql", mode: "folder" });
     expect(within(preview).getByRole("button", { name: `${config.fileLinks!.openLabel}：快速访问测试` })).toBeInTheDocument();
-    expect(within(preview).getByRole("button", { name: "复制路径：快速访问测试" })).toBeInTheDocument();
+    const copyPath = within(preview).getByRole("button", { name: "复制路径：快速访问测试" });
+    fireEvent.click(copyPath);
+    await waitFor(() => expect(copyPath.querySelector("[data-copied]")).toBeInTheDocument());
+    expect(writeText).toHaveBeenLastCalledWith("D:/test/record.sql");
+    const copyBody = within(preview).getByRole("button", { name: "复制正文" });
+    fireEvent.click(copyBody);
+    await waitFor(() => expect(copyBody.querySelector("[data-copied]")).toBeInTheDocument());
+    expect(writeText).toHaveBeenLastCalledWith("完整正文，不能被摘要覆盖");
     fireEvent.click(within(preview).getByRole("button", { name: "关闭预览" }));
     expect(screen.queryByRole("complementary", { name: "记录预览" })).not.toBeInTheDocument();
   });
