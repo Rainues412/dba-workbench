@@ -60,7 +60,7 @@ describe("knowledge category visibility", () => {
     const retry = vi.fn();
     const { rerender } = render(<CategoryNavigation {...props} data={undefined} loading />);
     expect(buttons()).toEqual(["全部0"]);
-    expect(screen.getByText("正在读取分类")).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "正在读取分类" })).toHaveAttribute("aria-busy", "true");
     rerender(<CategoryNavigation {...props} data={undefined} error retry={retry} />);
     expect(buttons()).toEqual(["全部0"]);
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
