@@ -2,9 +2,11 @@
 
 mod dashboard;
 mod desktop_db;
+mod libraries;
 mod resources;
 mod search;
 mod tasks;
+mod window_visibility;
 
 use std::{
     env, fs, io,
@@ -15,22 +17,8 @@ use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     webview::NewWindowResponse,
-    AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
+    Manager, Url, WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
-
-fn register_window(window: &WebviewWindow, port: u16) -> io::Result<()> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::SetPropW;
-    let hwnd = window.hwnd().map_err(io::Error::other)?;
-    let name: Vec<u16> = format!("DBAWorkbench.DesktopWindow.{port}")
-        .encode_utf16()
-        .chain([0])
-        .collect();
-    // The existing shortcut can now activate this window using the same Win32 property.
-    if unsafe { SetPropW(hwnd.0, name.as_ptr(), std::ptr::dangling_mut()) } == 0 {
-        return Err(io::Error::last_os_error());
-    }
-    Ok(())
-}
 
 fn open_external(url: &Url) {
     use windows_sys::Win32::UI::Shell::ShellExecuteW;
@@ -58,19 +46,11 @@ fn close_to_tray(settings: Option<&Path>) -> bool {
         .unwrap_or(true)
 }
 
-fn show_window(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
-}
-
 fn main() {
     let mut builder = tauri::Builder::default();
     if env::var_os("DBA_TAURI_PORT").is_none() {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            show_window(app);
+            window_visibility::request_show(app);
         }));
     }
     builder
@@ -118,7 +98,7 @@ fn main() {
                 .show_menu_on_left_click(false)
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id().as_ref() {
-                    "open" => show_window(app),
+                    "open" => window_visibility::request_show(app),
                     "exit" => app.exit(0),
                     _ => {}
                 })
@@ -129,7 +109,7 @@ fn main() {
                         ..
                     } = event
                     {
-                        show_window(tray.app_handle());
+                        window_visibility::request_show(tray.app_handle());
                     }
                 });
             if let Some(icon) = app.default_window_icon() {
@@ -139,7 +119,8 @@ fn main() {
 
             let mut config = app.config().app.windows[0].clone();
             config.url = WebviewUrl::External(url);
-            config.visible = env::var("DBA_TAURI_SILENT").as_deref() != Ok("1");
+            config.visible = false;
+            let show_when_ready = env::var("DBA_TAURI_SILENT").as_deref() != Ok("1");
             let profile = env::var_os("DBA_TAURI_WEBVIEW")
                 .map(PathBuf::from)
                 .unwrap_or_else(|| data_dir.join("webview"));
@@ -152,9 +133,11 @@ fn main() {
                     NewWindowResponse::Deny
                 })
                 .build()?;
+            window_visibility::prepare(&window, show_when_ready)?;
             if let Some(port) = source_port {
-                register_window(&window, port)?;
+                window_visibility::register(&window, port)?;
             }
+            window_visibility::watch_startup(window.clone());
             let workbench = window.clone();
             window.on_window_event(move |event| {
                 if let WindowEvent::CloseRequested { api, .. } = event {
@@ -163,9 +146,13 @@ fn main() {
                         workbench.app_handle().exit(0);
                         return;
                     }
-                    let _ = workbench.hide();
-                    // Match the current desktop window's release of page memory and unlocked keys.
-                    let _ = workbench.eval("window.location.reload()");
+                    if window_visibility::prepare(&workbench, false).is_ok() {
+                        let _ = workbench.hide();
+                        // Reload while hidden to release page memory and unlocked keys.
+                        if workbench.reload().is_err() {
+                            workbench.app_handle().exit(1);
+                        }
+                    }
                 }
             });
             Ok(())
@@ -185,7 +172,17 @@ fn main() {
             resources::resources_create,
             resources::resources_update,
             resources::resources_delete,
+            libraries::library_list,
+            libraries::library_facets,
+            libraries::library_detail,
+            libraries::library_create,
+            libraries::library_update,
+            libraries::library_delete,
+            libraries::script_recent_views,
+            libraries::script_record_view,
+            libraries::script_version,
             search::global_search,
+            window_visibility::desktop_painted,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the DBA Workbench migration preview");

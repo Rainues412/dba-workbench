@@ -24,6 +24,16 @@
     "allow-resources-create",
     "allow-resources-update",
     "allow-resources-delete",
-    "allow-global-search"
+    "allow-library-list",
+    "allow-library-facets",
+    "allow-library-detail",
+    "allow-library-create",
+    "allow-library-update",
+    "allow-library-delete",
+    "allow-script-recent-views",
+    "allow-script-record-view",
+    "allow-script-version",
+    "allow-global-search",
+    "allow-desktop-painted"
   ]
 }

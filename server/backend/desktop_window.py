@@ -63,6 +63,8 @@ def activate(port: int) -> bool:
     user32 = ctypes.windll.user32
     user32.GetPropW.argtypes = [wintypes.HWND, wintypes.LPCWSTR]
     user32.GetPropW.restype = wintypes.HANDLE
+    user32.SetPropW.argtypes = [wintypes.HWND, wintypes.LPCWSTR, wintypes.HANDLE]
+    user32.SetPropW.restype = wintypes.BOOL
     user32.IsIconic.argtypes = [wintypes.HWND]
     user32.ShowWindowAsync.argtypes = [wintypes.HWND, ctypes.c_int]
     user32.SetForegroundWindow.argtypes = [wintypes.HWND]
@@ -74,6 +76,11 @@ def activate(port: int) -> bool:
         nonlocal found
         if not user32.GetPropW(hwnd, prop):
             return True
+        if user32.GetPropW(hwnd, "DBAWorkbench.WaitingForPaint"):
+            # Ask the native host to show after rendering; recheck in case it just finished.
+            if user32.SetPropW(hwnd, "DBAWorkbench.ShowAfterPaint", 1) and user32.GetPropW(hwnd, "DBAWorkbench.WaitingForPaint"):
+                found = True
+                return False
         # SW_RESTORE only for a minimized window, so a maximized window stays maximized.
         user32.ShowWindowAsync(hwnd, 9 if user32.IsIconic(hwnd) else 5)
         user32.SetForegroundWindow(hwnd)

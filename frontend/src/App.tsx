@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthPage } from "./auth/AuthPage";
@@ -19,6 +21,24 @@ export function App() {
 
 function Gate() {
   const { session, loading, refreshError } = useAuth();
+  useEffect(() => {
+    if (loading || !isTauri()) return;
+    let notified = false;
+    const notify = () => {
+      if (notified) return;
+      notified = true;
+      void invoke("desktop_painted").catch((error) => console.error("无法通知桌面窗口显示", error));
+    };
+    // Hidden WebViews can pause animation frames. The timer also runs after React commits.
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => { secondFrame = requestAnimationFrame(notify); });
+    const timer = window.setTimeout(notify, 120);
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+      window.clearTimeout(timer);
+    };
+  }, [loading]);
   if (loading) return <DesktopStartup><main className="auth-layout"><LoadingState label="检查本机会话" /></main></DesktopStartup>;
   if (!session && refreshError) return <DesktopStartup><main className="auth-layout"><p role="alert">无法建立本机会话。请重新打开工作台。</p></main></DesktopStartup>;
   if (!session?.authenticated) return <DesktopStartup><AuthPage /></DesktopStartup>;

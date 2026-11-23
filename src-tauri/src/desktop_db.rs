@@ -37,6 +37,16 @@ impl CommandError {
     }
 }
 
+pub fn expected_revision(revision: i64) -> Result<()> {
+    if revision < 1 {
+        return Err(CommandError::new(
+            400,
+            "If-Match must contain a positive revision",
+        ));
+    }
+    Ok(())
+}
+
 impl From<rusqlite::Error> for CommandError {
     fn from(error: rusqlite::Error) -> Self {
         eprintln!("workspace SQLite operation failed: {error}");
@@ -90,16 +100,16 @@ fn session_token(window: &WebviewWindow, workspace: &Workspace) -> Result<Option
 fn session(
     connection: &Connection,
     token: Option<&str>,
-) -> rusqlite::Result<Option<(i64, String, String)>> {
+) -> rusqlite::Result<Option<(i64, String, String, i64)>> {
     let Some(token) = token else { return Ok(None) };
     connection.query_row(
-        "SELECT s.id, u.username, s.csrf_hash FROM sessions s
+        "SELECT s.id, u.username, s.csrf_hash, u.id FROM sessions s
          JOIN users u ON u.id = s.user_id
          WHERE s.token_hash = ?1 AND u.is_active <> 0
            AND datetime(s.expires_at) > CURRENT_TIMESTAMP
            AND EXISTS (SELECT 1 FROM memberships m JOIN roles r ON r.id = m.role_id WHERE m.user_id = u.id)",
         [hex::encode(Sha256::digest(token))],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
     ).optional()
 }
 
@@ -108,14 +118,37 @@ pub async fn read<T: Send + 'static>(
     workspace: &Workspace,
     query: impl FnOnce(&Connection) -> Result<T> + Send + 'static,
 ) -> Result<T> {
+    read_user(window, workspace, false, move |conn, _| query(conn)).await
+}
+
+pub async fn read_user<T: Send + 'static>(
+    window: WebviewWindow,
+    workspace: &Workspace,
+    count_view: bool,
+    query: impl FnOnce(&Connection, i64) -> Result<T> + Send + 'static,
+) -> Result<T> {
     let token = session_token(&window, workspace)?;
     let path = workspace.path.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let mut conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        let (flags, behavior) = if count_view {
+            (
+                OpenFlags::SQLITE_OPEN_READ_WRITE,
+                TransactionBehavior::Immediate,
+            )
+        } else {
+            (
+                OpenFlags::SQLITE_OPEN_READ_ONLY,
+                TransactionBehavior::Deferred,
+            )
+        };
+        let mut conn = Connection::open_with_flags(path, flags)?;
         conn.busy_timeout(Duration::from_secs(5))?;
-        let tx = conn.transaction()?;
-        session(&tx, token.as_deref())?.ok_or_else(CommandError::unauthorized)?;
-        query(&tx)
+        let tx = conn.transaction_with_behavior(behavior)?;
+        let (_, _, _, user_id) =
+            session(&tx, token.as_deref())?.ok_or_else(CommandError::unauthorized)?;
+        let result = query(&tx, user_id)?;
+        tx.commit()?;
+        Ok(result)
     })
     .await
     .map_err(|_| CommandError::storage())?
@@ -130,6 +163,27 @@ pub async fn write<T: Send + 'static>(
     object_id: Option<i64>,
     change: impl FnOnce(&Connection) -> Result<T> + Send + 'static,
 ) -> Result<T> {
+    write_user(
+        window,
+        workspace,
+        csrf_token,
+        action,
+        object_type,
+        object_id,
+        move |conn, _| change(conn),
+    )
+    .await
+}
+
+pub async fn write_user<T: Send + 'static>(
+    window: WebviewWindow,
+    workspace: &Workspace,
+    csrf_token: String,
+    action: &'static str,
+    object_type: &'static str,
+    object_id: Option<i64>,
+    change: impl FnOnce(&Connection, i64) -> Result<T> + Send + 'static,
+) -> Result<T> {
     let token = session_token(&window, workspace)?;
     let path = workspace.path.clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -139,7 +193,7 @@ pub async fn write<T: Send + 'static>(
         let mut tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let (actor, result) = match session(&tx, token.as_deref())? {
             None => ("local-user".into(), Err(CommandError::unauthorized())),
-            Some((session_id, actor, csrf_hash)) => {
+            Some((session_id, actor, csrf_hash, user_id)) => {
                 tx.execute(
                     "UPDATE sessions SET last_seen_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now') WHERE id = ?1",
                     [session_id],
@@ -149,7 +203,7 @@ pub async fn write<T: Send + 'static>(
                 } else {
                     // Roll back a partial change before recording an unsuccessful operation.
                     let changes = tx.savepoint()?;
-                    let result = change(&changes);
+                    let result = change(&changes, user_id);
                     if result.is_ok() { changes.commit()?; }
                     result
                 };

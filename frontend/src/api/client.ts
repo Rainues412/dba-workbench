@@ -23,6 +23,7 @@ const desktopReadCommands = new Map([
   ["/api/dashboard/recent-tasks", "dashboard_recent_tasks"],
   ["/api/dashboard/database-distribution", "dashboard_database_distribution"],
   ["/api/resources/facets", "resources_facets"],
+  ["/api/scripts/recent-views", "script_recent_views"],
 ]);
 export const REAUTH_REQUIRED_EVENT = "dba:reauth-required";
 export const VAULT_LOCKED_EVENT = "dba:vault-locked";
@@ -46,9 +47,24 @@ export async function api<T>(
   path: string,
   init: RequestInit & { revision?: number } = {},
 ): Promise<T> {
-  if (isTauri() && (init.method ?? "GET").toUpperCase() === "GET") {
-    const command = desktopReadCommands.get(path);
-    if (command) return invokeDesktop<T>(command, {}, init.signal ?? undefined);
+  if (isTauri()) {
+    const method = (init.method ?? "GET").toUpperCase();
+    const signal = init.signal ?? undefined;
+    if (method === "GET") {
+      const command = desktopReadCommands.get(path);
+      if (command) return invokeDesktop<T>(command, {}, signal);
+      const library = /^\/api\/(scripts|articles)\/(facets|\d+)$/.exec(path);
+      if (library) {
+        const [, name, target] = library;
+        if (target === "facets") return invokeDesktop<T>("library_facets", { library: name }, signal);
+        return invokeDesktop<T>("library_detail", { library: name, id: Number(target) }, signal);
+      }
+      const history = /^\/api\/scripts\/(\d+)\/versions\/(\d+)$/.exec(path);
+      if (history) return invokeDesktop<T>("script_version", { id: Number(history[1]), version: Number(history[2]) }, signal);
+    } else if (method === "POST") {
+      const view = /^\/api\/scripts\/(\d+)\/view$/.exec(path);
+      if (view) return invokeDesktop<T>("script_record_view", { id: Number(view[1]), csrfToken });
+    }
   }
 
   const headers = new Headers(init.headers);
@@ -126,7 +142,16 @@ function nativeEntity(path: string) {
   if (!isTauri()) return null;
   if (path === "/api/tasks/") return "tasks";
   if (path === "/api/resources/") return "resources";
+  if (path === "/api/scripts/") return "scripts";
+  if (path === "/api/articles/") return "articles";
   return null;
+}
+
+function invokeEntity<T>(module: NonNullable<ReturnType<typeof nativeEntity>>, action: string, args: Record<string, unknown>) {
+  if (module === "scripts" || module === "articles") {
+    return invokeDesktop<T>(`library_${action}`, { library: module, ...args });
+  }
+  return invokeDesktop<T>(`${module}_${action}`, args);
 }
 
 async function sessionStatus(signal?: AbortSignal): Promise<Session> {
@@ -173,6 +198,16 @@ export const entityApi = {
           tag: filters.tag ?? "", wbDb: filters.wb_db ?? "", favoriteOnly: filters.favorite_only === "1" },
       }, signal);
     }
+    if (module === "scripts" || module === "articles") {
+      const scripts = module === "scripts";
+      return invokeDesktop<Page<T>>("library_list", {
+        library: module,
+        filter: { page, pageSize, keyword, database: filters[scripts ? "db_type" : "wb_db"] ?? "",
+          category: filters[scripts ? "wb_type" : "category"] ?? "", tag: filters.tag ?? "",
+          favoriteOnly: filters.favorite_only === "1", locateId: filters.locate_id ? Number(filters.locate_id) : null,
+          autoPin: scripts && filters.auto_pin === "1" },
+      }, signal);
+    }
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
     if (keyword) params.set("keyword", keyword);
     for (const [field, value] of Object.entries(filters)) if (value) params.set(field, value);
@@ -180,21 +215,21 @@ export const entityApi = {
   },
   detail: <T extends Entity>(path: string, id: number) => {
     const module = nativeEntity(path);
-    return module ? invokeDesktop<T>(`${module}_detail`, { id }) : api<T>(`${path}${id}`);
+    return module ? invokeEntity<T>(module, "detail", { id }) : api<T>(`${path}${id}`);
   },
   create: <T extends Entity>(path: string, body: Record<string, unknown>) => {
     const module = nativeEntity(path);
-    return module ? invokeDesktop<T>(`${module}_create`, { input: body, csrfToken })
+    return module ? invokeEntity<T>(module, "create", { input: body, csrfToken })
       : api<T>(path, { method: "POST", body: jsonBody(body) });
   },
   update: <T extends Entity>(path: string, id: number, revision: number, body: Record<string, unknown>) => {
     const module = nativeEntity(path);
-    return module ? invokeDesktop<T>(`${module}_update`, { id, revision, input: body, csrfToken })
+    return module ? invokeEntity<T>(module, "update", { id, revision, input: body, csrfToken })
       : api<T>(`${path}${id}`, { method: "PUT", revision, body: jsonBody(body) });
   },
   remove: (path: string, id: number, revision: number) => {
     const module = nativeEntity(path);
-    return module ? invokeDesktop<void>(`${module}_delete`, { id, revision, csrfToken }).then(() => ({ ok: true }))
+    return module ? invokeEntity<void>(module, "delete", { id, revision, csrfToken }).then(() => ({ ok: true }))
       : api<{ ok: boolean }>(`${path}${id}`, { method: "DELETE", revision });
   },
 };
