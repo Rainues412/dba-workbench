@@ -5,12 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import socket
 import subprocess
 import sys
 import time
-import urllib.error
-import urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -20,6 +17,7 @@ SERVER_DIR = REPO_DIR / "server"
 sys.path.insert(0, str(SERVER_DIR))
 from backend import desktop_window
 from backend.browser_launch import find_edge, open_workbench
+from backend.desktop_service import probe_workbench
 LOCAL_CONFIG = REPO_DIR / ".runtime" / "local-capabilities.json"
 VENV_PYTHON = REPO_DIR / ".runtime" / ".venv" / "Scripts" / "python.exe"
 HOST = "127.0.0.1"
@@ -35,17 +33,7 @@ EDGE_PATH = find_edge()
 
 
 def probe_service() -> str:
-    """Return ``dba``, ``other``, or ``down`` for the configured endpoint."""
-    try:
-        with urllib.request.urlopen(URL, timeout=1.0) as response:
-            body = response.read(4096).decode("utf-8", errors="ignore")
-            return "dba" if "DBA 工作台" in body else "other"
-    except (urllib.error.URLError, TimeoutError, OSError):
-        try:
-            with socket.create_connection((HOST, PORT), timeout=0.5):
-                return "other"
-        except OSError:
-            return "down"
+    return probe_workbench(HOST, PORT)
 
 
 def start_server(desktop_host: Path | None = None, *, tauri_host: Path | None = None) -> bool:

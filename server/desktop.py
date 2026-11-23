@@ -5,18 +5,16 @@ import os
 import json
 import logging
 import secrets
-import socket
 import subprocess
 import sys
 import threading
 import time
-import urllib.error
-import urllib.request
 from concurrent.futures import Future
 from pathlib import Path
 
 from backend import desktop_window
 from backend.browser_launch import find_edge, open_workbench
+from backend.desktop_service import probe_workbench
 from backend.desktop_settings import DesktopSettings, WindowsStartup, startup_command
 
 APP_TITLE = "DBA 工作台"
@@ -89,16 +87,7 @@ def _configure_runtime() -> Path:
 
 
 def _probe_service() -> str:
-    try:
-        with urllib.request.urlopen(URL, timeout=1.0) as response:
-            body = response.read(4096).decode("utf-8", errors="ignore")
-            return "dba" if APP_TITLE in body else "other"
-    except (urllib.error.URLError, TimeoutError, OSError):
-        try:
-            with socket.create_connection((HOST, PORT), timeout=0.5):
-                return "other"
-        except OSError:
-            return "down"
+    return probe_workbench(HOST, PORT)
 
 
 def _open_workbench() -> None:

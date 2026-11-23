@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import importlib.util
+import socket
 import sys
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from threading import Thread
 
 import pytest
-from backend import browser_launch
+from backend import browser_launch, desktop_service
 
 
 @pytest.fixture()
@@ -16,6 +19,38 @@ def launcher(tmp_path):
     spec.loader.exec_module(module)
     module.LOCAL_CONFIG = tmp_path / "local-capabilities.json"
     return module
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows exclusive socket bind")
+def test_probe_skips_network_requests_when_port_is_free(monkeypatch):
+    host = "127.0.0.1"
+    with socket.socket() as listener:
+        listener.bind((host, 0))
+        port = listener.getsockname()[1]
+    monkeypatch.setattr(
+        desktop_service.urllib.request, "urlopen",
+        lambda *args, **kwargs: pytest.fail("Unused port must not wait for HTTP"),
+    )
+
+    assert desktop_service.probe_workbench(host, port) == "down"
+
+
+@pytest.mark.parametrize(("title", "expected"), [("DBA 工作台", "dba"), ("Another app", "other")])
+def test_probe_identifies_the_application_on_an_occupied_port(title, expected):
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(title.encode("utf-8"))
+
+    with HTTPServer(("127.0.0.1", 0), Handler) as server:
+        worker = Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        try:
+            assert desktop_service.probe_workbench(*server.server_address) == expected
+        finally:
+            server.shutdown()
+            worker.join()
 
 
 @pytest.mark.parametrize("has_venv", [True, False])
