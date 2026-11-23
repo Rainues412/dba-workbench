@@ -34,11 +34,17 @@ def test_task_management_uses_dashboard_order(live_server, tmp_path):
             page.get_by_role("navigation", name="主导航").get_by_role("link", name="任务管理", exact=True).click()
             titles = page.locator(".task-title-cell strong")
             expect(titles).to_have_text(expected + ["已完成任务"])
+            expect(page.get_by_role("button", name="编辑", exact=True)).to_have_count(len(expected) + 1)
             for width, theme in [(1440, "light"), (390, "dark")]:
                 page.set_viewport_size({"width": width, "height": 1000})
                 page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
                 expect(titles).to_have_text(expected + ["已完成任务"])
                 assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+                assert page.locator(".task-table td.row-actions").evaluate_all("""cells => cells.every(cell => {
+                    const buttons = [...cell.querySelectorAll('button')].map(button => button.getBoundingClientRect());
+                    return buttons.length === 3 && buttons.every(bounds =>
+                        Math.abs(bounds.top - buttons[0].top) < 0.5 && Math.abs(bounds.height - buttons[0].height) < 0.5);
+                })"""), f"Task buttons are misaligned at {width}px ({theme})"
                 page.screenshot(path=str(tmp_path / f"task-order-{width}-{theme}.png"))
             page.get_by_label("筛选任务状态").select_option("进行中")
             expect(titles).to_have_text([title for title in expected if "进行中" in title])

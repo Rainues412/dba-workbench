@@ -112,7 +112,7 @@ export function Dashboard() {
               <span className={`badge${task.status === "进行中" ? " status-info" : ""}`}>{task.status}</span>
               {Boolean(task.is_overdue) && <span className="badge danger">已逾期</span>}
             </span>
-            <TaskStatusButton phase={processing.get(task.id)?.phase} title="标记为已完成" accessibleLabel={`完成任务：${task.title}`} onClick={(trigger) => void completeTask(task, position, trigger)} />
+            <TaskStatusButton showIcon={false} phase={processing.get(task.id)?.phase} title="标记为已完成" accessibleLabel={`完成任务：${task.title}`} onClick={(trigger) => void completeTask(task, position, trigger)} />
           </li>;
         })}</ul>)}
       </section>

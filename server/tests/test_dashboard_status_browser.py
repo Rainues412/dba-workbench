@@ -36,6 +36,9 @@ def test_dashboard_preserves_status_and_overdue_labels(live_server, tmp_path):
                 page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
                 for title, status, overdue, _ in rows:
                     row = queue.get_by_role("listitem").filter(has=page.get_by_text(title, exact=True))
+                    complete = row.get_by_role("button", name=f"完成任务：{title}", exact=True)
+                    expect(complete).to_be_visible()
+                    expect(complete.locator("svg")).to_have_count(0)
                     expect(row.get_by_text(status, exact=True)).to_be_visible()
                     expect(row.get_by_text("已逾期", exact=True)).to_have_count(int(overdue))
                     if status == "进行中":

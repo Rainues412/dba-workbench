@@ -111,7 +111,7 @@ describe("review report CRUD regressions", () => {
       throw new Error(`Unexpected request: ${path}`);
     }));
     show(tasksConfig);
-    fireEvent.click(await screen.findByRole("button", { name: "查看/编辑" }));
+    fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
     const dialog = await screen.findByRole("dialog");
     await within(dialog).findByText("详情加载失败，未进入新增模式，请重试");
     expect(within(dialog).getByRole("heading", { name: "编辑任务" })).toBeInTheDocument();

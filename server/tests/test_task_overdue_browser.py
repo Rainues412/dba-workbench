@@ -38,7 +38,7 @@ def test_blank_deadline_create_filter_and_clear_in_production_ui(live_server, tm
             expect(blank).to_have_count(0)
             past = page.locator("tbody tr").filter(has_text="确实逾期")
             expect(past.get_by_text("已逾期", exact=True)).to_be_visible()
-            past.get_by_role("button", name="查看/编辑", exact=True).click()
+            past.get_by_role("button", name="编辑", exact=True).click()
             dialog.get_by_label("截止日期", exact=True).fill("")
             dialog.get_by_role("button", name="保存", exact=True).click()
             expect(dialog).to_have_count(0)

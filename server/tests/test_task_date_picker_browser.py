@@ -20,7 +20,7 @@ def test_task_date_picker_layout_keyboard_and_save(live_server, tmp_path):
             page = browser.new_page(viewport={"width": 1440, "height": 900}, timezone_id="Asia/Shanghai")
             _login(page, live_server)
             page.get_by_role("navigation", name="主导航").get_by_role("link", name="任务管理", exact=True).click()
-            page.get_by_role("button", name="查看/编辑", exact=True).click()
+            page.get_by_role("button", name="编辑", exact=True).click()
             editor = page.get_by_role("dialog", name="编辑任务", exact=True)
             calendar = page.get_by_role("dialog", name="选择日期", exact=True)
             deadline = editor.get_by_label("截止日期", exact=True)
@@ -64,7 +64,7 @@ def test_task_date_picker_layout_keyboard_and_save(live_server, tmp_path):
             expect(editor).to_have_count(0)
             assert client.get(task_url).json()["due_date"] == "2028-02-29"
 
-            page.get_by_role("button", name="查看/编辑", exact=True).click()
+            page.get_by_role("button", name="编辑", exact=True).click()
             expect(deadline).to_have_value("2028-02-29")
             deadline.fill("2026-02-30")
             editor.get_by_role("button", name="保存", exact=True).click()

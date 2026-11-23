@@ -759,8 +759,9 @@ body:has(.desktop-shell) .profile-dialog { inset-block: 64px; max-height: calc(1
 .task-due-cell.overdue > span, .task-due-cell.overdue small { color: var(--danger); }
 .task-table .actions-heading { width: 270px; }
 .task-table td.row-actions { display: table-cell; max-width: 270px; text-align: right; }
-.task-table td.row-actions > button { margin: .18rem 0 .18rem .38rem; }
-.task-morph-slot { --task-morph-size: 32px; display: inline-grid; place-items: center; width: 4.15rem; margin: .18rem 0 .18rem .38rem; vertical-align: middle; flex: 0 0 auto; }
+.task-table td.row-actions, .task-morph-slot { --task-morph-size: 32px; }
+.task-table td.row-actions > .button { min-height: var(--task-morph-size); margin: .18rem 0 .18rem .38rem; vertical-align: middle; }
+.task-morph-slot { display: inline-grid; place-items: center; width: 4.15rem; margin: .18rem 0 .18rem .38rem; vertical-align: middle; flex: 0 0 auto; }
 .button.small.task-morph { position: relative; display: inline-grid; place-items: center; width: 100%; height: var(--task-morph-size); min-height: var(--task-morph-size); padding: 0; overflow: hidden; transition: width 240ms ease-in-out, border-radius 240ms ease-in-out, background-color 150ms ease, border-color 150ms ease, color 150ms ease; }
 .button.task-morph[data-phase] { width: var(--task-morph-size); border-radius: 50%; cursor: default; transform: none; }
 .dashboard-task-list .task-morph-slot { --task-morph-size: 30px; width: 3.9rem; margin: 0; }
@@ -1057,6 +1058,8 @@ body:has(.desktop-shell) .profile-dialog { inset-block: 64px; max-height: calc(1
   .task-table tbody tr:hover td, .task-table .task-row.is-overdue td { background: transparent; }
   td::before { content: attr(data-label); color: var(--muted); font-size: .68rem; font-weight: 700; }
   td.row-actions, .task-table td.row-actions { display: flex; justify-content: flex-end; max-width: none; padding-top: .7rem; border: 0; }
+  .task-table td.row-actions { column-gap: .38rem; }
+  .task-table td.row-actions > :is(.button, .task-morph-slot) { margin-left: 0; }
   .auth-layout { grid-template-columns: 1fr; }
   .auth-showcase { display: none; }
   .auth-panel { min-height: 100vh; padding: 1.25rem; background: radial-gradient(circle at top, var(--primary-soft), var(--surface) 48%); }

@@ -498,7 +498,7 @@ function CrudContent({ config }: { config: CrudConfig }) {
                 </td>)}
                 <td className="row-actions" data-label="操作">
                   <TaskStatusButton completed={row.status === "已完成"} phase={phase} disabled={list.isPlaceholderData} onClick={(trigger) => void updateTask(row, position, trigger)} />
-                  <button className="button small" disabled={list.isPlaceholderData || !!phase} onClick={() => { setCreating(false); setSelectedId(row.id); }}><Pencil size={14} />查看/编辑</button>
+                  <button className="button small" disabled={list.isPlaceholderData || !!phase} onClick={() => { setCreating(false); setSelectedId(row.id); }}><Pencil size={14} />编辑</button>
                   <button className="button small danger" disabled={list.isPlaceholderData || !!phase} onClick={() => void remove(row)}><Trash2 size={14} />删除</button>
                   {action?.phase === "error" && <p className="task-action-error" role="alert">{action.message}</p>}
                 </td>

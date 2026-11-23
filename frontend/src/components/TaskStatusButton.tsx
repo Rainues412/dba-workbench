@@ -20,8 +20,9 @@ export async function playTaskStatusFeedback<T>(request: Promise<T>, reducedMoti
   return result;
 }
 
-export function TaskStatusButton({ completed = false, phase, disabled, accessibleLabel, title, onClick }: {
+export function TaskStatusButton({ completed = false, showIcon = true, phase, disabled, accessibleLabel, title, onClick }: {
   completed?: boolean;
+  showIcon?: boolean;
   phase?: TaskStatusPhase;
   disabled?: boolean;
   accessibleLabel?: string;
@@ -29,10 +30,11 @@ export function TaskStatusButton({ completed = false, phase, disabled, accessibl
   onClick: (trigger: HTMLButtonElement) => void;
 }) {
   const label = completed ? "恢复" : "完成";
+  const Icon = completed ? Undo2 : CheckCircle2;
   const feedback = phase === "pending" ? "处理中…" : phase === "success" ? completed ? "任务已恢复" : "任务已完成" : "";
   return <SubmitMorph phase={phase} disabled={disabled} accessibleLabel={accessibleLabel ?? label} title={title}
     feedback={feedback} onClick={onClick}>
-    {completed ? <Undo2 size={14} /> : <CheckCircle2 size={14} />}{label}
+    {showIcon && <Icon size={14} />}{label}
   </SubmitMorph>;
 }
 

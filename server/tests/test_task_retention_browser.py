@@ -79,7 +79,7 @@ def test_completed_order_automatic_archive_and_restore(live_server, isolated_app
                 page.screenshot(path=str(tmp_path / f"archive-{theme}-{width}.png"))
                 rules.locator("summary").press("Escape")
             row = page.locator(".task-table tbody tr").filter(has_text="最新创建")
-            row.get_by_role("button", name="查看/编辑", exact=True).click()
+            row.get_by_role("button", name="编辑", exact=True).click()
             expect(page.get_by_role("dialog").locator('textarea[name="description"]')).to_have_value("任务说明完整保留")
             page.get_by_role("dialog").get_by_role("button", name="取消", exact=True).click()
             row.get_by_role("button", name="恢复", exact=True).click()

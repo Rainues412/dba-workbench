@@ -36,6 +36,8 @@ def test_record_icons_tags_and_actions_stay_inside_rows(live_server, tmp_path, m
                 page.set_viewport_size({"width": width, "height": 1000})
                 page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
                 assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+                remove_icon = records.first.get_by_role("button", name="删除记录").locator("svg")
+                expect(remove_icon).to_have_css("color", "rgb(209, 60, 82)" if theme == "light" else "rgb(255, 113, 134)")
                 errors = records.evaluate_all("""rows => rows.flatMap(row => {
                     const errors = [], bounds = row.getBoundingClientRect();
                     for (const element of row.querySelectorAll('.database-label, .badge, .library-tag, .library-record-actions, .library-record-path, .record-title-link, .record-path-link, .record-copy-path, .library-resource-links .compact-file-links > span:not(.record-path-line)')) {
