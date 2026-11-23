@@ -122,18 +122,23 @@ def insert_owner(conn, username: str, password_hash: str) -> int:
     return int(cursor.lastrowid)
 
 
+def find_local_owner_id(conn) -> int | None:
+    row = conn.execute(
+        """SELECT users.id FROM users
+           JOIN memberships ON memberships.user_id = users.id
+           JOIN roles ON roles.id = memberships.role_id
+           WHERE roles.name = 'owner' AND users.is_active = 1
+           ORDER BY users.id LIMIT 1"""
+    ).fetchone()
+    return int(row[0]) if row else None
+
+
 def desktop_owner_id() -> int:
     with get_db_ctx() as conn:
         conn.execute("BEGIN IMMEDIATE")
-        row = conn.execute(
-            """SELECT users.id FROM users
-               JOIN memberships ON memberships.user_id = users.id
-               JOIN roles ON roles.id = memberships.role_id
-               WHERE roles.name = 'owner' AND users.is_active = 1
-               ORDER BY users.id LIMIT 1"""
-        ).fetchone()
-        if row:
-            return int(row["id"])
+        owner = find_local_owner_id(conn)
+        if owner is not None:
+            return owner
         if conn.execute("SELECT 1 FROM users LIMIT 1").fetchone():
             raise HTTPException(403, "No active local owner")
         user_id = insert_owner(conn, "本机用户", UNSET_PASSWORD_HASH)

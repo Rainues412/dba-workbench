@@ -1,4 +1,4 @@
-"""Managed encrypted backup files, scoped to a single vault owner."""
+"""Managed encrypted backups in the local workspace backup directory."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from unicodedata import normalize
 from pyrage import IdentityError, encrypt, x25519
 
 from backend import database
+from backend.auth import find_local_owner_id
 from backend.observability import logger
 
 MAX_BACKUP_BYTES = 64 * 1024 * 1024
@@ -36,10 +37,6 @@ def backup_root() -> Path:
     if data_dir == Path(__file__).resolve().parents[1]:
         return data_dir.parent / "backups"
     return data_dir / "backups"
-
-
-def directory(user_id: int) -> Path:
-    return backup_root() / str(user_id)
 
 
 def _legacy_directory(user_id: int) -> Path:
@@ -104,30 +101,57 @@ def _copy_legacy_file(source: Path, destination: Path) -> None:
             temporary.unlink(missing_ok=True)
 
 
-def prepare_directory(conn, user_id: int) -> None:
-    """Copy prior releases' backups once, leaving the old directory intact."""
-    if conn.execute("SELECT 1 FROM vault_backup_layout WHERE user_id=?", (user_id,)).fetchone():
-        return
-    folder = directory(user_id)
-    legacy = _legacy_directory(user_id)
-    if not _safe_folder(folder) or not _safe_folder(legacy):
+def _merge_previous_directory(conn, user_id: int, source_folder: Path, target_folder: Path, *, move: bool) -> None:
+    if not _safe_folder(source_folder) or not _safe_folder(target_folder):
         raise OSError("Backup directory must not redirect to another location")
-    if legacy.is_dir():
-        folder.mkdir(parents=True, exist_ok=True)
-        for source in legacy.iterdir():
-            if not re.fullmatch(BACKUP_NAME, source.name, re.IGNORECASE) or not _backup_file(source):
+    if not source_folder.is_dir():
+        return
+    kinds = dict(conn.execute("SELECT file_id, kind FROM vault_backup_file_kinds WHERE user_id=?", (user_id,)))
+    target_folder.mkdir(parents=True, exist_ok=True)
+    for source in source_folder.iterdir():
+        if not _backup_file(source) or (not move and not re.fullmatch(BACKUP_NAME, source.name, re.IGNORECASE)):
+            continue
+        stat = source.stat()
+        kind = kinds.get(_file_id(stat), _kind(source.name))
+        target = target_folder / source.name
+        suffix = 2
+        while target.exists() or target.is_symlink():
+            if not target.is_symlink() and target.is_file() and filecmp.cmp(source, target, shallow=False):
+                break
+            target = target_folder / f"{source.stem[:110]}-legacy-{suffix}{source.suffix}"
+            suffix += 1
+        else:
+            if move:
+                if kind != _kind(target.name):
+                    _remember_kind(conn, user_id, stat, kind)
+                _rename_without_replacing(source, target)
                 continue
-            target = folder / source.name
-            suffix = 2
-            while target.exists() or target.is_symlink():
-                if not target.is_symlink() and target.is_file() and filecmp.cmp(source, target, shallow=False):
-                    break
-                target = folder / f"{source.stem}-legacy-{suffix}{source.suffix}"
-                suffix += 1
-            else:
-                _copy_legacy_file(source, target)
-    conn.execute("INSERT INTO vault_backup_layout(user_id) VALUES (?)", (user_id,))
+            _copy_legacy_file(source, target)
+        if kind != _kind(target.name):
+            _remember_kind(conn, user_id, target.stat(), kind)
+
+
+def prepare_directory(conn, user_id: int) -> None:
+    """Move backups from the previous layout into the one workspace directory."""
+    bound = conn.execute("SELECT user_id FROM vault_backup_root_layout WHERE singleton=1").fetchone()
+    if bound:
+        if bound[0] != user_id:
+            raise PermissionError("Backup directory belongs to the local vault")
+        return
+    if find_local_owner_id(conn) != user_id:
+        raise PermissionError("Backup directory belongs to the local vault")
+    folder = backup_root()
+    previous = folder / str(user_id)
+    _merge_previous_directory(conn, user_id, previous, folder, move=True)
+    if not conn.execute("SELECT 1 FROM vault_backup_layout WHERE user_id=?", (user_id,)).fetchone():
+        _merge_previous_directory(conn, user_id, _legacy_directory(user_id), folder, move=False)
+    conn.execute("INSERT INTO vault_backup_root_layout(singleton, user_id) VALUES (1, ?)", (user_id,))
     conn.commit()
+    try:
+        if previous.is_dir() and not any(previous.iterdir()):
+            previous.rmdir()
+    except OSError:
+        logger.warning("Could not remove empty previous vault backup directory")
 
 
 def settings(conn, user_id: int) -> dict:
@@ -322,7 +346,7 @@ def save(user_id: int, data: bytes, *, conn=None, kind: str = "manual") -> str:
     if len(data) > MAX_BACKUP_BYTES:
         raise ValueError("备份文件不能超过 64 MiB。")
     timestamp = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
-    folder = directory(user_id)
+    folder = backup_root()
     if not _safe_folder(folder):
         raise OSError("Backup directory must not redirect to another location")
     with _staged_file(folder, data) as temporary:
@@ -360,7 +384,7 @@ def _kind(filename: str) -> str:
 
 
 def entries(conn, user_id: int) -> list[dict]:
-    folder = directory(user_id)
+    folder = backup_root()
     if not _safe_folder(folder):
         raise OSError("Backup directory must not redirect to another location")
     if not folder.is_dir():
@@ -383,9 +407,9 @@ def entries(conn, user_id: int) -> list[dict]:
     return sorted(result, key=lambda entry: (entry["created_at"], entry["filename"]), reverse=True)
 
 
-def prune(user_id: int, retention: int, previous: list[dict]) -> None:
+def prune(retention: int, previous: list[dict]) -> None:
     try:
-        folder = directory(user_id)
+        folder = backup_root()
         if not _safe_folder(folder):
             return
         older = [entry["filename"] for entry in previous if entry["kind"] == "auto" and entry["filename"].lower().endswith(".age")]
@@ -397,10 +421,10 @@ def prune(user_id: int, retention: int, previous: list[dict]) -> None:
         logger.warning("Could not complete vault backup retention")
 
 
-def existing_path(user_id: int, filename: str) -> Path:
+def existing_path(filename: str) -> Path:
     if not _filename_allowed(filename):
         raise FileNotFoundError(filename)
-    folder = directory(user_id)
+    folder = backup_root()
     path = folder / filename
     if _safe_folder(folder) and _backup_file(path):
         return path
@@ -408,7 +432,7 @@ def existing_path(user_id: int, filename: str) -> Path:
 
 
 def rename(conn, user_id: int, filename: str, requested: str) -> str:
-    source = existing_path(user_id, filename)
+    source = existing_path(filename)
     name = normalize("NFC", requested.strip())
     if name.lower().endswith(source.suffix.lower()):
         name = name[:-len(source.suffix)]
@@ -432,8 +456,8 @@ def rename(conn, user_id: int, filename: str, requested: str) -> str:
     return new_filename
 
 
-def read(user_id: int, filename: str) -> bytes:
-    with existing_path(user_id, filename).open("rb") as handle:
+def read(filename: str) -> bytes:
+    with existing_path(filename).open("rb") as handle:
         content = handle.read(MAX_BACKUP_BYTES + 1)
     if len(content) > MAX_BACKUP_BYTES:
         raise ValueError("备份文件不能超过 64 MiB。")

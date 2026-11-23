@@ -854,7 +854,7 @@ def read_backup(filename: str, request: Request, _: dict = Depends(require_vault
         user_id = _user(request)
         with vault_backups.FILE_LOCK, get_db_ctx() as conn:
             vault_backups.prepare_directory(conn, user_id)
-            content = vault_backups.read(user_id, filename)
+            content = vault_backups.read(filename)
     except FileNotFoundError as exc:
         raise HTTPException(404, "找不到该备份文件。") from exc
     except (OSError, ValueError, sqlite3.Error) as exc:
@@ -879,10 +879,11 @@ def save_backup(request: Request, response: Response):
         raise HTTPException(409, "请先正常解锁密码库一次，工作台会自动准备备份密钥。")
     _ensure_portable_key(user_id, key["recipient"])
     try:
-        with vault_backups.FILE_LOCK:
+        with vault_backups.FILE_LOCK, get_db_ctx() as conn:
+            vault_backups.prepare_directory(conn, user_id)
             filename = vault_backups.save(user_id, vault_backups.encrypted_snapshot(user_id, snapshot["items"], key))
         return {"filename": filename}
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError, sqlite3.Error) as exc:
         raise HTTPException(503, "无法写入密码库备份文件。") from exc
 
 
@@ -910,7 +911,7 @@ def delete_backup(filename: str, request: Request):
     try:
         with vault_backups.FILE_LOCK, get_db_ctx() as conn:
             vault_backups.prepare_directory(conn, user_id)
-            vault_backups.existing_path(user_id, filename).unlink()
+            vault_backups.existing_path(filename).unlink()
     except FileNotFoundError as exc:
         raise HTTPException(404, "找不到该备份文件。") from exc
     except (OSError, sqlite3.Error) as exc:
@@ -1010,7 +1011,7 @@ def _run_scheduled_backup(user_id: int, *, only_if_empty: bool = False) -> str |
             snapshot = _backup_document(conn, user_id)
             filename = vault_backups.save(user_id, vault_backups.encrypted_snapshot(user_id, snapshot["items"], key), conn=conn, kind="auto")
             conn.commit()
-            vault_backups.prune(user_id, policy["retention"], entries)
+            vault_backups.prune(policy["retention"], entries)
             return filename
     except (ValueError, OSError, sqlite3.Error):
         logger.warning("Could not complete scheduled vault backup")
@@ -1031,6 +1032,10 @@ def restore_encrypted_backup(data: BackupRestore, request: Request):
 
     safety = None
     with vault_backups.FILE_LOCK, get_db_ctx() as conn:
+        try:
+            vault_backups.prepare_directory(conn, user_id)
+        except (OSError, sqlite3.Error) as exc:
+            raise HTTPException(503, "无法准备密码库备份目录，密码库保持原状。") from exc
         try:
             conn.execute("BEGIN IMMEDIATE")
             current = _profile_row(conn, user_id)

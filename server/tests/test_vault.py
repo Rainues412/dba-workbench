@@ -425,7 +425,7 @@ def test_scheduled_portable_backup_respects_interval_and_retention(client, isola
     assert portable.read_text(encoding="ascii").strip() == str(identity)
 
     def verify_document(entry):
-        encrypted = vault_backups.read(1, entry["filename"])
+        encrypted = vault_backups.read(entry["filename"])
         assert encrypted.startswith(b"-----BEGIN AGE ENCRYPTED FILE-----")
         backup = json.loads(decrypt(encrypted, [identity]))
         assert backup["format"] == "dba-vault-backup-v3" and backup["source_user_id"] == 1
@@ -439,8 +439,8 @@ def test_scheduled_portable_backup_respects_interval_and_retention(client, isola
     old_auto = files[0]["filename"]
     renamed = client.patch(f"/api/vault/backups/{old_auto}", json={"display_name": "weekly"})
     assert renamed.json() == {"filename": "weekly.age"}
-    assert not (vault_backups.directory(1) / old_auto).exists()
-    (vault_backups.directory(1) / "weekly.age").rename(vault_backups.directory(1) / "weekly-v2.age")
+    assert not (vault_backups.backup_root() / old_auto).exists()
+    (vault_backups.backup_root() / "weekly.age").rename(vault_backups.backup_root() / "weekly-v2.age")
     files = client.get("/api/vault/backups").json()
     assert files[0]["filename"] == "weekly-v2.age" and files[0]["kind"] == "auto"
     verify_document(files[0])
@@ -451,7 +451,7 @@ def test_scheduled_portable_backup_respects_interval_and_retention(client, isola
         now = datetime.now(timezone.utc)
         for offset, entry in enumerate(client.get("/api/vault/backups").json(), 7):
             old = (now - timedelta(hours=offset)).timestamp()
-            os.utime(vault_backups.directory(1) / entry["filename"], (old, old))
+            os.utime(vault_backups.backup_root() / entry["filename"], (old, old))
 
     for _ in range(4):
         age_files()
@@ -480,7 +480,7 @@ def test_backup_names_and_deleting_the_last_file(client, isolated_app):
     original = client.get("/api/vault/backup").content
     file.write_bytes(original)
     url = f"/api/vault/backups/{name}"
-    folder = vault_backups.directory(1)
+    folder = vault_backups.backup_root()
     assert client.get("/api/vault/backups").json()[0]["filename"] == name
     assert (folder / name).stat().st_mtime_ns == file.stat().st_mtime_ns
     renamed = client.patch(url, json={"display_name": "  升级前快照  "})
@@ -499,7 +499,7 @@ def test_backup_names_and_deleting_the_last_file(client, isolated_app):
     replacement = client.delete(url).json()["replacement"]
     assert file.read_bytes() == original
     assert not (folder / "升级前快照.json").exists()
-    new_file = vault_backups.directory(1) / replacement
+    new_file = vault_backups.backup_root() / replacement
     assert new_file.is_file()
     sample_age = new_file.read_bytes()
     assert [(entry["filename"], entry["kind"]) for entry in client.get("/api/vault/backups").json()] == [(replacement, "auto")]
@@ -514,7 +514,7 @@ def test_backup_names_and_deleting_the_last_file(client, isolated_app):
     assert client.put("/api/vault/backup-settings", json={"interval_hours": 24}).status_code == 200
     vault_router.run_scheduled_backups()
     assert old_auto.read_bytes() == sample_age
-    assert len(list(vault_backups.directory(1).glob("*.age"))) == 1
+    assert len(list(vault_backups.backup_root().glob("*.age"))) == 1
 
 
 def test_backup_names_use_local_time_without_overwriting(client, monkeypatch):
@@ -528,7 +528,7 @@ def test_backup_names_use_local_time_without_overwriting(client, monkeypatch):
             return cls(2026, 11, 23, 16, 57, 3, tzinfo=tz)
 
     monkeypatch.setattr(vault_backups, "datetime", FixedClock)
-    folder = vault_backups.directory(1)
+    folder = vault_backups.backup_root()
     first = vault_backups.AGE_HEADER + b"\nfirst"
     second = vault_backups.AGE_HEADER + b"\nsecond"
     assert vault_backups.save(1, first) == "2026-11-23 16-57-03.age"
@@ -540,7 +540,7 @@ def test_backup_names_use_local_time_without_overwriting(client, monkeypatch):
 def test_backup_directory_upgrade_preserves_collisions_and_rejects_duplicate_names(client, isolated_app, monkeypatch):
     from backend import vault_backups
 
-    folder = vault_backups.directory(1)
+    folder = vault_backups.backup_root()
     folder.mkdir(parents=True)
     legacy = Path(isolated_app[1]).parent / "vault-backups" / "1"
     legacy.mkdir(parents=True)
@@ -571,6 +571,40 @@ def test_backup_directory_upgrade_preserves_collisions_and_rejects_duplicate_nam
     assert {row["filename"] for row in client.get("/api/vault/backups").json()} == {"weekly.age", migrated.name}
 
 
+def test_backup_upgrade_moves_previous_files_to_root_once(client):
+    from backend import vault_backups
+    from backend.database import get_db_ctx
+
+    root = vault_backups.backup_root()
+    previous = root / "1"
+    previous.mkdir(parents=True)
+    active = previous / "2026-11-23 16-57-03.age"
+    payload = vault_backups.AGE_HEADER + b"\nprevious auto backup"
+    active.write_bytes(payload)
+    old_stat = active.stat()
+    occupied = root / active.name
+    occupied.write_bytes(vault_backups.AGE_HEADER + b"\nexisting root file")
+    historical = root.parent / "vault-backups" / "1"
+    historical.mkdir(parents=True)
+    removed = historical / "backup-20261010-120000-abcdefabcdef.age"
+    removed.write_bytes(vault_backups.AGE_HEADER + b"\npreviously removed from active list")
+    with get_db_ctx() as conn:
+        conn.execute("INSERT INTO vault_backup_layout(user_id) VALUES (1)")
+        vault_backups._remember_kind(conn, 1, old_stat, "auto")
+        conn.commit()
+
+    entries = client.get("/api/vault/backups").json()
+    moved = root / next(entry["filename"] for entry in entries if entry["kind"] == "auto")
+    assert moved != occupied and moved.read_bytes() == payload
+    assert moved.stat().st_mtime_ns == old_stat.st_mtime_ns
+    assert occupied.read_bytes() != payload
+    assert not previous.exists()
+    assert removed.is_file() and len(entries) == 2
+
+    assert client.delete(f"/api/vault/backups/{moved.name}").status_code == 200
+    assert [entry["filename"] for entry in client.get("/api/vault/backups").json()] == [occupied.name]
+
+
 def test_desktop_picks_only_one_user_selected_supported_file(client, tmp_path, monkeypatch):
     from backend import auth, vault_backups
 
@@ -595,7 +629,7 @@ def test_desktop_picks_only_one_user_selected_supported_file(client, tmp_path, m
 
     created = client.post("/api/vault/backups")
     assert created.status_code == 201
-    archive = vault_backups.directory(1) / created.json()["filename"]
+    archive = vault_backups.backup_root() / created.json()["filename"]
     monkeypatch.setattr(vault_router, "pick_native_file", lambda *args: calls.append(args) or str(archive))
     result = client.post("/api/vault/backups/pick-file?kind=backup", headers=grant)
     assert result.status_code == 200
