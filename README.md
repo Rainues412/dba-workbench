@@ -17,12 +17,12 @@
 
 工作台总览（演示数据）
 
-![工作台总览，展示资产统计、近期任务和数据库类型分布](docs/screenshots/dashboard.png)
+![工作台总览，展示资产统计、近期任务和数据库类型分布](docs/screenshots/workbench-overview.png)
 
 <details>
 <summary>查看客户项目界面</summary>
 
-![客户项目清单，展示群聊平台、多人负责人和职责标签](docs/screenshots/customer-projects.png)
+![客户项目清单，展示群聊平台、多人负责人和职责标签](docs/screenshots/customer-project-list.png)
 
 </details>
 
