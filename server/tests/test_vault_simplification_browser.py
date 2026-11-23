@@ -35,7 +35,7 @@ def _verify_import(page, settings, password):
     dialog.get_by_label("当前密码库主密码", exact=True).fill(password)
     dialog.get_by_role("button", name="验证", exact=True).click()
     expect(dialog.get_by_role("button", name="浏览备份文件", exact=True)).to_be_visible()
-    expected = settings.get_by_label("备份存放目录").input_value()
+    expected = _backup_directory(settings).inner_text()
     expect(dialog.get_by_label("备份文件", exact=True)).to_have_value(expected)
     expect(dialog.get_by_label("备份恢复密钥", exact=True)).to_have_value(expected)
     return dialog
@@ -50,11 +50,17 @@ def _select_age_files(dialog, backup, identity):
     next_step.click()
 
 
+def _backup_directory(settings):
+    location = settings.get_by_role("group", name="备份存放目录", exact=True)
+    expect(location.get_by_role("textbox")).to_have_count(0)
+    return location.locator(".vault-backup-directory")
+
+
 def _create_manual_backup(page, settings):
-    settings.get_by_role("button", name="立即备份", exact=True).click()
-    expect(settings.get_by_role("status").filter(has_text="备份成功")).to_be_visible()
-    expect(page.get_by_role("dialog", name="立即备份", exact=True)).to_have_count(0)
-    expect(settings.get_by_role("listitem").filter(has_text="立即备份")).to_be_visible()
+    settings.get_by_role("button", name="手动备份", exact=True).click()
+    expect(page.get_by_role("status").filter(has_text="备份创建成功")).to_be_visible()
+    expect(page.get_by_role("dialog", name="手动备份", exact=True)).to_have_count(0)
+    expect(settings.get_by_role("listitem").filter(has_text="手动备份")).to_be_visible()
 
 
 def _capture_downloads(page):
@@ -137,9 +143,16 @@ def test_vault_daily_ui_csv_and_restore_confirmation(live_server, tmp_path):
 
             settings = _backup_settings(page)
             identity = _export_identity(page, settings, tmp_path)
+            page.evaluate("document.documentElement.dataset.theme = 'light'")
             _create_manual_backup(page, settings)
-            directory = Path(settings.get_by_label("备份存放目录").input_value())
-            assert settings.get_by_label("备份存放目录").evaluate("node => node.readOnly")
+            toast = page.locator(".vault-backup-toast")
+            bounds = toast.bounding_box()
+            assert abs((bounds["x"] + bounds["width"] / 2) - page.viewport_size["width"] / 2) < 2
+            assert abs(page.viewport_size["height"] - bounds["y"] - bounds["height"] - 16) < 2
+            toast.screenshot(path=str(tmp_path / "vault-backup-success.png"))
+            expect(toast).not_to_be_visible(timeout=4000)
+            page.evaluate("document.documentElement.dataset.theme = 'dark'")
+            directory = Path(_backup_directory(settings).inner_text())
             backup = next(directory.rglob("backup-*.age"))
             assert backup.read_text(encoding="utf-8").startswith("-----BEGIN AGE ENCRYPTED FILE-----")
             assert "synthetic-secret" not in backup.read_text(encoding="utf-8")
@@ -312,7 +325,7 @@ def test_manual_and_automatic_files_restore_locally_and_on_a_different_vault(liv
             vault_router.run_scheduled_backups()
             settings.get_by_role("button", name="完成", exact=True).click()
             settings = _backup_settings(page)
-            directory = Path(settings.get_by_label("备份存放目录").input_value())
+            directory = Path(_backup_directory(settings).inner_text())
             automatic = next(directory.rglob("auto-*.age"))
 
             _create_manual_backup(page, settings)

@@ -398,6 +398,8 @@ def test_scheduled_portable_backup_respects_interval_and_retention(client, isola
     monkeypatch.setattr(os, "startfile", opened_paths.append)
     assert client.post("/api/vault/backups/open-directory", json={"path": "C:/test-other"}).status_code == 204
     assert opened_paths == [vault_backups.backup_root()]
+    assert client.put("/api/vault/backup-settings", json={"directory": "C:/test-other"}).status_code == 422
+    assert client.get("/api/vault/backup-settings").json()["directory"] == str(vault_backups.backup_root())
     assert client.put("/api/vault/backup-settings", json={"interval_hours": 7, "retention": 3}).status_code == 422
     assert client.put("/api/vault/backup-settings", json={"interval_hours": 6, "retention": 3}).status_code == 200
 

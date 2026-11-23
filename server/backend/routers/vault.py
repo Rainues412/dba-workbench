@@ -18,7 +18,7 @@ from cryptography.exceptions import InvalidTag
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend import database, vault_backups, vault_device
 from backend.auth import (
@@ -133,6 +133,8 @@ class BackupRestore(VaultUnlock):
 
 
 class BackupSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     interval_hours: Literal[0, 6, 12, 24, 48, 168] | None = None
     retention: Literal[3, 5, 10, 15, 20, 30, 50] | None = None
 

@@ -70,10 +70,10 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); });
 describe("password vault backup settings", () => {
   it("creates a manual backup without a password prompt and reports success", async () => {
     show();
-    const button = await screen.findByRole("button", { name: "立即备份" });
+    const button = await screen.findByRole("button", { name: "手动备份" });
     await waitFor(() => expect(button).toBeEnabled());
     fireEvent.click(button);
-    expect(await screen.findByText("备份成功，文件已保存到备份目录。")).toBeVisible();
+    expect(await screen.findByText("备份创建成功")).toHaveAttribute("role", "status");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(api).toHaveBeenCalledWith("/api/vault/backups", { method: "POST" });
   });
@@ -81,6 +81,10 @@ describe("password vault backup settings", () => {
   it("shows the interval and retention options and writes nothing before confirmation", async () => {
     show();
     expect(await screen.findByLabelText("自动备份间隔")).toHaveValue("24");
+    const directory = screen.getByRole("group", { name: "备份存放目录" });
+    expect(directory).toHaveTextContent("D:/data/vault-backups/9");
+    expect(within(directory).queryByRole("textbox")).not.toBeInTheDocument();
+    expect(within(directory).getByRole("button", { name: "打开备份目录" })).toBeEnabled();
     expect(screen.getByLabelText("备份保留数量")).toHaveValue("10");
     vi.mocked(openBackup).mockResolvedValue(records as never);
     const review = await submitFile();

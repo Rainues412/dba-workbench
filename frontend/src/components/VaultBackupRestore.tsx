@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Download, FolderOpen, KeyRound, Pencil, RotateCcw, ShieldCheck, Trash2, Upload, X } from "lucide-react";
+import { AlertTriangle, Check, Download, FolderOpen, KeyRound, Pencil, RotateCcw, ShieldCheck, Trash2, Upload, X } from "lucide-react";
 import { api, hasVaultAccessToken, jsonBody, setVaultAccessToken, VAULT_LOCKED_EVENT } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { openBackup, parseBackup, readBackupFile, readBackupIdentity, type VaultBackup } from "../vault/backup";
@@ -38,7 +39,7 @@ const policyKey = ["vault", "backup-settings"];
 const profileKey = ["vault", "profile"];
 const intervalOptions = [[0, "禁用"], [6, "6 小时"], [12, "12 小时"], [24, "24 小时"], [48, "48 小时"], [168, "7 天"]] as const;
 const retentionOptions = [3, 5, 10, 15, 20, 30, 50];
-const labels = { auto: "自动备份", manual: "立即备份", safety: "恢复前安全备份" } as const;
+const labels = { auto: "自动备份", manual: "手动备份", safety: "恢复前安全备份" } as const;
 
 function downloadIdentity(identity: string) {
   const link = window.document.createElement("a");
@@ -93,6 +94,7 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
   const [sectionError, setSectionError] = useState("");
   const [dialogError, setDialogError] = useState("");
   const [notice, setNotice] = useState("");
+  const [backupCreated, setBackupCreated] = useState(false);
   const files = useQuery({ queryKey: listKey, queryFn: () => api<BackupEntry[]>(filesPath), staleTime: 0, refetchInterval: 10_000 });
   const policy = useQuery({ queryKey: policyKey, queryFn: () => api<BackupPolicy>(policyPath), staleTime: 0 });
   const profile = useQuery({ queryKey: profileKey, queryFn: () => api<ProfileStatus>("/api/vault/profile") });
@@ -110,6 +112,11 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
   }, []);
   useEffect(() => { if (prepared) review.current?.focus(); }, [prepared]);
   useEffect(() => { stepFocus.current?.focus(); }, [importStep]);
+  useEffect(() => {
+    if (!backupCreated) return;
+    const timeout = window.setTimeout(() => setBackupCreated(false), 2000);
+    return () => window.clearTimeout(timeout);
+  }, [backupCreated]);
 
   function releaseGrant() {
     if (!temporaryGrant.current) return;
@@ -181,10 +188,10 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
 
   async function createBackup() {
     if (creating) return;
-    setCreating(true); setSectionError(""); setNotice("");
+    setCreating(true); setSectionError(""); setNotice(""); setBackupCreated(false);
     try {
       await api(filesPath, { method: "POST" });
-      setNotice("备份成功，文件已保存到备份目录。");
+      setBackupCreated(true);
       void client.invalidateQueries({ queryKey: listKey });
     } catch (cause) { setSectionError(cause instanceof Error ? cause.message : "备份失败。"); }
     finally { setCreating(false); }
@@ -365,10 +372,10 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
   const canUseFile = Boolean(profile.data);
   return <section className="vault-backup-settings" aria-labelledby={contentId}>
     <h4 id={contentId}>备份与恢复</h4>
-    {policy.data && <div className="vault-backup-location">
-      <label htmlFor={contentId + "-directory"}>备份存放目录</label>
+    {policy.data && <div className="vault-backup-location" role="group" aria-labelledby={contentId + "-directory"}>
+      <span id={contentId + "-directory"}>备份存放目录</span>
       <div>
-        <input id={contentId + "-directory"} value={policy.data.directory} title={policy.data.directory} readOnly />
+        <p className="vault-backup-directory" title={policy.data.directory}>{policy.data.directory}</p>
         <button type="button" className="button small" title="打开备份目录" aria-label="打开备份目录" onClick={() => void openDirectory()}><FolderOpen aria-hidden="true" /></button>
       </div>
     </div>}
@@ -393,13 +400,17 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
     <div className="vault-backup-heading">
       <h5>密码库备份</h5>
       <div className="button-row">
-        <button type="button" className="button small" disabled={!initialized || creating} onClick={() => void createBackup()}><Download aria-hidden="true" />立即备份</button>
+        <button type="button" className="button small" disabled={!initialized || creating} onClick={() => void createBackup()}><Download aria-hidden="true" />手动备份</button>
         <button type="button" className="button small" disabled={!canUseFile} onClick={() => start({ kind: "file" })}><Upload aria-hidden="true" />导入</button>
       </div>
     </div>
     {profile.isError && <p role="alert" className="vault-backup-status">无法读取密码库状态。<button type="button" className="button small" onClick={() => void profile.refetch()}>重试</button></p>}
     {!initialized && profile.data && <p className="vault-backup-status">使用备份与恢复前，请先在保险箱设置主密码。</p>}
     {notice && <p role="status" className="alert">{notice}</p>}
+    {backupCreated && createPortal(<div className="vault-backup-toast" role="status">
+      <span className="vault-backup-toast-icon" aria-hidden="true"><Check size={10} strokeWidth={3} /></span>
+      备份创建成功
+    </div>, document.body)}
     {sectionError && <p role="alert" className="alert error">{sectionError}</p>}
     {files.isPending && <p role="status" className="vault-backup-status">正在读取备份列表…</p>}
     {files.isError && <p role="alert" className="vault-backup-status">无法读取备份列表。<button type="button" className="button small" onClick={() => void files.refetch()}>重试</button></p>}

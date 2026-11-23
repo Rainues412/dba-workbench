@@ -34,9 +34,10 @@
 .vault-backup-settings { display:grid; gap:12px; margin-top:20px; container-type:inline-size; }
 .vault-backup-settings > h4,.vault-backup-heading h5 { margin:0; color:var(--text-strong); font-size:14px; font-weight:600; }
 .vault-backup-location { display:grid; gap:8px; padding:12px; border:1px solid var(--border); border-radius:10px; }
-.vault-backup-location > label { color:var(--text-strong); font-size:12px; font-weight:600; }
+.vault-backup-location > span { color:var(--text-strong); font-size:12px; font-weight:600; }
 .vault-backup-location > div,.vault-path-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px; }
-.vault-backup-location input,.vault-path-row input[readonly] { min-width:0; min-height:33px; padding:0 9px; font-size:12px; }
+.vault-path-row input[readonly] { min-width:0; min-height:33px; padding:0 9px; font-size:12px; }
+.vault-backup-directory { min-width:0; margin:0; padding:7px 9px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; user-select:text; color:var(--text); background:var(--surface-soft); border-radius:6px; font-size:12px; line-height:19px; }
 .vault-backup-location .button,.vault-path-row .button { width:34px; min-height:33px; padding:0; }
 .vault-import-file-field { display:grid; gap:6px; min-width:0; }
 .vault-backup-policy { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; }
@@ -52,6 +53,8 @@
 .vault-backup-settings .button-row { width:auto; justify-content:flex-start; flex-wrap:wrap; gap:4px; }
 .vault-backup-settings .button-row > .button { flex:0 0 auto; min-height:28px; gap:4px; }
 .vault-backup-settings .button svg { width:14px; height:14px; }
+.vault-backup-toast { position:fixed; z-index:40; inset-block-end:16px; inset-inline:0; margin-inline:auto; display:flex; align-items:center; gap:10px; width:min(354px,calc(100vw - 32px)); min-height:40px; padding:8px 14px; border-radius:10px; color:var(--text-strong); background:var(--surface-raised); box-shadow:0 4px 18px rgb(0 0 0 / .16); font-size:13px; pointer-events:none; }
+.vault-backup-toast-icon { display:grid; place-items:center; width:13px; height:13px; flex:none; border-radius:50%; color:var(--surface-raised); background:var(--success); }
 .vault-backup-status { margin:0; color:var(--muted); font-size:12px; line-height:1.55; }
 .vault-backup-status[role=alert] { color:var(--danger); }
 .vault-backup-status .button { margin-left:8px; }
