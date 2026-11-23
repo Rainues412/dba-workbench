@@ -808,7 +808,7 @@ def open_backup_directory(request: Request, kind: Literal["backup", "key"] = "ba
     user_id = _user(request)
     if not hasattr(os, "startfile"):
         raise HTTPException(501, "仅支持在 Windows 上打开备份目录。")
-    directory = vault_backups.portable_key_directory(user_id) if kind == "key" else vault_backups.directory(user_id)
+    directory = vault_backups.portable_key_directory(user_id) if kind == "key" else vault_backups.backup_root()
     try:
         if kind == "backup":
             with vault_backups.FILE_LOCK, get_db_ctx() as conn:
@@ -826,7 +826,7 @@ def open_backup_directory(request: Request, kind: Literal["backup", "key"] = "ba
 def pick_backup_file(kind: Literal["backup", "key"], request: Request, response: Response, _: dict = Depends(require_vault_access)):
     recovery_key = kind == "key"
     user_id = _user(request)
-    start = vault_backups.portable_key_directory(user_id) if recovery_key else vault_backups.directory(user_id)
+    start = vault_backups.portable_key_directory(user_id) if recovery_key else vault_backups.backup_root()
     try:
         if start.resolve() != start:
             raise OSError("Backup directory must not redirect to another location")
@@ -925,7 +925,7 @@ def get_backup_settings(request: Request):
         profile = _profile_row(conn, user_id)
         key = profile and vault_backups.backup_key(conn, user_id, profile["recovery_wrapped_dek"])
         return {**vault_backups.settings(conn, user_id), "portable_ready": bool(key),
-                "key_exported": bool(key and key["exported"]), "directory": str(vault_backups.directory(user_id)),
+                "key_exported": bool(key and key["exported"]), "directory": str(vault_backups.backup_root()),
                 "key_directory": str(vault_backups.portable_key_directory(user_id))}
 
 

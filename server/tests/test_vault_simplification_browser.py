@@ -129,8 +129,9 @@ def test_vault_daily_ui_csv_and_restore_confirmation(live_server, tmp_path):
             toast.screenshot(path=str(tmp_path / "vault-backup-success.png"))
             expect(toast).not_to_be_visible(timeout=4000)
             page.evaluate("document.documentElement.dataset.theme = 'dark'")
-            directory = Path(_backup_directory(settings).inner_text())
-            assert directory.name == "1"
+            root = Path(_backup_directory(settings).inner_text())
+            assert root.name == "backups"
+            directory = root / "1"
             identity, = Path(_key_directory(settings).inner_text()).glob("*.key")
             backup = _listed_backup(settings, directory, "手动备份")
             assert backup.read_text(encoding="utf-8").startswith("-----BEGIN AGE ENCRYPTED FILE-----")
@@ -339,7 +340,7 @@ def test_manual_and_automatic_files_restore_locally_and_on_a_different_vault(liv
             vault_router.run_scheduled_backups()
             settings.get_by_role("button", name="完成", exact=True).click()
             settings = _backup_settings(page)
-            directory = Path(_backup_directory(settings).inner_text())
+            directory = Path(_backup_directory(settings).inner_text()) / "1"
             identity, = Path(_key_directory(settings).inner_text()).glob("*.key")
             automatic = _listed_backup(settings, directory, "自动备份")
             key = x25519.Identity.from_str(identity.read_text(encoding="ascii").strip())

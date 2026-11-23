@@ -393,15 +393,15 @@ def test_scheduled_portable_backup_respects_interval_and_retention(client, isola
     assert client.post("/api/vault/items", json=item).status_code == 201
     response = client.get("/api/vault/backup-settings")
     assert response.json() == {"interval_hours": 24, "retention": 10, "portable_ready": False, "key_exported": False,
-                               "directory": str(vault_backups.directory(1)), "key_directory": str(vault_backups.portable_key_directory(1))}
+                               "directory": str(vault_backups.backup_root()), "key_directory": str(vault_backups.portable_key_directory(1))}
     opened_paths = []
     monkeypatch.setattr(os, "startfile", opened_paths.append)
     assert client.post("/api/vault/backups/open-directory", json={"path": "C:/test-other"}).status_code == 204
     assert client.post("/api/vault/backups/open-directory?kind=key", json={"path": "C:/test-other"}).status_code == 204
     assert client.post("/api/vault/backups/open-directory?kind=other").status_code == 422
-    assert opened_paths == [vault_backups.directory(1), vault_backups.portable_key_directory(1)]
+    assert opened_paths == [vault_backups.backup_root(), vault_backups.portable_key_directory(1)]
     assert client.put("/api/vault/backup-settings", json={"directory": "C:/test-other"}).status_code == 422
-    assert client.get("/api/vault/backup-settings").json()["directory"] == str(vault_backups.directory(1))
+    assert client.get("/api/vault/backup-settings").json()["directory"] == str(vault_backups.backup_root())
     assert client.put("/api/vault/backup-settings", json={"interval_hours": 7, "retention": 3}).status_code == 422
     assert client.put("/api/vault/backup-settings", json={"interval_hours": 6, "retention": 3}).status_code == 200
 
@@ -592,6 +592,15 @@ def test_desktop_picks_only_one_user_selected_supported_file(client, tmp_path, m
     assert result.headers["cache-control"] == "no-store"
     assert result.json() == {"name": key.name, "path": str(key), "text": identity}
     assert calls[-1] == ("选择备份恢复密钥", str(vault_backups.portable_key_directory(1)), "*.txt;*.key")
+
+    created = client.post("/api/vault/backups")
+    assert created.status_code == 201
+    archive = vault_backups.directory(1) / created.json()["filename"]
+    monkeypatch.setattr(vault_router, "pick_native_file", lambda *args: calls.append(args) or str(archive))
+    result = client.post("/api/vault/backups/pick-file?kind=backup", headers=grant)
+    assert result.status_code == 200
+    assert result.json()["path"] == str(archive)
+    assert calls[-1] == ("选择备份文件", str(vault_backups.backup_root()), "*.age;*.json")
 
 
 def test_source_backup_root_is_fixed_at_the_repository_root(monkeypatch):
