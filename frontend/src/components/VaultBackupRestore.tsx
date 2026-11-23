@@ -88,7 +88,7 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
   const [sectionError, setSectionError] = useState("");
   const [dialogError, setDialogError] = useState("");
   const [notice, setNotice] = useState("");
-  const [backupCreated, setBackupCreated] = useState(false);
+  const [successToast, setSuccessToast] = useState<{ message: string } | null>(null);
   const files = useQuery({ queryKey: listKey, queryFn: () => api<BackupEntry[]>(filesPath), staleTime: 0, refetchInterval: 10_000 });
   const policy = useQuery({ queryKey: policyKey, queryFn: () => api<BackupPolicy>(policyPath), staleTime: 0 });
   const profile = useQuery({ queryKey: profileKey, queryFn: () => api<ProfileStatus>("/api/vault/profile") });
@@ -107,10 +107,10 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
   useEffect(() => { if (prepared) review.current?.focus(); }, [prepared]);
   useEffect(() => { stepFocus.current?.focus(); }, [importStep]);
   useEffect(() => {
-    if (!backupCreated) return;
-    const timeout = window.setTimeout(() => setBackupCreated(false), 2000);
+    if (!successToast) return;
+    const timeout = window.setTimeout(() => setSuccessToast((current) => current === successToast ? null : current), 2000);
     return () => window.clearTimeout(timeout);
-  }, [backupCreated]);
+  }, [successToast]);
 
   function releaseGrant() {
     if (!temporaryGrant.current) return;
@@ -183,10 +183,10 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
 
   async function createBackup() {
     if (creating) return;
-    setCreating(true); setSectionError(""); setNotice(""); setBackupCreated(false);
+    setCreating(true); setSectionError(""); setNotice(""); setSuccessToast(null);
     try {
       await api(filesPath, { method: "POST" });
-      setBackupCreated(true);
+      setSuccessToast({ message: "备份创建成功" });
       void client.invalidateQueries({ queryKey: listKey });
     } catch (cause) { setSectionError(cause instanceof Error ? cause.message : "备份失败。"); }
     finally { setCreating(false); }
@@ -211,7 +211,7 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
       const { filename } = await api<{ filename: string }>(path, { method: "PATCH", body: jsonBody({ display_name: name }) });
       client.setQueryData<BackupEntry[]>(listKey, (current) => current?.map((item) => item.filename === entry.filename ? { ...item, filename } : item));
       finishRename(filename);
-      setNotice("备份名称已更新。");
+      setSuccessToast({ message: "备份名称已更新。" });
       void client.invalidateQueries({ queryKey: listKey });
     } catch (cause) { setRenameError(cause instanceof Error ? cause.message : "无法重命名备份。"); }
     finally { setRenameBusy(false); }
@@ -424,9 +424,9 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
     {profile.isError && <p role="alert" className="vault-backup-status">无法读取密码库状态。<button type="button" className="button small" onClick={() => void profile.refetch()}>重试</button></p>}
     {!initialized && profile.data && <p className="vault-backup-status">使用备份与恢复前，请先在保险箱设置主密码。</p>}
     {notice && <p role="status" className="alert">{notice}</p>}
-    {backupCreated && createPortal(<div className="vault-backup-toast" role="status">
+    {successToast && createPortal(<div className="vault-backup-toast" role="status">
       <span className="vault-backup-toast-icon" aria-hidden="true"><Check size={10} strokeWidth={3} /></span>
-      备份创建成功
+      {successToast.message}
     </div>, document.body)}
     {sectionError && <p role="alert" className="alert error">{sectionError}</p>}
     {files.isPending && <p role="status" className="vault-backup-status">正在读取备份列表…</p>}

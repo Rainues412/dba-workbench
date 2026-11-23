@@ -65,6 +65,17 @@ def _create_manual_backup(page, settings):
     expect(settings.get_by_role("listitem").filter(has_text="手动备份")).to_be_visible()
 
 
+def _verify_backup_toast(page, message, screenshot):
+    toast = page.locator(".vault-backup-toast")
+    expect(toast).to_have_text(message)
+    expect(toast).to_have_attribute("role", "status")
+    bounds = toast.bounding_box()
+    assert abs((bounds["x"] + bounds["width"] / 2) - page.viewport_size["width"] / 2) < 2
+    assert abs(page.viewport_size["height"] - bounds["y"] - bounds["height"] - 16) < 2
+    toast.screenshot(path=str(screenshot))
+    expect(toast).not_to_be_visible(timeout=4000)
+
+
 def _listed_backup(settings, directory, kind):
     row = settings.get_by_role("listitem").filter(has_text=kind)
     return directory / row.locator(".vault-backup-file > span").inner_text()
@@ -122,12 +133,7 @@ def test_vault_daily_ui_csv_and_restore_confirmation(live_server, tmp_path):
             settings = _backup_settings(page)
             page.evaluate("document.documentElement.dataset.theme = 'light'")
             _create_manual_backup(page, settings)
-            toast = page.locator(".vault-backup-toast")
-            bounds = toast.bounding_box()
-            assert abs((bounds["x"] + bounds["width"] / 2) - page.viewport_size["width"] / 2) < 2
-            assert abs(page.viewport_size["height"] - bounds["y"] - bounds["height"] - 16) < 2
-            toast.screenshot(path=str(tmp_path / "vault-backup-success.png"))
-            expect(toast).not_to_be_visible(timeout=4000)
+            _verify_backup_toast(page, "备份创建成功", tmp_path / "vault-backup-success.png")
             page.evaluate("document.documentElement.dataset.theme = 'dark'")
             directory = Path(_backup_directory(settings).inner_text())
             assert directory.name == "backups"
@@ -187,6 +193,8 @@ def test_vault_daily_ui_csv_and_restore_confirmation(live_server, tmp_path):
             assert backup.is_file()
             editor.fill("恢复测试快照")
             editor.press("Enter")
+            _verify_backup_toast(page, "备份名称已更新。", tmp_path / "vault-rename-success.png")
+            expect(settings.get_by_text("备份名称已更新。", exact=True)).to_have_count(0)
             renamed_backup = directory / "恢复测试快照.age"
             row = settings.get_by_role("listitem").filter(has_text="恢复测试快照")
             expect(row.get_by_text(renamed_backup.name, exact=True)).to_be_visible()
