@@ -74,6 +74,18 @@ py -3.12 -m venv .runtime\.venv
 
 如需在源码模式预览 Office、PDF 等文件，可通过 `DBA_FILE_VIEWER_HOME` 指向已构建的查看器目录。[查看器构建脚本](packaging/windows/build-file-viewer.ps1)
 
+#### Tauri 迁移预览
+
+开发验收需要 Windows Rust MSVC 工具链和已安装的前端依赖。先运行 `cargo build --locked --manifest-path src-tauri/Cargo.toml`，再用项目 Python 环境启动预览。
+
+```powershell
+.\.runtime\.venv\Scripts\python.exe tools/windows/launch_dba_workbench_tauri.py --executable src-tauri/target/debug/dba-workbench-tauri.exe --work-dir '<现有测试目录>'
+```
+
+启动脚本创建独立的测试数据库和 WebView2 配置。仪表盘、任务管理和全局搜索由 Rust 执行，其余接口继续由 FastAPI 提供。从托盘选择「退出」结束预览和两个测试服务。
+
+Windows 源码快捷方式可在桌面启动宿主的同一目录放置 `dba-workbench-tauri.exe`，让下次启动使用 Tauri 窗口。现有数据库、WebView2 配置和启动偏好继续原位使用。只使用原桌面启动宿主时，将这个配套 EXE 移出宿主目录。
+
 ### 测试与构建
 
 ```powershell

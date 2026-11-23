@@ -6,6 +6,7 @@ import json
 import logging
 import secrets
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -153,6 +154,56 @@ def _run_webview(server, window, silent_start: bool = False) -> None:
     result.result(timeout=20)
 
 
+def _run_tauri(server, executable: Path, preferences: DesktopSettings, silent_start: bool) -> None:
+    from backend.windows_process_job import ProcessJob
+
+    data_dir = _data_directory()
+    env = os.environ | {
+        "DBA_TAURI_DATA_DIR": str(data_dir),
+        "DBA_TAURI_PORT": str(PORT),
+        "DBA_TAURI_DESKTOP_TOKEN": _launch_url.partition("#desktop=")[2],
+        "DBA_TAURI_WEBVIEW": os.environ.get("DBA_WEBVIEW_PROFILE") or str(data_dir / "webview"),
+        "DBA_TAURI_DESKTOP_SETTINGS": str(preferences.path),
+        "DBA_TAURI_SILENT": str(int(silent_start)),
+    }
+    worker = threading.Thread(target=server.run, name="dba-http", daemon=True)
+    worker.start()
+    process = job = None
+    try:
+        deadline = time.monotonic() + 20
+        while worker.is_alive() and not server.started and time.monotonic() < deadline:
+            worker.join(0.05)
+        if not server.started:
+            raise RuntimeError("本机服务启动失败。")
+        try:
+            job = ProcessJob()
+            process = subprocess.Popen(
+                [str(executable)], env=env, creationflags=subprocess.CREATE_NO_WINDOW,
+                stdin=subprocess.DEVNULL, stdout=sys.stdout, stderr=sys.stderr,
+            )
+            job.assign(process.pid)
+            while worker.is_alive() and process.poll() is None:
+                worker.join(0.1)
+            if not worker.is_alive() or process.returncode == 0:
+                return
+            raise OSError(f"Tauri 宿主退出，代码 {process.returncode}")
+        except OSError:
+            logging.exception("无法运行 Tauri 窗口，使用系统托盘与浏览器。")
+            if process is not None and process.poll() is None:
+                process.terminate()
+                process.wait(timeout=5)
+            preferences.native_window = False
+            _start_tray(server)
+            if not silent_start:
+                threading.Thread(target=_open_browser_when_ready, daemon=True).start()
+            worker.join()
+    finally:
+        if job is not None:
+            job.close()
+        server.should_exit = True
+        worker.join(timeout=15)
+
+
 def _show_error(message: str) -> None:
     if os.name == "nt":
         import ctypes
@@ -269,6 +320,12 @@ def main() -> None:
             timeout_graceful_shutdown=10,
         )
         server = uvicorn.Server(config)
+        source_host = os.environ.get("DBA_SOURCE_DESKTOP_HOST", "")
+        tauri_host = Path(source_host).with_name("dba-workbench-tauri.exe") if source_host else None
+        if sys.platform == "win32" and not compiled and tauri_host is not None and tauri_host.is_file():
+            preferences.native_window = True
+            _run_tauri(server, tauri_host, preferences, silent_start)
+            return
         window = desktop_window.create(
             APP_TITLE, PORT, _tray_icon_path(), lambda: server.should_exit,
             preferences.close_to_tray,

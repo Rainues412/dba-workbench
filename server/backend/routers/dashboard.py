@@ -1,25 +1,22 @@
 """Dashboard API - statistics and overview."""
+from pathlib import Path
+
 from fastapi import APIRouter
 from backend.database import get_db_ctx
 
 router = APIRouter()
+
+_QUERY_DIR = Path(__file__).resolve().parents[1] / "queries" / "dashboard"
+_STATS_SQL = (_QUERY_DIR / "stats.sql").read_text(encoding="utf-8")
+_RECENT_TASKS_SQL = (_QUERY_DIR / "recent_tasks.sql").read_text(encoding="utf-8")
+_DATABASE_DISTRIBUTION_SQL = (_QUERY_DIR / "database_distribution.sql").read_text(encoding="utf-8")
 
 
 @router.get("/stats")
 def get_stats():
     """Get counts for all modules (single query with subselects)."""
     with get_db_ctx() as conn:
-        row = conn.execute("""
-            SELECT
-                (SELECT COUNT(*) FROM scripts) AS script_count,
-                (SELECT COUNT(*) FROM articles) AS article_count,
-                (SELECT COUNT(*) FROM tasks) AS task_total,
-                (SELECT COUNT(*) FROM tasks WHERE status != '已完成') AS task_pending,
-                (SELECT COUNT(*) FROM tasks WHERE status != '已完成' AND date(due_date) < date('now', 'localtime')) AS task_overdue,
-                (SELECT COUNT(*) FROM customers) AS customer_count,
-                (SELECT COUNT(*) FROM resources) AS resource_count,
-                (SELECT COUNT(*) FROM vault_items) AS password_count
-        """).fetchone()
+        row = conn.execute(_STATS_SQL).fetchone()
         return dict(row)
 
 
@@ -27,16 +24,7 @@ def get_stats():
 def get_recent_tasks():
     """Get unfinished tasks by overdue, priority, status, then deadline."""
     with get_db_ctx() as conn:
-        rows = conn.execute("""
-            SELECT id, title, priority, status, due_date, revision,
-                   CASE WHEN status != '已完成' AND date(due_date) < date('now', 'localtime')
-                      THEN 1 ELSE 0 END AS is_overdue
-            FROM tasks WHERE status != '已完成'
-            ORDER BY is_overdue DESC,
-                     CASE priority WHEN '高' THEN 1 WHEN '中' THEN 2 WHEN '低' THEN 3 ELSE 4 END,
-                     CASE status WHEN '进行中' THEN 0 WHEN '待处理' THEN 1 ELSE 2 END,
-                     date(due_date) ASC NULLS LAST, id DESC
-        """).fetchall()
+        rows = conn.execute(_RECENT_TASKS_SQL).fetchall()
         return [dict(r) for r in rows]
 
 
@@ -44,41 +32,5 @@ def get_recent_tasks():
 def get_database_distribution():
     """Count scripts and articles using the database groups from the legacy dashboard."""
     with get_db_ctx() as conn:
-        rows = conn.execute("""
-            WITH database_types(name, sort_order) AS (
-                VALUES
-                    ('Oracle', 1),
-                    ('MySQL', 2),
-                    ('PostgreSQL', 3),
-                    ('SQL Server', 4),
-                    ('Linux', 5),
-                    ('Redis', 6),
-                    ('MongoDB', 7),
-                    ('其他', 8)
-            ),
-            database_counts AS (
-                SELECT
-                    CASE
-                        WHEN db_type IN ('Oracle', 'MySQL', 'PostgreSQL', 'SQL Server', 'Linux', 'Redis', 'MongoDB')
-                        THEN db_type ELSE '其他'
-                    END AS name,
-                    COUNT(*) AS item_count
-                FROM scripts
-                GROUP BY name
-                UNION ALL
-                SELECT
-                    CASE
-                        WHEN wb_db IN ('Oracle', 'MySQL', 'PostgreSQL', 'SQL Server', 'Linux', 'Redis', 'MongoDB')
-                        THEN wb_db ELSE '其他'
-                    END AS name,
-                    COUNT(*) AS item_count
-                FROM articles
-                GROUP BY name
-            )
-            SELECT database_types.name, COALESCE(SUM(database_counts.item_count), 0) AS count
-            FROM database_types
-            LEFT JOIN database_counts ON database_counts.name = database_types.name
-            GROUP BY database_types.name, database_types.sort_order
-            ORDER BY database_types.sort_order
-        """).fetchall()
+        rows = conn.execute(_DATABASE_DISTRIBUTION_SQL).fetchall()
         return [dict(row) for row in rows]

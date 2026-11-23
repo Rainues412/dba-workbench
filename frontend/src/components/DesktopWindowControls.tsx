@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Copy, Minus, Square, X } from "lucide-react";
 import { useDesktopSettings } from "../desktopSettings";
+import { isTauri } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 type DesktopWindowApi = {
   minimize: () => Promise<void>;
@@ -10,7 +12,20 @@ type DesktopWindowApi = {
   destroy: () => Promise<void>;
 };
 
+const tauriApi: DesktopWindowApi = {
+  minimize: () => getCurrentWindow().minimize(),
+  window_is_maximized: () => getCurrentWindow().isMaximized(),
+  toggle_window_size: async () => {
+    const window = getCurrentWindow();
+    await window.toggleMaximize();
+    return window.isMaximized();
+  },
+  start_window_drag: () => getCurrentWindow().startDragging(),
+  destroy: () => getCurrentWindow().close(),
+};
+
 function getApi() {
+  if (isTauri()) return tauriApi;
   const api = (window as Window & { pywebview?: { api: Partial<DesktopWindowApi> } }).pywebview?.api;
   return api?.minimize && api.window_is_maximized && api.toggle_window_size && api.start_window_drag && api.destroy ? api as DesktopWindowApi : null;
 }

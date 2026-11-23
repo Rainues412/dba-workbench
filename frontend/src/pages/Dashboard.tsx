@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { motion } from "motion/react";
-import { api, entityApi } from "../api/client";
+import { api, completeDashboardTask } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useProfile } from "../auth/profile";
 import { EmptyState, ErrorState, SkeletonBlock, SkeletonState } from "../components/States";
@@ -61,7 +61,7 @@ export function Dashboard() {
     setQuickError("");
     setCompletion(task.id, { task, position, phase: "pending" });
     try {
-      await playTaskStatusFeedback(entityApi.update("/api/tasks/", task.id, task.revision, { status: "已完成" }), reducedMotion,
+      await playTaskStatusFeedback(completeDashboardTask(task.id, task.revision), reducedMotion,
         () => setCompletion(task.id, { task, position, phase: "success" }));
       await client.cancelQueries({ queryKey: recentTasksKey });
       if (document.activeElement === trigger) viewAllTasks.current?.focus({ preventScroll: true });

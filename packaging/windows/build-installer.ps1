@@ -94,6 +94,7 @@ try {
         --include-data-dir="frontend_dist=frontend_dist" `
         --include-data-files="$iconPath=assets/dba-workbench-icon.ico" `
         --include-data-files="backend/migrations/*.sql=backend/migrations/" `
+        --include-data-dir="backend/queries=backend/queries" `
         --include-module=main `
         --include-package=backend `
         --include-module=webview.platforms.winforms `

@@ -1,3 +1,5 @@
+import { invoke, isTauri } from "@tauri-apps/api/core";
+
 type ApiErrorBody = {
   error?: { code?: string; message?: string; request_id?: string };
   detail?: string;
@@ -16,6 +18,11 @@ export class ApiError extends Error {
 
 let csrfToken = "";
 let vaultAccessToken = "";
+const desktopDashboardCommands = new Map([
+  ["/api/dashboard/stats", "dashboard_stats"],
+  ["/api/dashboard/recent-tasks", "dashboard_recent_tasks"],
+  ["/api/dashboard/database-distribution", "dashboard_database_distribution"],
+]);
 export const REAUTH_REQUIRED_EVENT = "dba:reauth-required";
 export const VAULT_LOCKED_EVENT = "dba:vault-locked";
 export const VAULT_ACCESS_EVENT = "dba:vault-access-changed";
@@ -38,6 +45,21 @@ export async function api<T>(
   path: string,
   init: RequestInit & { revision?: number } = {},
 ): Promise<T> {
+  if (isTauri() && (init.method ?? "GET").toUpperCase() === "GET") {
+    const command = desktopDashboardCommands.get(path);
+    if (command) {
+      init.signal?.throwIfAborted();
+      try {
+        const result = await invoke<T>(command);
+        init.signal?.throwIfAborted();
+        return result;
+      } catch (error) {
+        init.signal?.throwIfAborted();
+        throw new ApiError(500, "DESKTOP_READ_FAILED", String(error));
+      }
+    }
+  }
+
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
   if (init.body !== undefined && !headers.has("Content-Type")) {
@@ -96,6 +118,23 @@ export type Page<T> = {
 
 export type Entity = Record<string, unknown> & { id: number; revision: number };
 
+async function invokeDesktop<T>(command: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
+  signal?.throwIfAborted();
+  try {
+    const result = await invoke<T>(command, args);
+    signal?.throwIfAborted();
+    return result;
+  } catch (reason) {
+    signal?.throwIfAborted();
+    const error = reason as Partial<{ status: number; message: string }> | null;
+    throw new ApiError(error?.status ?? 500, "DESKTOP_REQUEST_FAILED", error?.message ?? "读取或保存本机数据失败，请重试。");
+  }
+}
+
+function useNativeTasks(path: string) {
+  return path === "/api/tasks/" && isTauri();
+}
+
 async function sessionStatus(signal?: AbortSignal): Promise<Session> {
   const token = new URLSearchParams(window.location.hash.slice(1)).get("desktop");
   if (token) {
@@ -127,16 +166,35 @@ export const authApi = {
 
 export const entityApi = {
   list: <T extends Entity>(path: string, page: number, keyword: string, filters: Record<string, string> = {}, pageSize = 20, signal?: AbortSignal) => {
+    if (useNativeTasks(path)) {
+      return invokeDesktop<Page<T>>("tasks_list", {
+        filter: { page, pageSize, keyword, status: filters.status ?? "", priority: filters.priority ?? "",
+          archived: filters.archived === "1", overdue: filters.overdue === "1" },
+      }, signal);
+    }
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
     if (keyword) params.set("keyword", keyword);
     for (const [field, value] of Object.entries(filters)) if (value) params.set(field, value);
     return api<Page<T>>(`${path}?${params}`, { signal });
   },
-  detail: <T extends Entity>(path: string, id: number) => api<T>(`${path}${id}`),
+  detail: <T extends Entity>(path: string, id: number) => useNativeTasks(path)
+    ? invokeDesktop<T>("tasks_detail", { id }) : api<T>(`${path}${id}`),
   create: <T extends Entity>(path: string, body: Record<string, unknown>) =>
-    api<T>(path, { method: "POST", body: jsonBody(body) }),
+    useNativeTasks(path) ? invokeDesktop<T>("tasks_create", { input: body, csrfToken })
+      : api<T>(path, { method: "POST", body: jsonBody(body) }),
   update: <T extends Entity>(path: string, id: number, revision: number, body: Record<string, unknown>) =>
-    api<T>(`${path}${id}`, { method: "PUT", revision, body: jsonBody(body) }),
+    useNativeTasks(path) ? invokeDesktop<T>("tasks_update", { id, revision, input: body, csrfToken })
+      : api<T>(`${path}${id}`, { method: "PUT", revision, body: jsonBody(body) }),
   remove: (path: string, id: number, revision: number) =>
-    api<{ ok: boolean }>(`${path}${id}`, { method: "DELETE", revision }),
+    useNativeTasks(path) ? invokeDesktop<void>("tasks_delete", { id, revision, csrfToken }).then(() => ({ ok: true }))
+      : api<{ ok: boolean }>(`${path}${id}`, { method: "DELETE", revision }),
 };
+
+export async function completeDashboardTask(taskId: number, revision: number): Promise<void> {
+  await entityApi.update("/api/tasks/", taskId, revision, { status: "已完成" });
+}
+
+export function searchWorkspace<T>(query: string, signal: AbortSignal): Promise<T> {
+  if (isTauri()) return invokeDesktop<T>("global_search", { query, limit: 0 }, signal);
+  return api<T>(`/api/search/?${new URLSearchParams({ q: query, limit: "0" })}`, { signal });
+}

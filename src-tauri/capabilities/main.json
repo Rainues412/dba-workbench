@@ -1,0 +1,23 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "workbench",
+  "description": "Local workbench data and window controls",
+  "windows": ["main"],
+  "remote": { "urls": ["http://127.0.0.1:*/*"] },
+  "permissions": [
+    "core:window:allow-close",
+    "core:window:allow-is-maximized",
+    "core:window:allow-minimize",
+    "core:window:allow-start-dragging",
+    "core:window:allow-toggle-maximize",
+    "allow-dashboard-stats",
+    "allow-dashboard-recent-tasks",
+    "allow-dashboard-database-distribution",
+    "allow-tasks-list",
+    "allow-tasks-detail",
+    "allow-tasks-create",
+    "allow-tasks-update",
+    "allow-tasks-delete",
+    "allow-global-search"
+  ]
+}

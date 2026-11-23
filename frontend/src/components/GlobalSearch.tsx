@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { motion } from "motion/react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../api/client";
+import { searchWorkspace } from "../api/client";
 import { SearchHighlight } from "./SearchHighlight";
 import { SelectionIndicator, SelectionMotion } from "./SelectionMotion";
 
@@ -68,7 +68,7 @@ export function GlobalSearch() {
     const controller = new AbortController();
     setLoading(true);
     const timer = window.setTimeout(() => {
-      void api<Results>(`/api/search/?${new URLSearchParams({ q: query.trim(), limit: "0" })}`, { signal: controller.signal })
+      void searchWorkspace<Results>(query.trim(), controller.signal)
         .then((data) => { if (active) setResults(data); })
         .catch((reason: unknown) => { if (active && !(reason instanceof DOMException && reason.name === "AbortError")) setError(reason instanceof Error ? reason.message : "搜索失败，请重试"); })
         .finally(() => { if (active) setLoading(false); });
