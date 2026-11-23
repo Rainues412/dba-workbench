@@ -1,7 +1,10 @@
 use std::{path::PathBuf, time::Duration};
 
-use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBehavior};
+use rusqlite::{
+    params, types::ValueRef, Connection, OpenFlags, OptionalExtension, Params, TransactionBehavior,
+};
 use serde::Serialize;
+use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use tauri::WebviewWindow;
 use uuid::Uuid;
@@ -42,6 +45,33 @@ impl From<rusqlite::Error> for CommandError {
 }
 
 pub type Result<T> = std::result::Result<T, CommandError>;
+
+pub fn query_rows(
+    conn: &Connection,
+    sql: &str,
+    params: impl Params,
+) -> rusqlite::Result<Vec<Value>> {
+    let mut statement = conn.prepare(sql)?;
+    let keys: Vec<String> = statement
+        .column_names()
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    let rows = statement.query_map(params, |row| {
+        let mut result = Map::new();
+        for (index, key) in keys.iter().enumerate() {
+            let value = match row.get_ref(index)? {
+                ValueRef::Null => Value::Null,
+                ValueRef::Integer(number) => json!(number),
+                ValueRef::Real(number) => json!(number),
+                _ => json!(row.get::<_, String>(index)?),
+            };
+            result.insert(key.clone(), value);
+        }
+        Ok(Value::Object(result))
+    })?;
+    rows.collect()
+}
 
 fn session_token(window: &WebviewWindow, workspace: &Workspace) -> Result<Option<String>> {
     let current = window.url().map_err(|_| CommandError::unauthorized())?;

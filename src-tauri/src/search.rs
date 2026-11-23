@@ -1,5 +1,5 @@
-use rusqlite::{functions::FunctionFlags, params, types::ValueRef, Connection};
-use serde_json::{json, Map, Value};
+use rusqlite::{functions::FunctionFlags, params, Connection};
+use serde_json::{json, Value};
 use tauri::{State, WebviewWindow};
 
 use crate::desktop_db::{self, Result, Workspace};
@@ -40,25 +40,7 @@ fn find(conn: &Connection, sql: &str, query: &str, limit: i64) -> rusqlite::Resu
     if query.is_empty() {
         return Ok(Vec::new());
     }
-    let mut statement = conn.prepare(sql)?;
-    let keys: Vec<String> = statement
-        .column_names()
-        .into_iter()
-        .map(str::to_owned)
-        .collect();
-    let rows = statement.query_map(params![query, limit], |row| {
-        let mut result = Map::new();
-        for (index, key) in keys.iter().enumerate() {
-            let value = match row.get_ref(index)? {
-                ValueRef::Null => Value::Null,
-                ValueRef::Integer(number) => json!(number),
-                _ => json!(row.get::<_, String>(index)?),
-            };
-            result.insert(key.clone(), value);
-        }
-        Ok(Value::Object(result))
-    })?;
-    rows.collect()
+    desktop_db::query_rows(conn, sql, params![query, limit])
 }
 
 #[tauri::command]

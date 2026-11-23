@@ -2,6 +2,7 @@
 
 mod dashboard;
 mod desktop_db;
+mod resources;
 mod search;
 mod tasks;
 
@@ -178,6 +179,12 @@ fn main() {
             tasks::tasks_create,
             tasks::tasks_update,
             tasks::tasks_delete,
+            resources::resources_list,
+            resources::resources_facets,
+            resources::resources_detail,
+            resources::resources_create,
+            resources::resources_update,
+            resources::resources_delete,
             search::global_search,
         ])
         .run(tauri::generate_context!())

@@ -18,10 +18,11 @@ export class ApiError extends Error {
 
 let csrfToken = "";
 let vaultAccessToken = "";
-const desktopDashboardCommands = new Map([
+const desktopReadCommands = new Map([
   ["/api/dashboard/stats", "dashboard_stats"],
   ["/api/dashboard/recent-tasks", "dashboard_recent_tasks"],
   ["/api/dashboard/database-distribution", "dashboard_database_distribution"],
+  ["/api/resources/facets", "resources_facets"],
 ]);
 export const REAUTH_REQUIRED_EVENT = "dba:reauth-required";
 export const VAULT_LOCKED_EVENT = "dba:vault-locked";
@@ -46,18 +47,8 @@ export async function api<T>(
   init: RequestInit & { revision?: number } = {},
 ): Promise<T> {
   if (isTauri() && (init.method ?? "GET").toUpperCase() === "GET") {
-    const command = desktopDashboardCommands.get(path);
-    if (command) {
-      init.signal?.throwIfAborted();
-      try {
-        const result = await invoke<T>(command);
-        init.signal?.throwIfAborted();
-        return result;
-      } catch (error) {
-        init.signal?.throwIfAborted();
-        throw new ApiError(500, "DESKTOP_READ_FAILED", String(error));
-      }
-    }
+    const command = desktopReadCommands.get(path);
+    if (command) return invokeDesktop<T>(command, {}, init.signal ?? undefined);
   }
 
   const headers = new Headers(init.headers);
@@ -131,8 +122,11 @@ async function invokeDesktop<T>(command: string, args: Record<string, unknown>, 
   }
 }
 
-function useNativeTasks(path: string) {
-  return path === "/api/tasks/" && isTauri();
+function nativeEntity(path: string) {
+  if (!isTauri()) return null;
+  if (path === "/api/tasks/") return "tasks";
+  if (path === "/api/resources/") return "resources";
+  return null;
 }
 
 async function sessionStatus(signal?: AbortSignal): Promise<Session> {
@@ -166,10 +160,17 @@ export const authApi = {
 
 export const entityApi = {
   list: <T extends Entity>(path: string, page: number, keyword: string, filters: Record<string, string> = {}, pageSize = 20, signal?: AbortSignal) => {
-    if (useNativeTasks(path)) {
+    const module = nativeEntity(path);
+    if (module === "tasks") {
       return invokeDesktop<Page<T>>("tasks_list", {
         filter: { page, pageSize, keyword, status: filters.status ?? "", priority: filters.priority ?? "",
           archived: filters.archived === "1", overdue: filters.overdue === "1" },
+      }, signal);
+    }
+    if (module === "resources") {
+      return invokeDesktop<Page<T>>("resources_list", {
+        filter: { page, pageSize, keyword, kind: filters.kind ?? "", category: filters.category ?? "",
+          tag: filters.tag ?? "", wbDb: filters.wb_db ?? "", favoriteOnly: filters.favorite_only === "1" },
       }, signal);
     }
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
@@ -177,17 +178,25 @@ export const entityApi = {
     for (const [field, value] of Object.entries(filters)) if (value) params.set(field, value);
     return api<Page<T>>(`${path}?${params}`, { signal });
   },
-  detail: <T extends Entity>(path: string, id: number) => useNativeTasks(path)
-    ? invokeDesktop<T>("tasks_detail", { id }) : api<T>(`${path}${id}`),
-  create: <T extends Entity>(path: string, body: Record<string, unknown>) =>
-    useNativeTasks(path) ? invokeDesktop<T>("tasks_create", { input: body, csrfToken })
-      : api<T>(path, { method: "POST", body: jsonBody(body) }),
-  update: <T extends Entity>(path: string, id: number, revision: number, body: Record<string, unknown>) =>
-    useNativeTasks(path) ? invokeDesktop<T>("tasks_update", { id, revision, input: body, csrfToken })
-      : api<T>(`${path}${id}`, { method: "PUT", revision, body: jsonBody(body) }),
-  remove: (path: string, id: number, revision: number) =>
-    useNativeTasks(path) ? invokeDesktop<void>("tasks_delete", { id, revision, csrfToken }).then(() => ({ ok: true }))
-      : api<{ ok: boolean }>(`${path}${id}`, { method: "DELETE", revision }),
+  detail: <T extends Entity>(path: string, id: number) => {
+    const module = nativeEntity(path);
+    return module ? invokeDesktop<T>(`${module}_detail`, { id }) : api<T>(`${path}${id}`);
+  },
+  create: <T extends Entity>(path: string, body: Record<string, unknown>) => {
+    const module = nativeEntity(path);
+    return module ? invokeDesktop<T>(`${module}_create`, { input: body, csrfToken })
+      : api<T>(path, { method: "POST", body: jsonBody(body) });
+  },
+  update: <T extends Entity>(path: string, id: number, revision: number, body: Record<string, unknown>) => {
+    const module = nativeEntity(path);
+    return module ? invokeDesktop<T>(`${module}_update`, { id, revision, input: body, csrfToken })
+      : api<T>(`${path}${id}`, { method: "PUT", revision, body: jsonBody(body) });
+  },
+  remove: (path: string, id: number, revision: number) => {
+    const module = nativeEntity(path);
+    return module ? invokeDesktop<void>(`${module}_delete`, { id, revision, csrfToken }).then(() => ({ ok: true }))
+      : api<{ ok: boolean }>(`${path}${id}`, { method: "DELETE", revision });
+  },
 };
 
 export async function completeDashboardTask(taskId: number, revision: number): Promise<void> {

@@ -7,6 +7,12 @@ const COMMANDS: &[&str] = &[
     "tasks_create",
     "tasks_update",
     "tasks_delete",
+    "resources_list",
+    "resources_facets",
+    "resources_detail",
+    "resources_create",
+    "resources_update",
+    "resources_delete",
     "global_search",
 ];
 

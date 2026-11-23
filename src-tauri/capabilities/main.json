@@ -18,6 +18,12 @@
     "allow-tasks-create",
     "allow-tasks-update",
     "allow-tasks-delete",
+    "allow-resources-list",
+    "allow-resources-facets",
+    "allow-resources-detail",
+    "allow-resources-create",
+    "allow-resources-update",
+    "allow-resources-delete",
     "allow-global-search"
   ]
 }
