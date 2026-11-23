@@ -25,13 +25,24 @@ def test_server_reauth_rejection_updates_badge_without_refresh(live_server, isol
             page.get_by_label("保险箱主密码", exact=True).fill("test-only-master-password")
             page.get_by_label("确认主密码", exact=True).fill("test-only-master-password")
             page.get_by_role("button", name="创建保险箱", exact=True).click()
-            page.get_by_text("恢复密钥待备份", exact=True).wait_for(timeout=20_000)
+            page.get_by_role("button", name="立即锁定", exact=True).wait_for(timeout=20_000)
             # Only the server knows about this expiry; no focus event, reload or clock change.
             with sqlite3.connect(database) as conn:
                 conn.execute("UPDATE sessions SET reauthenticated_until = ?", ("2000-01-01T00:00:00+00:00",))
-            with page.expect_response(lambda response: response.url.endswith("/api/vault/backup")) as rejected:
-                page.get_by_role("button", name="加密备份", exact=True).click()
+            page.locator(".sidebar-foot").get_by_role("button", name="设置", exact=True).click()
+            settings = page.get_by_role("dialog", name="设置", exact=True)
+            settings.get_by_role("button", name="密码库安全", exact=True).click()
+            settings.get_by_role("button", name="立即备份", exact=True).click()
+            backup = page.get_by_role("dialog", name="立即备份", exact=True)
+            backup.get_by_label("当前密码库主密码", exact=True).fill("test-only-master-password")
+            backup.get_by_label("备份密码", exact=True).fill("test-only-backup-password")
+            backup.get_by_label("确认备份密码", exact=True).fill("test-only-backup-password")
+            with page.expect_response(lambda response: response.url.endswith("/api/vault/backups") and response.request.method == "POST") as rejected:
+                backup.get_by_role("button", name="生成备份", exact=True).click()
             assert rejected.value.status == 403
+            expect(backup.get_by_role("alert")).to_be_visible()
+            backup.get_by_role("button", name="取消", exact=True).click()
+            settings.get_by_role("button", name="完成", exact=True).click()
             expect(page.locator(".reauth-state .badge")).to_have_text("已过期", timeout=5000)
             expect(page.get_by_label("验证剩余时间", exact=True)).to_have_count(0)
             expect(page.get_by_role("status").filter(has_text="敏感操作验证已过期")).to_be_visible()
@@ -56,7 +67,7 @@ def test_grant_expiry_refresh_preserves_draft_and_updates_login(live_server, iso
             page.get_by_label("保险箱主密码", exact=True).fill("test-only-master-password")
             page.get_by_label("确认主密码", exact=True).fill("test-only-master-password")
             page.get_by_role("button", name="创建保险箱", exact=True).click()
-            page.get_by_text("恢复密钥待备份", exact=True).wait_for(timeout=20_000)
+            page.get_by_role("button", name="立即锁定", exact=True).wait_for(timeout=20_000)
             page.get_by_role("button", name="新增条目", exact=True).click()
             editor = page.get_by_role("dialog", name="新增保险箱条目", exact=True)
             editor.get_by_label("名称或备注", exact=True).fill("自动刷新保留草稿")

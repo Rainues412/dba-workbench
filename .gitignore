@@ -26,3 +26,4 @@ server/workspace.db-shm
 server/.workspace_secret
 server/.vault_recovery_private.pem
 server/.vault_recovery_public.pem
+/server/vault-backups/

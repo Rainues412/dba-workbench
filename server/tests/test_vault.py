@@ -329,23 +329,101 @@ def test_forgot_master_password_recovers_without_reencrypting_items(client: Test
     assert listed["ciphertext"] == created["ciphertext"]
 
 
-def test_encrypted_backup_detects_tampering_and_restores(client: TestClient) -> None:
+def test_backup_restore_preserves_current_items_on_conflict_or_write_failure(client, isolated_app, monkeypatch):
+    from backend import vault_backups
+
+    _, path = isolated_app
     dek, _ = initialize_vault(client)
-    client.post(
-        "/api/vault/items",
-        json=encrypted_item(dek, "test-item-key-0001", bytes(range(12)), "test-value"),
-    )
-    backup = client.get("/api/vault/backup")
-    assert backup.status_code == 200
-    document = backup.json()
-    tampered = dict(document)
-    tampered["items"] = [dict(document["items"][0], ciphertext="tampered-value-0000")]
-    tampered["confirm"] = "RESTORE"
-    assert client.post("/api/vault/backup/restore", json=tampered).status_code == 422
-    document["confirm"] = "RESTORE"
-    restored = client.post("/api/vault/backup/restore", json=document)
-    assert restored.status_code == 200
+    original = encrypted_item(dek, "test-item-key-0001", bytes(range(12)), "original-value")
+    incoming = encrypted_item(dek, "test-item-key-0002", bytes(range(1, 13)), "imported-value")
+    assert client.post("/api/vault/items", json=original).status_code == 201
+    existing = client.get("/api/vault/backup").json()
+    payload = {"confirm": "RESTORE", "expected_digest": existing["digest"], "items": [incoming]}
+    assert client.post("/api/vault/backup/restore", json={**payload, "expected_digest": "0" * 64}).status_code == 409
+    assert client.post("/api/vault/backup/restore", json={**payload, "confirm": "cancel"}).status_code == 422
+
+    with monkeypatch.context() as patch:
+        def disk_unavailable(*args, **kwargs):
+            raise OSError("test-only storage failure")
+        patch.setattr(vault_backups, "save", disk_unavailable)
+        assert client.post("/api/vault/backup/restore", json=payload).status_code == 503
+    assert client.get("/api/vault/backup").json() == existing
+
+    with sqlite3.connect(path) as conn:
+        conn.execute("""CREATE TRIGGER test_reject_restore BEFORE INSERT ON vault_items
+                        BEGIN SELECT RAISE(ABORT, 'test-only write failure'); END;""")
+    assert client.post("/api/vault/backup/restore", json=payload).status_code == 503
+    assert client.get("/api/vault/backup").json() == existing
+    with sqlite3.connect(path) as conn:
+        conn.execute("DROP TRIGGER test_reject_restore")
+
+    restored = client.post("/api/vault/backup/restore", json=payload)
+    assert restored.status_code == 200, restored.text
     assert restored.json()["item_count"] == 1
+    safety = restored.json()["safety_backup"]
+    assert client.get(f"/api/vault/backups/{safety}").json() == existing
+    current = client.get("/api/vault/backup").json()
+    assert current["profile"] == existing["profile"]
+    assert current["items"][0]["ciphertext"] == incoming["ciphertext"]
+
+
+def test_scheduled_portable_backup_respects_interval_and_retention(client, isolated_app):
+    import hmac
+    import os
+    from datetime import datetime, timedelta, timezone
+
+    from backend import vault_backups
+
+    dek, _ = initialize_vault(client)
+    item = encrypted_item(dek, "test-item-key-0001", bytes(range(12)), "original-value")
+    assert client.post("/api/vault/items", json=item).status_code == 201
+    response = client.get("/api/vault/backup-settings")
+    assert response.json() == {"interval_hours": 24, "retention": 10, "portable_ready": False}
+    assert client.put("/api/vault/backup-settings", json={"interval_hours": 7, "retention": 3}).status_code == 422
+    assert client.put("/api/vault/backup-settings", json={"interval_hours": 6, "retention": 3}).status_code == 200
+
+    salt, nonce, key = os.urandom(16), os.urandom(12), os.urandom(32)
+    kek = hash_secret_raw(b"portable-backup-test-password", salt, 3, 65536, 1, 32, Type.ID)
+    wrapped = AESGCM(kek).encrypt(nonce, dek + key, b"dba-vault-backup-v2:keys:1")
+    profile = client.get("/api/vault/profile").json()["profile"]
+    payload = {"seal": {"salt": b64(salt), "nonce": b64(nonce), "wrapped_keys": b64(wrapped)},
+               "signing_key": b64(key), "recovery_wrapped_dek": profile["recovery_wrapped_dek"]}
+    enrolled = client.post("/api/vault/backup-settings/password", json=payload)
+    assert enrolled.status_code == 200, enrolled.text
+    assert enrolled.json()["portable_ready"]
+
+    def verify_document(entry):
+        backup = client.get(f"/api/vault/backups/{entry['filename']}").json()
+        mac = backup.pop("mac")
+        assert hmac.digest(key, vault_backups.canonical(backup), "sha256").hex() == mac
+        assert backup["format"] == "dba-vault-backup-v2" and backup["source_user_id"] == 1
+        assert AESGCM(kek).decrypt(unb64(backup["nonce"]), unb64(backup["wrapped_keys"]), b"dba-vault-backup-v2:keys:1") == dek + key
+        assert backup["items"][0]["ciphertext"] == item["ciphertext"]
+        assert set(backup) == {"format", "source_user_id", "salt", "nonce", "wrapped_keys", "items"}
+
+    files = client.get("/api/vault/backups").json()
+    assert len(files) == 1 and files[0]["kind"] == "auto"
+    verify_document(files[0])
+    vault_router.run_scheduled_backups()
+    assert client.get("/api/vault/backups").json() == files
+
+    def age_files():
+        now = datetime.now(timezone.utc)
+        for offset, entry in enumerate(client.get("/api/vault/backups").json(), 7):
+            old = (now - timedelta(hours=offset)).timestamp()
+            os.utime(vault_backups.directory(1) / entry["filename"], (old, old))
+
+    for _ in range(4):
+        age_files()
+        vault_router.run_scheduled_backups()
+    files = client.get("/api/vault/backups").json()
+    assert len(files) == 3
+    verify_document(files[0])
+    assert client.put("/api/vault/backup-settings", json={"interval_hours": 0, "retention": 3}).status_code == 200
+    age_files()
+    disabled = client.get("/api/vault/backups").json()
+    vault_router.run_scheduled_backups()
+    assert client.get("/api/vault/backups").json() == disabled
 
 
 def test_offline_admin_recovery_rewraps_without_reencrypting_items(

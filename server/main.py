@@ -1,4 +1,5 @@
 """DBA Workspace local server and built React application host."""
+import asyncio
 import io
 import sys
 import threading
@@ -34,7 +35,25 @@ FRONTEND_DIR = BASE_DIR / "frontend_dist"
 async def lifespan(_: FastAPI):
     """Initialize new databases and reject incompatible schemas on every entry."""
     run_startup_migrations()
-    yield
+    stop = asyncio.Event()
+
+    async def schedule_vault_backups():
+        while not stop.is_set():
+            try:
+                await asyncio.to_thread(vault.run_scheduled_backups)
+            except Exception:
+                logger.warning("Could not check scheduled vault backups")
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=60)
+            except TimeoutError:
+                continue
+
+    backups = asyncio.create_task(schedule_vault_backups())
+    try:
+        yield
+    finally:
+        stop.set()
+        await backups
 
 
 app = FastAPI(title="DBA 工作台 API", version="0.5", lifespan=lifespan)

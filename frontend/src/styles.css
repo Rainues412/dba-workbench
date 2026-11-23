@@ -593,17 +593,11 @@ body:has(.desktop-shell) .profile-dialog { inset-block: 64px; max-height: calc(1
 .context-details[open] > summary::after { transform: rotate(45deg); }
 .context-details > summary:hover { background: var(--surface-soft); }
 .context-details > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; border-radius: 8px; }
-.context-details > p, .context-details > .recovery-instructions { margin: 0; padding: 0 .85rem .75rem; line-height: 1.65; overflow-wrap: anywhere; }
-.recovery-instructions p { margin: 0; }
-.recovery-instructions .vault-recovery-command { margin: .6rem 0; color: var(--text); }
-.vault-recovery-status { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; padding: .6rem .85rem; background: var(--warning-soft); border-color: color-mix(in srgb, var(--warning) 28%, var(--border)); }
-.vault-recovery-status > span { display: inline-flex; align-items: center; gap: .45rem; color: var(--warning); font-size: .78rem; font-weight: 700; }
+.context-details > p { margin: 0; padding: 0 .85rem .75rem; line-height: 1.65; overflow-wrap: anywhere; }
 .vault-page-title { display: flex; align-items: center; flex-wrap: wrap; gap: .65rem; }
 .vault-lock-state { display: inline-flex; align-items: center; gap: .38rem; min-height: 32px; padding: .35rem .65rem; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); background: var(--surface-soft); font-size: .78rem; font-weight: 750; line-height: 1.2; white-space: nowrap; }
 .vault-lock-state.is-unlocked { color: var(--success); border-color: color-mix(in srgb, var(--success) 38%, var(--border)); background: var(--success-soft); box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 8%, transparent); }
 .vault-lock-state svg { flex-shrink: 0; }
-.vault-recovery-status > .context-details { flex: 1 1 220px; border: 0; background: transparent; }
-.vault-recovery-status .context-details > summary { justify-content: flex-end; padding: .4rem; }
 .vault-toolbar { gap: .55rem; }
 .vault-toolbar .search-field { min-width: 180px; }
 .vault-toolbar > .button-row { flex-wrap: wrap; justify-content: flex-end; gap: .45rem; }
@@ -622,12 +616,7 @@ body:has(.desktop-shell) .profile-dialog { inset-block: 64px; max-height: calc(1
 .import-counts strong { color: var(--text-strong); }
 .backup-file { display: flex; align-items: center; gap: .6rem; min-width: 0; }
 .backup-file > strong { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .8rem; }
-.backup-file > .button { flex-shrink: 0; }
-.vault-restore-dialog .dialog-focus-boundary > .button { align-self: flex-start; }
 @media (max-width: 720px) {
-  .vault-recovery-status > span { flex: 1 1 100%; }
-  .vault-recovery-status > .context-details { flex: 1 1 140px; }
-  .vault-recovery-status .context-details > summary { justify-content: space-between; }
   .vault-toolbar > .button-row { justify-content: flex-start; }
 }
 .vault-lock-hint { display: flex; align-items: flex-start; justify-content: center; gap: .4rem; width: min(460px, 100%); margin: .85rem auto 0; color: var(--muted); font-size: .75rem; line-height: 1.6; text-align: left; }

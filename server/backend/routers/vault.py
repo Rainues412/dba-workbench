@@ -9,17 +9,18 @@ import sqlite3
 import string
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from argon2.low_level import Type, hash_secret_raw
 from cryptography.exceptions import InvalidTag
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from backend import database, vault_device
+from backend import database, vault_backups, vault_device
 from backend.auth import (
     MIN_PASSWORD_LENGTH,
     attempt_identifier,
@@ -34,7 +35,7 @@ from backend.auth import (
     verify_password,
 )
 from backend.database import get_db_ctx, page_response, validate_page
-from backend.observability import record_audit
+from backend.observability import logger, record_audit
 from backend.vault_access import device_wrapping_key, grant_access, renew_access, require_vault_access, revoke_access
 from backend.vault_recovery import (
     decrypt_recovery_envelope,
@@ -125,10 +126,32 @@ class LegacyComplete(BaseModel):
 
 
 class BackupRestore(BaseModel):
-    confirm: str
-    digest: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
-    profile: dict
-    items: list[dict]
+    confirm: Literal["RESTORE"]
+    expected_digest: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None
+    profile: VaultProfileCreate | None = None
+    items: list[VaultItemWrite]
+    source_filename: str | None = Field(default=None, pattern=vault_backups.BACKUP_NAME)
+
+
+class PortableSeal(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    salt: Annotated[str, Field(pattern=r"^[a-zA-Z0-9_-]{22}$")]
+    nonce: Annotated[str, Field(pattern=r"^[a-zA-Z0-9_-]{16}$")]
+    wrapped_keys: Annotated[str, Field(pattern=r"^[a-zA-Z0-9_-]{107}$")]
+
+
+class PortableBackupRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    seal: PortableSeal
+    signing_key: Annotated[str, Field(pattern=r"^[a-zA-Z0-9_-]{43}$")]
+    recovery_wrapped_dek: ENCODED
+
+
+class BackupSettings(BaseModel):
+    interval_hours: Literal[0, 6, 12, 24, 48, 168] | None = None
+    retention: Literal[3, 5, 10, 15, 20, 30, 50] | None = None
 
 
 def _user(request: Request) -> int:
@@ -205,6 +228,23 @@ def _profile_row(conn, user_id: int):
     ).fetchone()
 
 
+def _insert_profile(conn, user_id: int, data: VaultProfileCreate, questions) -> None:
+    conn.execute(
+        """INSERT INTO vault_profiles
+           (user_id, envelope_version, kdf_name, kdf_salt, kdf_memory_kib,
+            kdf_iterations, kdf_parallelism, wrapped_dek, wrapped_dek_nonce,
+            recovery_wrapped_dek, recovery_key_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            user_id, data.envelope_version, data.kdf_name, data.kdf_salt,
+            data.kdf_memory_kib, data.kdf_iterations, data.kdf_parallelism,
+            data.wrapped_dek, data.wrapped_dek_nonce,
+            data.recovery_wrapped_dek, data.recovery_key_id,
+        ),
+    )
+    _insert_questions(conn, user_id, questions)
+
+
 def _expected_aad(user_id: int, item_key: str) -> str:
     return f"dba-vault:item:{user_id}:{item_key}:v1"
 
@@ -223,8 +263,7 @@ def _backup_document(conn, user_id: int) -> dict:
 
 
 def _digest(document: dict) -> str:
-    encoded = json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+    return hashlib.sha256(vault_backups.canonical(document)).hexdigest()
 
 
 def _require_vault_setup(request: Request) -> None:
@@ -550,20 +589,7 @@ def create_profile(
     user_id = _user(request)
     with get_db_ctx() as conn:
         try:
-            conn.execute(
-                """INSERT INTO vault_profiles
-                   (user_id, envelope_version, kdf_name, kdf_salt, kdf_memory_kib,
-                    kdf_iterations, kdf_parallelism, wrapped_dek, wrapped_dek_nonce,
-                    recovery_wrapped_dek, recovery_key_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    user_id, data.envelope_version, data.kdf_name, data.kdf_salt,
-                    data.kdf_memory_kib, data.kdf_iterations, data.kdf_parallelism,
-                    data.wrapped_dek, data.wrapped_dek_nonce,
-                    data.recovery_wrapped_dek, data.recovery_key_id,
-                ),
-            )
-            _insert_questions(conn, user_id, questions)
+            _insert_profile(conn, user_id, data, questions)
             conn.commit()
         except sqlite3.IntegrityError as exc:
             raise HTTPException(409, "Vault is already initialized") from exc
@@ -738,86 +764,211 @@ def delete_item(
 
 
 @router.get("/backup")
-def encrypted_backup(request: Request, _: dict = Depends(require_vault_access)):
-    user_id = _user(request)
+def encrypted_backup(request: Request, response: Response, _: dict = Depends(require_vault_access)):
+    response.headers["Cache-Control"] = "no-store"
     with get_db_ctx() as conn:
-        document = _backup_document(conn, user_id)
+        conn.execute("BEGIN")
+        document = _backup_document(conn, _user(request))
     return {**document, "digest": _digest(document)}
 
 
-@router.post("/backup/restore")
-def restore_encrypted_backup(
-    data: BackupRestore,
-    request: Request,
-    _: dict = Depends(require_vault_access),
-):
-    if data.confirm != "RESTORE":
-        raise HTTPException(422, "Restore confirmation is required")
-    document = {"format": "dba-vault-backup-v1", "profile": data.profile, "items": data.items}
-    if _digest(document) != data.digest:
-        raise HTTPException(422, "Backup digest mismatch")
-    required_profile = {
-        "envelope_version", "kdf_name", "kdf_salt", "kdf_memory_kib",
-        "kdf_iterations", "kdf_parallelism", "wrapped_dek", "wrapped_dek_nonce",
-        "recovery_wrapped_dek", "recovery_key_id",
-    }
-    if not required_profile.issubset(data.profile):
-        raise HTTPException(422, "Backup profile is incomplete")
+@router.get("/backups")
+def list_backups(request: Request):
+    try:
+        with vault_backups.FILE_LOCK:
+            return vault_backups.entries(_user(request))
+    except OSError as exc:
+        raise HTTPException(503, "无法读取密码库备份列表。") from exc
+
+
+@router.get("/backups/{filename}")
+def read_backup(filename: str, request: Request, _: dict = Depends(require_vault_access)):
+    try:
+        with vault_backups.FILE_LOCK:
+            content = vault_backups.read(_user(request), filename)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, "找不到该备份文件。") from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(422, "无法读取该备份文件。") from exc
+    return Response(content, media_type="application/json", headers={"Cache-Control": "no-store"})
+
+
+@router.post("/backups", status_code=201)
+def save_backup(data: PortableBackupRequest, request: Request, response: Response, _: dict = Depends(require_vault_access)):
+    response.headers["Cache-Control"] = "no-store"
     user_id = _user(request)
+    with get_db_ctx() as conn:
+        conn.execute("BEGIN")
+        snapshot = _backup_document(conn, user_id)
+        if snapshot["profile"]["recovery_wrapped_dek"] != data.recovery_wrapped_dek:
+            raise HTTPException(409, "密码库已变更，请重新打开备份。")
+        retention = vault_backups.settings(conn, user_id)["retention"]
+    document = vault_backups.portable_document(user_id, snapshot["items"], data.seal.model_dump(), _unb64(data.signing_key))
+    try:
+        with vault_backups.FILE_LOCK:
+            filename = vault_backups.save(user_id, document)
+            vault_backups.prune(user_id, retention, filename)
+        return {"filename": filename, "document": document}
+    except (ValueError, OSError) as exc:
+        raise HTTPException(503, "无法写入密码库备份文件。") from exc
+
+
+@router.get("/backup-settings")
+def get_backup_settings(request: Request):
+    user_id = _user(request)
+    with get_db_ctx() as conn:
+        profile = _profile_row(conn, user_id)
+        ready = bool(profile and vault_backups.portable_settings(conn, user_id, profile["recovery_wrapped_dek"]))
+        return {**vault_backups.settings(conn, user_id), "portable_ready": ready}
+
+
+@router.put("/backup-settings")
+def update_backup_settings(data: BackupSettings, request: Request):
+    user_id = _user(request)
+    with get_db_ctx() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        current = vault_backups.settings(conn, user_id)
+        current.update(data.model_dump(exclude_none=True))
+        conn.execute(
+            """INSERT INTO vault_backup_settings(user_id, interval_hours, retention) VALUES (?, ?, ?)
+               ON CONFLICT(user_id) DO UPDATE SET interval_hours = excluded.interval_hours, retention = excluded.retention""",
+            (user_id, current["interval_hours"], current["retention"]),
+        )
+        conn.commit()
+    return get_backup_settings(request)
+
+
+@router.post("/backup-settings/password")
+def set_backup_password(data: PortableBackupRequest, request: Request, _: dict = Depends(require_vault_access)):
+    user_id = _user(request)
+    with get_db_ctx() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        snapshot = _backup_document(conn, user_id)
+        recovery = snapshot["profile"]["recovery_wrapped_dek"]
+        if recovery != data.recovery_wrapped_dek:
+            raise HTTPException(409, "密码库已变更，请重新配置自动备份。")
+        seal = data.seal.model_dump()
+        policy = vault_backups.settings(conn, user_id)
+        conn.execute(
+            """INSERT INTO vault_backup_settings(user_id, portable_seal, signing_key, vault_identity)
+               VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET
+               portable_seal=excluded.portable_seal, signing_key=excluded.signing_key, vault_identity=excluded.vault_identity""",
+            (user_id, json.dumps(seal), data.signing_key, vault_backups.identity(recovery)),
+        )
+        with vault_backups.FILE_LOCK:
+            filename = None
+            if policy["interval_hours"]:
+                document = vault_backups.portable_document(user_id, snapshot["items"], seal, _unb64(data.signing_key))
+                try:
+                    filename = vault_backups.save(user_id, document, prefix="auto")
+                except (ValueError, OSError) as exc:
+                    raise HTTPException(503, "无法写入自动备份文件。") from exc
+            conn.commit()
+            if filename:
+                vault_backups.prune(user_id, policy["retention"], filename)
+    return {**policy, "portable_ready": True}
+
+
+def _portable_snapshot(user_id: int, snapshot: dict, seal_settings) -> dict:
+    return vault_backups.portable_document(
+        user_id, snapshot["items"], json.loads(seal_settings["portable_seal"]), _unb64(seal_settings["signing_key"]),
+    )
+
+
+def run_scheduled_backups() -> None:
+    with get_db_ctx() as conn:
+        user_ids = [row[0] for row in conn.execute(
+            "SELECT p.user_id FROM vault_profiles p JOIN users u ON u.id=p.user_id WHERE u.is_active=1"
+        )]
+    now = datetime.now(timezone.utc)
+    for user_id in user_ids:
+        try:
+            with get_db_ctx() as conn:
+                conn.execute("BEGIN")
+                policy = vault_backups.settings(conn, user_id)
+                profile = _profile_row(conn, user_id)
+                if not profile or not policy["interval_hours"]:
+                    continue
+                seal = vault_backups.portable_settings(conn, user_id, profile["recovery_wrapped_dek"])
+                if seal is None:
+                    continue
+                with vault_backups.FILE_LOCK:
+                    backups = vault_backups.entries(user_id)
+                    last = (datetime.fromisoformat(backups[0]["created_at"]) if backups
+                            else datetime.fromisoformat(profile["created_at"]).replace(tzinfo=timezone.utc))
+                    if (now - last).total_seconds() < policy["interval_hours"] * 3600:
+                        continue
+                    snapshot = _backup_document(conn, user_id)
+                    filename = vault_backups.save(user_id, _portable_snapshot(user_id, snapshot, seal), prefix="auto")
+                    vault_backups.prune(user_id, policy["retention"], filename)
+        except (ValueError, OSError, sqlite3.Error):
+            logger.warning("Could not complete scheduled vault backup")
+
+
+@router.post("/backup/restore")
+def restore_encrypted_backup(data: BackupRestore, request: Request):
+    user_id = _user(request)
+    if any(item.envelope_version != 1 or item.aad != _expected_aad(user_id, item.item_key) for item in data.items):
+        raise HTTPException(422, "备份条目格式无效。")
+    if len({item.item_key for item in data.items}) != len(data.items) or len({item.nonce for item in data.items}) != len(data.items):
+        raise HTTPException(422, "备份中有重复条目或重复密文 nonce。")
+
+    profile = data.profile
+    questions = []
+    if profile is not None:
+        _require_vault_setup(request)
+        _validate_profile(profile)
+        if desktop_login_enabled() and not profile.questions:
+            raise HTTPException(422, "请设置 1–3 道密保问题。")
+        if profile.recovery_key_id != public_key_payload()["key_id"]:
+            raise HTTPException(409, "本机恢复密钥已变更，请重新校验备份。")
+        if desktop_login_enabled() and profile.questions:
+            questions = _hash_questions(profile.questions)
+
+    safety = None
     with get_db_ctx() as conn:
         try:
             conn.execute("BEGIN IMMEDIATE")
-            profile = data.profile
             current = _profile_row(conn, user_id)
-            same_vault = current and current["recovery_wrapped_dek"] == profile["recovery_wrapped_dek"] and current["recovery_key_id"] == profile["recovery_key_id"]
-            questions = [(row["question"], row["answer_hash"]) for row in _recovery_questions(conn, user_id)] if same_vault else []
-            conn.execute("DELETE FROM vault_items WHERE user_id = ?", (user_id,))
-            conn.execute("DELETE FROM vault_profiles WHERE user_id = ?", (user_id,))
-            conn.execute(
-                """INSERT INTO vault_profiles
-                   (user_id, envelope_version, kdf_name, kdf_salt, kdf_memory_kib,
-                    kdf_iterations, kdf_parallelism, wrapped_dek, wrapped_dek_nonce,
-                    recovery_wrapped_dek, recovery_key_id, recovery_confirmed_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    user_id, profile["envelope_version"], profile["kdf_name"],
-                    profile["kdf_salt"], profile["kdf_memory_kib"],
-                    profile["kdf_iterations"], profile["kdf_parallelism"],
-                    profile["wrapped_dek"], profile["wrapped_dek_nonce"],
-                    profile["recovery_wrapped_dek"], profile["recovery_key_id"],
-                    profile.get("recovery_confirmed_at"),
-                ),
+            if current:
+                require_vault_access(request)
+                snapshot = _backup_document(conn, user_id)
+                current_digest = _digest(snapshot)
+                if profile is not None or data.expected_digest != current_digest:
+                    raise HTTPException(409, "密码库在校验后发生了变化，请重新校验备份。")
+                retention = vault_backups.settings(conn, user_id)["retention"]
+                seal = vault_backups.portable_settings(conn, user_id, current["recovery_wrapped_dek"])
+                backup = _portable_snapshot(user_id, snapshot, seal) if seal else {**snapshot, "digest": current_digest}
+                try:
+                    with vault_backups.FILE_LOCK:
+                        safety = vault_backups.save(user_id, backup, prefix="before-restore")
+                except (OSError, ValueError) as exc:
+                    raise HTTPException(503, "无法创建恢复前的安全备份，密码库保持原状。") from exc
+                conn.execute("DELETE FROM vault_items WHERE user_id = ?", (user_id,))
+            else:
+                if profile is None or data.expected_digest is not None:
+                    raise HTTPException(409, "密码库状态已变更，请重新校验备份。")
+                _insert_profile(conn, user_id, profile, questions)
+
+            conn.executemany(
+                """INSERT INTO vault_items (user_id, item_key, envelope_version, ciphertext, nonce, aad)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                [(user_id, item.item_key, item.envelope_version, item.ciphertext, item.nonce, item.aad) for item in data.items],
             )
-            _insert_questions(conn, user_id, questions)
-            for item in data.items:
-                if item.get("aad") != _expected_aad(user_id, item.get("item_key", "")):
-                    raise ValueError("invalid item AAD")
-                conn.execute(
-                    """INSERT INTO vault_items
-                       (user_id, item_key, envelope_version, ciphertext, nonce, aad, revision)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        user_id, item["item_key"], item["envelope_version"],
-                        item["ciphertext"], item["nonce"], item["aad"], item["revision"],
-                    ),
-                )
             conn.execute(
                 "INSERT INTO vault_backup_checks(user_id, digest, item_count) VALUES (?, ?, ?)",
-                (user_id, data.digest, len(data.items)),
+                (user_id, _digest(_backup_document(conn, user_id)), len(data.items)),
             )
             conn.commit()
-        except (KeyError, ValueError, sqlite3.IntegrityError) as exc:
-            conn.rollback()
-            raise HTTPException(422, "Backup contents are invalid") from exc
+        except sqlite3.DatabaseError as exc:
+            raise HTTPException(503, "写入备份条目失败，密码库保持原状。") from exc
     if desktop_login_enabled():
+        _set_auto_unlock_blocked(user_id, True)
         revoke_access(request)
-        if vault_device.available():
-            try:
-                vault_device.delete_key(user_id)
-            except OSError:
-                pass
-    return {"restored": True, "item_count": len(data.items)}
-
+    if safety:
+        with vault_backups.FILE_LOCK:
+            vault_backups.prune(user_id, retention, safety, data.source_filename)
+    return {"restored": True, "item_count": len(data.items), "safety_backup": safety}
 
 def _legacy_key_path() -> Path:
     return Path(database.DB_PATH).resolve().parent / ".workspace_secret"

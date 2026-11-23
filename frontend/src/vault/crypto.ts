@@ -43,7 +43,7 @@ export type RecoveryPublicKey = {
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-function encodeBase64(value: Uint8Array): string {
+export function encodeBase64(value: Uint8Array): string {
   let binary = "";
   for (let index = 0; index < value.length; index += 0x8000) {
     binary += String.fromCharCode(...value.subarray(index, index + 0x8000));
@@ -51,13 +51,13 @@ function encodeBase64(value: Uint8Array): string {
   return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
 }
 
-function decodeBase64(value: string): Uint8Array<ArrayBuffer> {
+export function decodeBase64(value: string): Uint8Array<ArrayBuffer> {
   const normalized = value.replaceAll("-", "+").replaceAll("_", "/") + "=".repeat((4 - value.length % 4) % 4);
   const binary = atob(normalized);
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
-async function deriveKek(password: string, profile: Pick<VaultProfile, "kdf_salt" | "kdf_memory_kib" | "kdf_iterations" | "kdf_parallelism">) {
+export async function deriveKek(password: string, profile: Pick<VaultProfile, "kdf_salt" | "kdf_memory_kib" | "kdf_iterations" | "kdf_parallelism">) {
   return argon2id({
     password,
     salt: decodeBase64(profile.kdf_salt),
@@ -69,7 +69,7 @@ async function deriveKek(password: string, profile: Pick<VaultProfile, "kdf_salt
   });
 }
 
-async function importAesKey(raw: Uint8Array<ArrayBufferLike>) {
+export async function importAesKey(raw: Uint8Array<ArrayBufferLike>) {
   return crypto.subtle.importKey("raw", new Uint8Array(raw), "AES-GCM", false, ["encrypt", "decrypt"]);
 }
 
@@ -149,7 +149,7 @@ export async function encryptSecret(dek: Uint8Array<ArrayBuffer>, userId: number
   return { item_key: itemKey, envelope_version: 1, ciphertext: encodeBase64(new Uint8Array(ciphertext)), nonce: encodeBase64(nonce), aad };
 }
 
-export async function decryptSecret(dek: Uint8Array<ArrayBuffer>, item: VaultCipherItem): Promise<VaultSecret> {
+export async function decryptSecret(dek: Uint8Array<ArrayBuffer>, item: Pick<VaultCipherItem, "nonce" | "ciphertext" | "aad">): Promise<VaultSecret> {
   const plaintext = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv: decodeBase64(item.nonce), additionalData: encoder.encode(item.aad), tagLength: 128 },
     await importAesKey(dek),

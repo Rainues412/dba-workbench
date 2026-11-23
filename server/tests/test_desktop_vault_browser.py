@@ -98,7 +98,7 @@ def test_desktop_vault_uses_only_the_master_password(live_server, monkeypatch, t
             gate.get_by_role("button", name="显示主密码").click()
             expect(master).to_have_attribute("type", "text")
             gate.get_by_role("button", name="创建并解锁").click()
-            expect(page.get_by_text("恢复密钥待备份", exact=True)).to_be_visible(timeout=20_000)
+            expect(page.get_by_role("button", name="立即锁定", exact=True)).to_be_visible(timeout=20_000)
             page.get_by_role("button", name="新增条目").click()
             editor = page.get_by_role("dialog", name="新增保险箱条目")
             editor.get_by_label("名称或备注").fill("桌面保险箱测试条目")

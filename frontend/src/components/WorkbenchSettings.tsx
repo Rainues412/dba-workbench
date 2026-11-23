@@ -6,14 +6,14 @@ import { savePreference, usePreference, type Preference } from "../preferences";
 import { desktopVaultApi, useDesktopVaultUnlocked } from "../vault/desktopVault";
 import { AppDialog } from "./AppDialog";
 import { desktopSettingsApi, useDesktopSettings } from "../desktopSettings";
-import { VaultRecoveryInstructions } from "./VaultRecoveryInstructions";
+import { VaultBackupRestore } from "./VaultBackupRestore";
 
 const sections = [
   ["appearance", "外观与阅读", Monitor, "字号 字体 动画 行号 换行 密度"],
   ["navigation", "导航栏", PanelLeft, "菜单 位置 侧栏 左 右 顶部 底部"],
   ["workspace", "工作区", BookOpenText, "脚本 置顶 文档 信息"],
   ["window", "窗口与启动", Power, "开机 自启 静默 窗口 关闭 最小化 托盘"],
-  ["security", "密码库安全", Database, "密码 保险箱 主密码 解锁 锁定 安全 数据位置"],
+  ["security", "密码库安全", Database, "密码 保险箱 主密码 解锁 锁定 安全 数据位置 备份 恢复 导入"],
   ["shortcuts", "快捷键", Keyboard, "按键 搜索 保存 打开"],
   ["about", "关于", Info, "版本 内容"],
 ] as const;
@@ -37,12 +37,12 @@ export function WorkbenchSettings({ desktop, onClose }: { desktop: boolean; onCl
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [windowBusy, setWindowBusy] = useState(false);
   const visible = sections.filter(([id, label, , terms]) =>
-    (desktop || (id !== "security" && id !== "window")) && (!query.trim() || `${label} ${terms}`.includes(query.trim())));
+    (desktop || id !== "window") && (!query.trim() || `${label} ${terms}`.includes(query.trim())));
   const active = query.trim() ? visible[0]?.[0] : section;
   const client = useQueryClient();
   const windowSettings = useDesktopSettings(desktop && active === "window");
   const unlocked = useDesktopVaultUnlocked();
-  const auto = useQuery({ queryKey: ["vault", "auto-status"], queryFn: ({ signal }) => desktopVaultApi.autoStatus(signal), enabled: active === "security" });
+  const auto = useQuery({ queryKey: ["vault", "auto-status"], queryFn: ({ signal }) => desktopVaultApi.autoStatus(signal), enabled: desktop && active === "security" });
   const diagnostics = useQuery({ queryKey: ["vault", "diagnostics"], queryFn: desktopVaultApi.diagnostics, enabled: desktop && showDiagnostics });
   const stats = useQuery({
     queryKey: ["dashboard", "stats"],
@@ -139,7 +139,7 @@ export function WorkbenchSettings({ desktop, onClose }: { desktop: boolean; onCl
             </label>)}
           </>}
         </>}
-        {active === "security" && <><h3>密码库安全</h3>
+        {active === "security" && <><h3>密码库安全</h3>{desktop && <>
           <label className="preference-row"><span><strong>在这台电脑上自动解锁</strong><small>使用此 Windows 账户的人可自动访问保险箱。</small>
             {!unlocked && !auto.data?.enabled && <small>请先使用主密码解锁，再开启此选项。</small>}
             {auto.isError && <small role="alert">无法读取本机自动解锁设置。</small>}
@@ -154,13 +154,13 @@ export function WorkbenchSettings({ desktop, onClose }: { desktop: boolean; onCl
             <label>确认新主密码<input name="confirm_password" type="password" autoComplete="new-password" minLength={9} maxLength={256} required /></label>
             <button type="submit" className="button" disabled={passwordBusy}>{passwordBusy ? "正在保存…" : "保存新主密码"}</button>
           </form>}
-          <details className="context-details"><summary>恢复密钥与备份方法</summary><VaultRecoveryInstructions /></details>
           <details className="vault-diagnostics context-details" onToggle={(event) => setShowDiagnostics(event.currentTarget.open)}><summary>数据位置与技术详情</summary>
             <p>主密码通过 Argon2id 派生密钥，凭据使用 AES-256-GCM 加密。</p>
             {diagnostics.isLoading && <p>正在读取密码库信息…</p>}
             {diagnostics.data && <p>{diagnostics.data.database_path}<br />{diagnostics.data.credential_count} 条凭据</p>}
             {diagnostics.error && <p role="alert">无法读取密码库信息。</p>}
-          </details>
+          </details></>}
+          <VaultBackupRestore desktop={desktop} />
         </>}
         {active === "shortcuts" && <><h3>快捷键</h3>{shortcuts.map(([label, key]) =>
           <div className="preference-row" key={label}><strong>{label}</strong><kbd>{key}</kbd></div>)}</>}

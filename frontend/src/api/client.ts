@@ -78,7 +78,7 @@ export async function api<T>(
     headers.set("X-CSRF-Token", csrfToken);
   }
   if (init.revision !== undefined) headers.set("If-Match", String(init.revision));
-  if (vaultAccessToken && path.startsWith("/api/vault/")) headers.set("X-DBA-Vault-Token", vaultAccessToken);
+  if (vaultAccessToken && path.startsWith("/api/vault/") && !headers.has("X-DBA-Vault-Token")) headers.set("X-DBA-Vault-Token", vaultAccessToken);
   const response = await fetch(path, { ...init, headers, credentials: "same-origin" });
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as ApiErrorBody;
