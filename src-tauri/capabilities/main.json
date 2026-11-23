@@ -24,6 +24,11 @@
     "allow-resources-create",
     "allow-resources-update",
     "allow-resources-delete",
+    "allow-customers-list",
+    "allow-customers-detail",
+    "allow-customers-create",
+    "allow-customers-update",
+    "allow-customers-delete",
     "allow-library-list",
     "allow-library-facets",
     "allow-library-detail",
@@ -34,6 +39,8 @@
     "allow-script-record-view",
     "allow-script-version",
     "allow-global-search",
-    "allow-desktop-painted"
+    "allow-desktop-painted",
+    "allow-account-status",
+    "allow-vault-profile"
   ]
 }

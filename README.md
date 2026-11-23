@@ -82,9 +82,9 @@ py -3.12 -m venv .runtime\.venv
 .\.runtime\.venv\Scripts\python.exe tools/windows/launch_dba_workbench_tauri.py --executable src-tauri/target/debug/dba-workbench-tauri.exe --work-dir '<现有测试目录>'
 ```
 
-启动脚本创建独立的测试数据库和 WebView2 配置。仪表盘、任务管理、全局搜索、脚本库、知识库和资源中心的记录管理由 Rust 执行。文件打开及其他接口继续由 FastAPI 提供。页面完成首次渲染后才显示窗口。从托盘选择「退出」结束预览和两个测试服务。
+启动脚本创建独立的测试数据库和 WebView2 配置。仪表盘、任务管理、全局搜索、脚本库、知识库、客户项目、资源中心的记录管理，以及登录状态和保险箱配置读取由 Rust 执行。会话签发、保险箱解锁和恢复、旧数据库升级及本机文件操作沿用现有 FastAPI 服务和权限。页面完成首次渲染后才显示窗口。从托盘选择「退出」结束预览和两个测试服务。
 
-Windows 源码快捷方式可在桌面启动宿主的同一目录放置 `dba-workbench-tauri.exe`，让下次启动使用 Tauri 窗口。现有数据库、WebView2 配置和启动偏好继续原位使用。只使用原桌面启动宿主时，将这个配套 EXE 移出宿主目录。
+Windows 源码快捷方式可以向 `launch_dba_workbench.py` 传入 `--tauri-host <EXE 路径>`，或在原桌面启动宿主的同一目录放置 `dba-workbench-tauri.exe`。现有数据库、WebView2 配置及启动偏好继续原位使用。
 
 ### 测试与构建
 

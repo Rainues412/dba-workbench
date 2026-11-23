@@ -2,9 +2,10 @@ use rusqlite::{functions::FunctionFlags, params, Connection};
 use serde_json::{json, Value};
 use tauri::{State, WebviewWindow};
 
+use crate::customers::{PROJECT_NAME, PROJECT_ROWS};
 use crate::desktop_db::{self, Result, Workspace};
 
-fn title_matches(title: &str, keyword: &str) -> bool {
+pub fn title_matches(title: &str, keyword: &str) -> bool {
     let title = caseless::default_case_fold_str(title);
     caseless::default_case_fold_str(keyword)
         .split(|ch: char| ch.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&ch))
@@ -64,11 +65,9 @@ pub async fn global_search(
             "SELECT id, name, project_name, group_name, status FROM customers WHERE title_matches(name, ?1) = 1 ORDER BY updated_at DESC LIMIT ?2",
             query, limit)?;
         let customer_projects = find(conn,
-            "SELECT DISTINCT c.id, c.name AS customer_name, json_extract(project.value, '$.name') AS title
-             FROM customers c, json_each(CASE WHEN c.project_profile IS NULL THEN json_array(json_object('name', c.project_name))
-                 ELSE json_extract(c.project_profile, '$.projects') END) AS project
-             WHERE title_matches(json_extract(project.value, '$.name'), ?1) = 1
-             ORDER BY c.updated_at DESC, c.id DESC, title COLLATE NOCASE LIMIT ?2",
+            &format!("SELECT DISTINCT c.id, c.name AS customer_name, {PROJECT_NAME} AS title
+             FROM customers c, {PROJECT_ROWS} WHERE title_matches({PROJECT_NAME}, ?1) = 1
+             ORDER BY c.updated_at DESC, c.id DESC, title COLLATE NOCASE LIMIT ?2"),
             query, limit)?;
         let resources = find(conn,
             "SELECT id, name, kind, path, url, category FROM resources WHERE title_matches(name, ?1) = 1 ORDER BY updated_at DESC LIMIT ?2",

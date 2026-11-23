@@ -24,6 +24,8 @@ const desktopReadCommands = new Map([
   ["/api/dashboard/database-distribution", "dashboard_database_distribution"],
   ["/api/resources/facets", "resources_facets"],
   ["/api/scripts/recent-views", "script_recent_views"],
+  ["/api/auth/status", "account_status"],
+  ["/api/vault/profile", "vault_profile"],
 ]);
 export const REAUTH_REQUIRED_EVENT = "dba:reauth-required";
 export const VAULT_LOCKED_EVENT = "dba:vault-locked";
@@ -144,6 +146,7 @@ function nativeEntity(path: string) {
   if (path === "/api/resources/") return "resources";
   if (path === "/api/scripts/") return "scripts";
   if (path === "/api/articles/") return "articles";
+  if (path === "/api/customers/") return "customers";
   return null;
 }
 
@@ -206,6 +209,12 @@ export const entityApi = {
           category: filters[scripts ? "wb_type" : "category"] ?? "", tag: filters.tag ?? "",
           favoriteOnly: filters.favorite_only === "1", locateId: filters.locate_id ? Number(filters.locate_id) : null,
           autoPin: scripts && filters.auto_pin === "1" },
+      }, signal);
+    }
+    if (module === "customers") {
+      return invokeDesktop<Page<T>>("customers_list", {
+        filter: { page, pageSize, keyword, status: filters.status ?? "",
+          locateId: filters.locate_id ? Number(filters.locate_id) : null },
       }, signal);
     }
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });

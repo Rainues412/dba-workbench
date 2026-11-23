@@ -32,7 +32,7 @@ impl CommandError {
         Self::new(401, "Authentication required")
     }
 
-    fn storage() -> Self {
+    pub fn storage() -> Self {
         Self::new(500, "读取或保存本机数据失败，请重试。")
     }
 }
@@ -83,7 +83,7 @@ pub fn query_rows(
     rows.collect()
 }
 
-fn session_token(window: &WebviewWindow, workspace: &Workspace) -> Result<Option<String>> {
+pub fn session_token(window: &WebviewWindow, workspace: &Workspace) -> Result<Option<String>> {
     let current = window.url().map_err(|_| CommandError::unauthorized())?;
     if current.origin() != workspace.origin.origin() {
         return Err(CommandError::unauthorized());

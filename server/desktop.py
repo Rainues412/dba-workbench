@@ -321,7 +321,10 @@ def main() -> None:
         )
         server = uvicorn.Server(config)
         source_host = os.environ.get("DBA_SOURCE_DESKTOP_HOST", "")
-        tauri_host = Path(source_host).with_name("dba-workbench-tauri.exe") if source_host else None
+        native_host = os.environ.get("DBA_TAURI_HOST")
+        tauri_host = Path(native_host) if native_host else None
+        if tauri_host is None and source_host:
+            tauri_host = Path(source_host).with_name("dba-workbench-tauri.exe")
         if sys.platform == "win32" and not compiled and tauri_host is not None and tauri_host.is_file():
             preferences.native_window = True
             _run_tauri(server, tauri_host, preferences, silent_start)

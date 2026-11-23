@@ -13,6 +13,11 @@ const COMMANDS: &[&str] = &[
     "resources_create",
     "resources_update",
     "resources_delete",
+    "customers_list",
+    "customers_detail",
+    "customers_create",
+    "customers_update",
+    "customers_delete",
     "library_list",
     "library_facets",
     "library_detail",
@@ -24,6 +29,8 @@ const COMMANDS: &[&str] = &[
     "script_version",
     "global_search",
     "desktop_painted",
+    "account_status",
+    "vault_profile",
 ];
 
 fn main() {

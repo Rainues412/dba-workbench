@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod account;
+mod customers;
 mod dashboard;
 mod desktop_db;
 mod libraries;
@@ -172,6 +174,11 @@ fn main() {
             resources::resources_create,
             resources::resources_update,
             resources::resources_delete,
+            customers::customers_list,
+            customers::customers_detail,
+            customers::customers_create,
+            customers::customers_update,
+            customers::customers_delete,
             libraries::library_list,
             libraries::library_facets,
             libraries::library_detail,
@@ -183,6 +190,8 @@ fn main() {
             libraries::script_version,
             search::global_search,
             window_visibility::desktop_painted,
+            account::account_status,
+            account::vault_profile,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the DBA Workbench migration preview");

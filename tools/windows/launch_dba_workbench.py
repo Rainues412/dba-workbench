@@ -48,7 +48,7 @@ def probe_service() -> str:
             return "down"
 
 
-def start_server(desktop_host: Path | None = None) -> bool:
+def start_server(desktop_host: Path | None = None, *, tauri_host: Path | None = None) -> bool:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     if LOCAL_CONFIG.is_file():
@@ -77,6 +77,11 @@ def start_server(desktop_host: Path | None = None) -> bool:
     )
     if EDGE_PATH is not None and EDGE_PATH.is_file():
         env["DBA_BROWSER_PATH"] = str(EDGE_PATH)
+    if tauri_host is not None:
+        tauri_host = tauri_host.resolve(strict=True)
+        if not tauri_host.is_file() or tauri_host.suffix.lower() != ".exe":
+            raise ValueError(f"无效的 Tauri 桌面宿主：{tauri_host}")
+        env["DBA_TAURI_HOST"] = str(tauri_host)
 
     python = VENV_PYTHON if VENV_PYTHON.is_file() else Path(sys.executable)
     command = [str(python), "desktop.py"]
@@ -117,7 +122,7 @@ def start_server(desktop_host: Path | None = None) -> bool:
     return False
 
 
-def main(desktop_host: Path | None = None, *, on_logon: bool = False, show_window: bool = False) -> None:
+def main(desktop_host: Path | None = None, *, tauri_host: Path | None = None, on_logon: bool = False, show_window: bool = False) -> None:
     if on_logon:
         os.environ["DBA_ON_LOGON"] = "true"
     if show_window:
@@ -129,14 +134,25 @@ def main(desktop_host: Path | None = None, *, on_logon: bool = False, show_windo
     if state == "other":
         raise SystemExit(f"端口 {PORT} 已被其他程序占用。")
     if state == "down":
-        started = start_server() if desktop_host is None else start_server(desktop_host)
+        if tauri_host is not None:
+            started = start_server(desktop_host, tauri_host=tauri_host)
+        else:
+            started = start_server() if desktop_host is None else start_server(desktop_host)
         if not started:
             raise SystemExit(f"DBA 工作台启动失败，请查看日志：{LOG_PATH}")
         return
 
     if on_logon:
         return
-    if not desktop_window.activate(PORT) and not open_workbench(URL, EDGE_PATH):
+    if desktop_window.activate(PORT):
+        return
+    if tauri_host is not None:
+        # The local HTTP service can become ready before the new WebView registers its window.
+        for _ in range(25):
+            time.sleep(0.1)
+            if desktop_window.activate(PORT):
+                return
+    if not open_workbench(URL, EDGE_PATH):
         raise SystemExit(f"无法打开默认浏览器，请手动访问：{URL}")
 
 
@@ -144,10 +160,11 @@ if __name__ == "__main__":
     try:
         parser = argparse.ArgumentParser(description="启动 DBA 工作台")
         parser.add_argument("--desktop-host", type=Path, help="使用指定的 DBA 工作台源码启动宿主")
+        parser.add_argument("--tauri-host", type=Path, help="使用指定的 Tauri 桌面窗口")
         parser.add_argument("--on-logon", action="store_true", help="Windows 登录自启")
         parser.add_argument("--show-window", action="store_true", help="忽略静默启动并显示窗口")
         args = parser.parse_args()
-        main(args.desktop_host, on_logon=args.on_logon, show_window=args.show_window)
+        main(args.desktop_host, tauri_host=args.tauri_host, on_logon=args.on_logon, show_window=args.show_window)
     except (OSError, ValueError, SystemExit) as error:
         if os.name == "nt":
             import ctypes
