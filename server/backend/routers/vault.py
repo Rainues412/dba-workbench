@@ -311,15 +311,26 @@ def _verify_vault_master(data: VaultUnlock, request: Request):
 def _prepare_backup_key(user_id: int, profile, dek: bytes) -> None:
     try:
         with get_db_ctx() as conn:
-            if vault_backups.backup_key(conn, user_id, profile["recovery_wrapped_dek"]):
-                return
-            conn.execute("BEGIN IMMEDIATE")
-            current = _profile_row(conn, user_id)
-            if current and current["recovery_wrapped_dek"] == profile["recovery_wrapped_dek"]:
-                vault_backups.prepare_key(conn, user_id, profile["recovery_wrapped_dek"], dek)
-            conn.commit()
+            envelope = profile["recovery_wrapped_dek"]
+            key = vault_backups.backup_key(conn, user_id, envelope)
+            if not key:
+                conn.execute("BEGIN IMMEDIATE")
+                current = _profile_row(conn, user_id)
+                if not current or current["recovery_wrapped_dek"] != envelope:
+                    return
+                vault_backups.prepare_key(conn, user_id, envelope, dek)
+                key = vault_backups.backup_key(conn, user_id, envelope)
+                conn.commit()
+        _ensure_portable_key(user_id, key["recipient"])
     except (OSError, ValueError, sqlite3.Error):
         logger.warning("Could not prepare vault backup key")
+
+
+def _ensure_portable_key(user_id: int, recipient: str) -> None:
+    try:
+        vault_backups.ensure_portable_key(user_id, recipient)
+    except (OSError, ValueError):
+        logger.warning("Could not save portable vault recovery key")
 
 
 @router.post("/unlock")
@@ -795,23 +806,26 @@ def list_backups(request: Request):
 
 
 @router.post("/backups/open-directory", status_code=204)
-def open_backup_directory(request: Request):
+def open_backup_directory(request: Request, kind: Literal["backup", "key"] = "backup"):
+    user_id = _user(request)
     if not hasattr(os, "startfile"):
         raise HTTPException(501, "仅支持在 Windows 上打开备份目录。")
-    directory = vault_backups.backup_root()
+    directory = vault_backups.portable_key_directory(user_id) if kind == "key" else vault_backups.backup_root()
     try:
         if directory.resolve() != directory:
             raise OSError("Backup directory must not redirect to another location")
         directory.mkdir(parents=True, exist_ok=True)
         os.startfile(directory)
     except OSError as exc:
-        raise HTTPException(503, "无法打开密码库备份目录。") from exc
+        label = "密钥" if kind == "key" else "备份"
+        raise HTTPException(503, f"无法打开密码库{label}目录。") from exc
 
 
 @router.post("/backups/pick-file", dependencies=[Depends(_desktop_only)])
 def pick_backup_file(kind: Literal["backup", "key"], request: Request, response: Response, _: dict = Depends(require_vault_access)):
     recovery_key = kind == "key"
-    start = vault_backups.directory(_user(request))
+    user_id = _user(request)
+    start = vault_backups.portable_key_directory(user_id) if recovery_key else vault_backups.directory(user_id)
     try:
         if start.resolve() != start:
             raise OSError("Backup directory must not redirect to another location")
@@ -860,6 +874,7 @@ def save_backup(request: Request, response: Response):
         key = vault_backups.backup_key(conn, user_id, snapshot["profile"]["recovery_wrapped_dek"])
     if not key:
         raise HTTPException(409, "请先正常解锁密码库一次，工作台会自动准备备份密钥。")
+    _ensure_portable_key(user_id, key["recipient"])
     try:
         with vault_backups.FILE_LOCK:
             filename = vault_backups.save(user_id, vault_backups.encrypted_snapshot(user_id, snapshot["items"], key))
@@ -914,7 +929,8 @@ def get_backup_settings(request: Request):
         profile = _profile_row(conn, user_id)
         key = profile and vault_backups.backup_key(conn, user_id, profile["recovery_wrapped_dek"])
         return {**vault_backups.settings(conn, user_id), "portable_ready": bool(key),
-                "key_exported": bool(key and key["exported"]), "directory": str(vault_backups.backup_root())}
+                "key_exported": bool(key and key["exported"]), "directory": str(vault_backups.backup_root()),
+                "key_directory": str(vault_backups.portable_key_directory(user_id))}
 
 
 @router.put("/backup-settings")
@@ -979,10 +995,13 @@ def _run_scheduled_backup(user_id: int, *, only_if_empty: bool = False) -> str |
             conn.execute("BEGIN")
             policy = vault_backups.settings(conn, user_id)
             profile = _profile_row(conn, user_id)
-            if not profile or not policy["interval_hours"]:
+            if not profile:
                 return None
             key = vault_backups.backup_key(conn, user_id, profile["recovery_wrapped_dek"])
             if not key:
+                return None
+            _ensure_portable_key(user_id, key["recipient"])
+            if not policy["interval_hours"]:
                 return None
             with vault_backups.FILE_LOCK:
                 entries = vault_backups.entries(user_id)

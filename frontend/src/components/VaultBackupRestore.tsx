@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, Download, FolderOpen, KeyRound, Pencil, RotateCcw, ShieldCheck, Trash2, Upload, X } from "lucide-react";
+import { AlertTriangle, Check, Download, FolderOpen, Pencil, RotateCcw, ShieldCheck, Trash2, Upload, X } from "lucide-react";
 import { api, hasVaultAccessToken, jsonBody, setVaultAccessToken, VAULT_LOCKED_EVENT } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { openBackup, parseBackup, readBackupFile, readBackupIdentity, type VaultBackup } from "../vault/backup";
@@ -14,10 +14,10 @@ import { playTaskStatusFeedback, SubmitMorph, useTaskStatusReducedMotion, type T
 import { VaultImportProgress, VaultImportSteps, type VaultImportStep } from "./VaultImportProgress";
 
 type BackupEntry = { filename: string; display_name?: string; created_at: string; size: number; kind: "auto" | "manual" | "safety" };
-type BackupPolicy = { interval_hours: number; retention: number; directory: string; portable_ready: boolean; key_exported: boolean };
+type BackupPolicy = { interval_hours: number; retention: number; directory: string; key_directory: string; portable_ready: boolean };
 type ProfileStatus = { initialized: boolean; profile: VaultProfile | null };
 type Operation =
-  | { kind: "file" | "key" }
+  | { kind: "file" }
   | { kind: "restore" | "rename" | "delete"; entry: BackupEntry };
 type Prepared = {
   expected_digest: string;
@@ -40,15 +40,6 @@ const profileKey = ["vault", "profile"];
 const intervalOptions = [[0, "禁用"], [6, "6 小时"], [12, "12 小时"], [24, "24 小时"], [48, "48 小时"], [168, "7 天"]] as const;
 const retentionOptions = [3, 5, 10, 15, 20, 30, 50];
 const labels = { auto: "自动备份", manual: "手动备份", safety: "恢复前安全备份" } as const;
-
-function downloadIdentity(identity: string) {
-  const link = window.document.createElement("a");
-  const url = URL.createObjectURL(new Blob([identity + "\n"], { type: "text/plain" }));
-  link.href = url;
-  link.download = "DBA-Workbench-备份恢复密钥.txt";
-  link.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
 
 function grantHeaders(token: string | null): HeadersInit | undefined {
   return token ? { "X-DBA-Vault-Token": token } : undefined;
@@ -217,10 +208,10 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
     finally { setBusy(false); }
   }
 
-  async function openDirectory() {
+  async function openDirectory(kind: "backup" | "key") {
     setSectionError("");
-    try { await api(filesPath + "/open-directory", { method: "POST" }); }
-    catch (cause) { setSectionError(cause instanceof Error ? cause.message : "无法打开备份目录。"); }
+    try { await api(`${filesPath}/open-directory?kind=${kind}`, { method: "POST" }); }
+    catch (cause) { setSectionError(cause instanceof Error ? cause.message : "无法打开目录。"); }
   }
 
   async function unlockCurrent(password: string, existing: VaultProfile, capture: (wrappingKey: string) => void) {
@@ -293,16 +284,10 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
         if (operation.kind === "restore") {
           document = parseBackup(await api(filesPath + "/" + encodeURIComponent(operation.entry.filename), { headers }));
         }
-        if (operation.kind === "key" || (operation.kind === "restore" && document?.format === "dba-vault-backup-v3")) {
-          const { identity } = await api<{ identity: string }>("/api/vault/backup/key" + (operation.kind === "key" ? "?export=true" : ""), {
+        if (document?.format === "dba-vault-backup-v3") {
+          const { identity } = await api<{ identity: string }>("/api/vault/backup/key", {
             method: "POST", body: jsonBody({ wrapping_key: wrappingKey }), headers,
           });
-          if (operation.kind === "key") {
-            downloadIdentity(identity);
-            releaseGrant(); setOperation(null); setNotice("请将恢复密钥和备份文件分开保管。");
-            void client.invalidateQueries({ queryKey: policyKey });
-            return;
-          }
           password = identity;
         }
       }
@@ -362,7 +347,6 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
   }, [importComplete]);
 
   const importing = operation?.kind === "file";
-  const exportingKey = operation?.kind === "key";
   const deleting = operation?.kind === "delete";
   const managing = operation?.kind === "rename" || deleting;
   const deletingLast = deleting && files.data?.length === 1 && Boolean(policy.data?.interval_hours);
@@ -373,12 +357,17 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
   const canUseFile = Boolean(profile.data);
   return <section className="vault-backup-settings" aria-labelledby={contentId}>
     <h4 id={contentId}>备份与恢复</h4>
-    {policy.data && <div className="vault-backup-location" role="group" aria-labelledby={contentId + "-directory"}>
-      <span id={contentId + "-directory"}>备份存放目录</span>
-      <div>
-        <p className="vault-backup-directory" title={policy.data.directory}>{policy.data.directory}</p>
-        <button type="button" className="button small" title="打开备份目录" aria-label="打开备份目录" onClick={() => void openDirectory()}><FolderOpen aria-hidden="true" /></button>
-      </div>
+    {policy.data && <div className="vault-backup-location">
+      {([
+        ["backup", "备份存放目录", "打开备份目录", policy.data.directory],
+        ["key", "密钥存放目录", "打开密钥目录", policy.data.key_directory],
+      ] as const).map(([kind, label, openLabel, path]) => <div className="vault-backup-location-item" key={kind} role="group" aria-labelledby={`${contentId}-${kind}-directory`}>
+        <span id={`${contentId}-${kind}-directory`}>{label}</span>
+        <div className="vault-path-row">
+          <p className="vault-backup-directory" title={path}>{path}</p>
+          <button type="button" className="button small" title={openLabel} aria-label={openLabel} onClick={() => void openDirectory(kind)}><FolderOpen aria-hidden="true" /></button>
+        </div>
+      </div>)}
     </div>}
     {policy.isError && <p role="alert" className="vault-backup-status">无法读取备份设置。<button type="button" className="button small" onClick={() => void policy.refetch()}>重试</button></p>}
     {policy.data && <>
@@ -429,15 +418,11 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
         </div>
       </li>)}
     </ul>}
-    {policy.data?.portable_ready && <div className={policy.data.key_exported ? "vault-backup-password" : "vault-backup-password vault-backup-key-reminder"}>
-      <div><strong>备份恢复密钥</strong>{!policy.data.key_exported && <small>换机或重装时，请带上备份文件和另存的恢复密钥。</small>}</div>
-      <button type="button" className="button small" onClick={() => start({ kind: "key" })}><KeyRound aria-hidden="true" />另存恢复密钥</button>
-    </div>}
     {operation && <AppDialog className={`modal vault-restore-dialog${deleting ? " vault-backup-delete-dialog" : ""}`}
       labelledBy={heading} describedBy={deleting ? `${heading}-description` : undefined} onClose={close}>
       <DialogFocusBoundary>
         <div className="modal-header"><div><h2 id={heading}>{importing ? "导入密码库备份" :
-          exportingKey ? "另存备份恢复密钥" : operation.kind === "rename" ? "重命名备份" : deleting ? "删除备份" : prepared ? "确认恢复密码库" : "校验密码库备份"}</h2>
+          operation.kind === "rename" ? "重命名备份" : deleting ? "删除备份" : prepared ? "确认恢复密码库" : "校验密码库备份"}</h2>
           {deleting && <p id={`${heading}-description`} className="vault-backup-delete-description">此备份将被永久删除，此操作无法撤消。</p>}</div>
           <button type="button" aria-label="关闭备份对话框" className="icon-button" onClick={close} disabled={busy || picking}><X size={19} /></button></div>
         {importing && initialized && <VaultImportSteps step={importStep} complete={importComplete} reduced={reducedMotion} />}
@@ -487,8 +472,8 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
             {!legacyImport && <div className="vault-import-file-field">
               <label htmlFor={heading + "-key"}>备份恢复密钥</label>
               <div className="vault-path-row">
-                <input id={heading + "-key"} value={identityFile?.path ?? policy.data?.directory ?? ""}
-                  title={identityFile?.path ?? policy.data?.directory} readOnly />
+                <input id={heading + "-key"} value={identityFile?.path ?? policy.data?.key_directory ?? ""}
+                  title={identityFile?.path ?? policy.data?.key_directory} readOnly />
                 <button type="button" className="button small" aria-label="浏览备份恢复密钥" title="浏览备份恢复密钥" disabled={busy || picking} onClick={() => void pickFile("key")}><FolderOpen size={16} aria-hidden="true" /></button>
                 <input ref={keyInput} hidden type="file" accept=".txt,.key" aria-label="选择备份恢复密钥" disabled={busy}
                   onChange={(event) => { if (event.target.files?.[0]) selectIdentity(event.target.files[0]); event.target.value = ""; }} />

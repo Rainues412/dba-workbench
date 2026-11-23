@@ -393,11 +393,13 @@ def test_scheduled_portable_backup_respects_interval_and_retention(client, isola
     assert client.post("/api/vault/items", json=item).status_code == 201
     response = client.get("/api/vault/backup-settings")
     assert response.json() == {"interval_hours": 24, "retention": 10, "portable_ready": False, "key_exported": False,
-                               "directory": str(vault_backups.backup_root())}
+                               "directory": str(vault_backups.backup_root()), "key_directory": str(vault_backups.portable_key_directory(1))}
     opened_paths = []
     monkeypatch.setattr(os, "startfile", opened_paths.append)
     assert client.post("/api/vault/backups/open-directory", json={"path": "C:/test-other"}).status_code == 204
-    assert opened_paths == [vault_backups.backup_root()]
+    assert client.post("/api/vault/backups/open-directory?kind=key", json={"path": "C:/test-other"}).status_code == 204
+    assert client.post("/api/vault/backups/open-directory?kind=other").status_code == 422
+    assert opened_paths == [vault_backups.backup_root(), vault_backups.portable_key_directory(1)]
     assert client.put("/api/vault/backup-settings", json={"directory": "C:/test-other"}).status_code == 422
     assert client.get("/api/vault/backup-settings").json()["directory"] == str(vault_backups.backup_root())
     assert client.put("/api/vault/backup-settings", json={"interval_hours": 7, "retention": 3}).status_code == 422
@@ -412,8 +414,15 @@ def test_scheduled_portable_backup_respects_interval_and_retention(client, isola
     key_response = client.post("/api/vault/backup/key?export=true", json=proof)
     assert key_response.status_code == 200
     identity = x25519.Identity.from_str(key_response.json()["identity"])
+    portable, = vault_backups.portable_key_directory(1).glob("*.key")
+    assert portable.read_text(encoding="ascii").strip() == str(identity)
+    protected, = vault_backups.key_directory(1).glob("*.dpapi")
+    assert str(identity).encode("ascii") not in protected.read_bytes()
+    # Existing vaults can create a missing portable copy from their original local key.
+    portable.unlink()
     assert client.get("/api/vault/backup-settings").json()["key_exported"]
     vault_router.run_scheduled_backups()
+    assert portable.read_text(encoding="ascii").strip() == str(identity)
 
     def verify_document(entry):
         encrypted = vault_backups.read(1, entry["filename"])
@@ -511,7 +520,7 @@ def test_desktop_picks_only_one_user_selected_supported_file(client, tmp_path, m
     assert result.status_code == 200
     assert result.headers["cache-control"] == "no-store"
     assert result.json() == {"name": key.name, "path": str(key), "text": identity}
-    assert calls[-1] == ("选择备份恢复密钥", str(vault_backups.directory(1)), "*.txt;*.key")
+    assert calls[-1] == ("选择备份恢复密钥", str(vault_backups.portable_key_directory(1)), "*.txt;*.key")
 
 
 def test_source_backup_root_is_fixed_at_the_repository_root(monkeypatch):

@@ -20,14 +20,6 @@ def _backup_settings(page):
     return settings
 
 
-def _export_identity(page, settings, directory):
-    settings.get_by_role("button", name="另存恢复密钥", exact=True).click()
-    dialog = page.get_by_role("dialog", name="另存备份恢复密钥", exact=True)
-    dialog.get_by_label("当前密码库主密码", exact=True).fill(MASTER)
-    dialog.get_by_role("button", name="验证", exact=True).click()
-    return _saved_download(page, directory)
-
-
 def _verify_import(page, settings, password):
     settings.get_by_role("button", name="导入", exact=True).click()
     dialog = page.get_by_role("dialog", name="导入密码库备份", exact=True)
@@ -37,7 +29,7 @@ def _verify_import(page, settings, password):
     expect(dialog.get_by_role("button", name="浏览备份文件", exact=True)).to_be_visible()
     expected = _backup_directory(settings).inner_text()
     expect(dialog.get_by_label("备份文件", exact=True)).to_have_value(expected)
-    expect(dialog.get_by_label("备份恢复密钥", exact=True)).to_have_value(expected)
+    expect(dialog.get_by_label("备份恢复密钥", exact=True)).to_have_value(_key_directory(settings).inner_text())
     return dialog
 
 
@@ -56,40 +48,21 @@ def _backup_directory(settings):
     return location.locator(".vault-backup-directory")
 
 
+def _key_directory(settings):
+    locations = settings.locator(".vault-backup-location")
+    location = locations.get_by_role("group", name="密钥存放目录", exact=True)
+    expect(location.get_by_role("textbox")).to_have_count(0)
+    expect(location.get_by_role("button", name="打开密钥目录", exact=True)).to_be_visible()
+    expect(settings.get_by_role("button", name="另存恢复密钥", exact=True)).to_have_count(0)
+    return location.locator(".vault-backup-directory")
+
+
 def _create_manual_backup(page, settings):
     settings.get_by_role("button", name="手动备份", exact=True).click()
     expect(page.get_by_role("status").filter(has_text="备份创建成功")).to_be_visible()
     expect(page.get_by_role("dialog", name="手动备份", exact=True)).to_have_count(0)
     expect(settings.get_by_role("listitem").filter(has_text="手动备份")).to_be_visible()
 
-
-def _capture_downloads(page):
-    # Older Playwright releases can crash when Edge closes its download target.
-    # Read the exact Blob passed to the download anchor before revocation.
-    page.add_init_script("""const originalClick = HTMLAnchorElement.prototype.click;
-        const originalUrl = URL.createObjectURL;
-        const blobs = new Map();
-        URL.createObjectURL = function (blob) {
-            const url = originalUrl.call(this, blob);
-            blobs.set(url, blob);
-            return url;
-        };
-        HTMLAnchorElement.prototype.click = function () {
-            if (!this.download) return originalClick.call(this);
-            const filename = this.download;
-            blobs.get(this.href).text().then(document => {
-                window.__vaultDownload = {filename, document};
-                window.document.body.setAttribute("data-vault-download", "ready");
-            });
-        };""")
-
-
-def _saved_download(page, directory):
-    expect(page.locator("body")).to_have_attribute("data-vault-download", "ready")
-    value = page.evaluate("() => { document.body.removeAttribute('data-vault-download'); return window.__vaultDownload; }")
-    destination = directory / value["filename"]
-    destination.write_text(value["document"], encoding="utf-8")
-    return destination
 
 @pytest.mark.browser
 def test_vault_daily_ui_csv_and_restore_confirmation(live_server, tmp_path):
@@ -99,7 +72,6 @@ def test_vault_daily_ui_csv_and_restore_confirmation(live_server, tmp_path):
         context = browser.new_context(viewport={"width": 1440, "height": 1000})
         try:
             page = context.new_page()
-            _capture_downloads(page)
             page.set_default_timeout(10_000)
             _login(page, live_server)
             page.get_by_role("navigation", name="主导航").get_by_role("link", name="密码保险箱", exact=True).click()
@@ -142,7 +114,6 @@ def test_vault_daily_ui_csv_and_restore_confirmation(live_server, tmp_path):
             expect(page.get_by_role("heading", name="导入演示条目", exact=True)).to_be_visible()
 
             settings = _backup_settings(page)
-            identity = _export_identity(page, settings, tmp_path)
             page.evaluate("document.documentElement.dataset.theme = 'light'")
             _create_manual_backup(page, settings)
             toast = page.locator(".vault-backup-toast")
@@ -153,6 +124,7 @@ def test_vault_daily_ui_csv_and_restore_confirmation(live_server, tmp_path):
             expect(toast).not_to_be_visible(timeout=4000)
             page.evaluate("document.documentElement.dataset.theme = 'dark'")
             directory = Path(_backup_directory(settings).inner_text())
+            identity, = Path(_key_directory(settings).inner_text()).glob("*.key")
             backup = next(directory.rglob("backup-*.age"))
             assert backup.read_text(encoding="utf-8").startswith("-----BEGIN AGE ENCRYPTED FILE-----")
             assert "synthetic-secret" not in backup.read_text(encoding="utf-8")
@@ -295,7 +267,6 @@ def test_manual_and_automatic_files_restore_locally_and_on_a_different_vault(liv
     def desktop_page(browser):
         context = browser.new_context(viewport={"width": 1320, "height": 900}, reduced_motion="no-preference")
         page = context.new_page()
-        _capture_downloads(page)
         page.set_default_timeout(12_000)
         page.goto(f"{live_server}/#desktop=isolated-portable-vault")
         return context, page
@@ -330,11 +301,11 @@ def test_manual_and_automatic_files_restore_locally_and_on_a_different_vault(liv
             expect(settings.get_by_label("自动备份间隔", exact=True)).to_have_value("6")
             settings.get_by_label("备份保留数量", exact=True).select_option("5")
             expect(settings.get_by_label("备份保留数量", exact=True)).to_have_value("5")
-            identity = _export_identity(page, settings, tmp_path)
             vault_router.run_scheduled_backups()
             settings.get_by_role("button", name="完成", exact=True).click()
             settings = _backup_settings(page)
             directory = Path(_backup_directory(settings).inner_text())
+            identity, = Path(_key_directory(settings).inner_text()).glob("*.key")
             automatic = next(directory.rglob("auto-*.age"))
 
             _create_manual_backup(page, settings)

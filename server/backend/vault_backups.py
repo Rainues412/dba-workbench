@@ -97,13 +97,97 @@ def _dpapi(data: bytes, protect: bool) -> bytes:
             free(output.data)
 
 
+def key_directory(user_id: int) -> Path:
+    return Path(database.DB_PATH).resolve().parent / "vault-backup-keys" / str(user_id)
+
+
+def portable_key_directory(user_id: int) -> Path:
+    return key_directory(user_id) / "portable"
+
+
 def _key_path(user_id: int, recipient: str) -> Path:
     name = hashlib.sha256(recipient.encode("ascii")).hexdigest()
-    return Path(database.DB_PATH).resolve().parent / "vault-backup-keys" / str(user_id) / (name + ".dpapi")
+    return key_directory(user_id) / (name + ".dpapi")
 
 
 def read_identity(user_id: int, recipient: str) -> str:
     return _dpapi(_key_path(user_id, recipient).read_bytes(), False).decode("ascii")
+
+
+class _SecurityAttributes(ctypes.Structure):
+    _fields_ = [("size", wintypes.DWORD), ("descriptor", ctypes.c_void_p), ("inherit_handle", wintypes.BOOL)]
+
+
+def _open_private_file(path: Path) -> int:
+    import msvcrt
+
+    kernel = ctypes.WinDLL("Kernel32", use_last_error=True)
+    convert = ctypes.WinDLL("Advapi32", use_last_error=True).ConvertStringSecurityDescriptorToSecurityDescriptorW
+    convert.argtypes = (wintypes.LPCWSTR, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p), ctypes.c_void_p)
+    convert.restype = wintypes.BOOL
+    kernel.CreateFileW.argtypes = (wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(_SecurityAttributes),
+                                   wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE)
+    kernel.CreateFileW.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = (wintypes.HANDLE,)
+    kernel.LocalFree.argtypes = (ctypes.c_void_p,)
+    kernel.LocalFree.restype = ctypes.c_void_p
+    descriptor = ctypes.c_void_p()
+    # Protect the file from inherited permissions on the backup drive.
+    if not convert("D:P(A;;FA;;;OW)(A;;FA;;;SY)(A;;FA;;;BA)", 1, ctypes.byref(descriptor), None):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        attributes = _SecurityAttributes(ctypes.sizeof(_SecurityAttributes), descriptor, False)
+        generic_write, create_new, normal_file = 0x40000000, 1, 0x80
+        handle = kernel.CreateFileW(str(path), generic_write, 0, ctypes.byref(attributes), create_new, normal_file, None)
+        if handle == ctypes.c_void_p(-1).value:
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            volume_info = kernel.GetVolumeInformationByHandleW
+            volume_info.argtypes = (wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, ctypes.c_void_p, ctypes.c_void_p,
+                                    ctypes.POINTER(wintypes.DWORD), wintypes.LPWSTR, wintypes.DWORD)
+            volume_info.restype = wintypes.BOOL
+            flags = wintypes.DWORD()
+            if not volume_info(handle, None, 0, None, None, ctypes.byref(flags), None, 0):
+                raise ctypes.WinError(ctypes.get_last_error())
+            if not flags.value & 0x8:  # FILE_PERSISTENT_ACLS
+                raise OSError("Recovery key directory does not support Windows file permissions")
+            return msvcrt.open_osfhandle(handle, os.O_WRONLY | os.O_BINARY)
+        except BaseException:
+            kernel.CloseHandle(handle)
+            path.unlink(missing_ok=True)
+            raise
+    finally:
+        kernel.LocalFree(descriptor)
+
+
+def ensure_portable_key(user_id: int, recipient: str) -> None:
+    folder = portable_key_directory(user_id)
+    path = folder / (_key_path(user_id, recipient).stem + ".key")
+    with FILE_LOCK:
+        if not _safe_folder(folder) or path.is_symlink():
+            raise OSError("Recovery key directory must not redirect to another location")
+        if path.is_file():
+            return
+        if os.name != "nt":
+            raise OSError("Windows file permissions are required for portable recovery keys")
+        private_key = read_identity(user_id, recipient)
+        try:
+            actual_recipient = str(x25519.Identity.from_str(private_key).to_public())
+        except IdentityError as exc:
+            raise ValueError("Invalid local backup recovery key") from exc
+        if actual_recipient != recipient:
+            raise ValueError("Backup recovery key does not match the vault")
+        folder.mkdir(parents=True, exist_ok=True)
+        temporary = folder / (secrets.token_hex(16) + ".tmp")
+        descriptor = _open_private_file(temporary)
+        try:
+            with os.fdopen(descriptor, "wb") as output:
+                output.write((private_key + "\n").encode("ascii"))
+                output.flush()
+                os.fsync(output.fileno())
+            temporary.rename(path)
+        finally:
+            temporary.unlink(missing_ok=True)
 
 
 def prepare_key(conn, user_id: int, recovery_envelope: str, dek: bytes) -> None:

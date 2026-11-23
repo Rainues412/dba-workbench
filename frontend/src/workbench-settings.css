@@ -33,22 +33,19 @@
 .preference-row .button { flex-shrink:0; }
 .vault-backup-settings { display:grid; gap:12px; margin-top:20px; container-type:inline-size; }
 .vault-backup-settings > h4,.vault-backup-heading h5 { margin:0; color:var(--text-strong); font-size:14px; font-weight:600; }
-.vault-backup-location { display:grid; gap:8px; padding:12px; border:1px solid var(--border); border-radius:10px; }
-.vault-backup-location > span { color:var(--text-strong); font-size:12px; font-weight:600; }
-.vault-backup-location > div,.vault-path-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px; }
+.vault-backup-location { display:grid; gap:12px; padding:12px; border:1px solid var(--border); border-radius:10px; }
+.vault-backup-location-item { display:grid; gap:8px; min-width:0; }
+.vault-backup-location-item > span { color:var(--text-strong); font-size:12px; font-weight:600; }
+.vault-path-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px; }
 .vault-path-row input[readonly] { min-width:0; min-height:33px; padding:0 9px; font-size:12px; }
 .vault-backup-directory { min-width:0; margin:0; padding:7px 9px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; user-select:text; color:var(--text); background:var(--surface-soft); border-radius:6px; font-size:12px; line-height:19px; }
-.vault-backup-location .button,.vault-path-row .button { width:34px; min-height:33px; padding:0; }
+.vault-path-row .button { width:34px; min-height:33px; padding:0; }
 .vault-import-file-field { display:grid; gap:6px; min-width:0; }
 .vault-backup-policy { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; }
 .vault-backup-policy > div { display:grid; gap:6px; min-width:0; }
 .vault-backup-policy label { color:var(--text-strong); font-size:12px; font-weight:500; }
 .vault-backup-policy select { width:100%; min-height:34px; padding:0 9px; border:1px solid var(--border-strong); border-radius:6px; background:var(--surface-raised); color:var(--text); font-size:12px; }
 .vault-backup-policy select:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
-.vault-backup-password { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px 12px; padding:9px 11px; border-radius:8px; background:var(--surface-soft); }
-.vault-backup-password strong { display:block; color:var(--text-strong); font-size:12px; font-weight:500; }
-.vault-backup-password small { display:block; margin-top:3px; color:var(--muted); font-size:11px; line-height:1.5; }
-.vault-backup-key-reminder { border:1px solid var(--primary); background:var(--primary-soft); }
 .vault-backup-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
 .vault-backup-settings .button-row { width:auto; justify-content:flex-start; flex-wrap:wrap; gap:4px; }
 .vault-backup-settings .button-row > .button { flex:0 0 auto; min-height:28px; gap:4px; }

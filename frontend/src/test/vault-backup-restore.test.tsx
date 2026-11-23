@@ -32,7 +32,8 @@ const records = [{ site: "测试连接", username: "tester", category: "数据�
 
 function show(initialized = true, onOpenVault = vi.fn()) {
   vi.mocked(api).mockImplementation(async (path, options) => {
-    if (path === "/api/vault/backup-settings") return { interval_hours: 24, retention: 10, portable_ready: false, directory: "D:/data/vault-backups/9" } as never;
+    if (path === "/api/vault/backup-settings") return { interval_hours: 24, retention: 10, portable_ready: false, directory: "D:/data/vault-backups/9", key_directory: "D:/data/vault-backup-keys/9/portable" } as never;
+    if (path === "/api/vault/backups/open-directory?kind=key") return undefined as never;
     if (path === "/api/vault/backups") return (options?.method === "POST" ? { filename: "backup-test.age" } : []) as never;
     if (path === "/api/vault/profile") return { initialized, profile: initialized ? currentProfile : null } as never;
     if (path === "/api/vault/backup/verify-master") return undefined as never;
@@ -85,6 +86,13 @@ describe("password vault backup settings", () => {
     expect(directory).toHaveTextContent("D:/data/vault-backups/9");
     expect(within(directory).queryByRole("textbox")).not.toBeInTheDocument();
     expect(within(directory).getByRole("button", { name: "打开备份目录" })).toBeEnabled();
+    const keyDirectory = screen.getByRole("group", { name: "密钥存放目录" });
+    expect(keyDirectory.parentElement).toBe(directory.parentElement);
+    expect(keyDirectory).toHaveTextContent("D:/data/vault-backup-keys/9/portable");
+    expect(within(keyDirectory).queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "另存恢复密钥" })).not.toBeInTheDocument();
+    fireEvent.click(within(keyDirectory).getByRole("button", { name: "打开密钥目录" }));
+    expect(api).toHaveBeenCalledWith("/api/vault/backups/open-directory?kind=key", { method: "POST" });
     expect(screen.getByLabelText("备份保留数量")).toHaveValue("10");
     vi.mocked(openBackup).mockResolvedValue(records as never);
     const review = await submitFile();
