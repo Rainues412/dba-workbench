@@ -65,6 +65,11 @@ def _create_manual_backup(page, settings):
     expect(settings.get_by_role("listitem").filter(has_text="手动备份")).to_be_visible()
 
 
+def _listed_backup(settings, directory, kind):
+    row = settings.get_by_role("listitem").filter(has_text=kind)
+    return directory / row.locator(".vault-backup-file > span").inner_text()
+
+
 @pytest.mark.browser
 def test_vault_daily_ui_csv_and_restore_confirmation(live_server, tmp_path):
     client, _ = _api_client(live_server)
@@ -125,8 +130,9 @@ def test_vault_daily_ui_csv_and_restore_confirmation(live_server, tmp_path):
             expect(toast).not_to_be_visible(timeout=4000)
             page.evaluate("document.documentElement.dataset.theme = 'dark'")
             directory = Path(_backup_directory(settings).inner_text())
+            assert directory.name == "1"
             identity, = Path(_key_directory(settings).inner_text()).glob("*.key")
-            backup = next(directory.rglob("backup-*.age"))
+            backup = _listed_backup(settings, directory, "手动备份")
             assert backup.read_text(encoding="utf-8").startswith("-----BEGIN AGE ENCRYPTED FILE-----")
             assert "synthetic-secret" not in backup.read_text(encoding="utf-8")
 
@@ -160,10 +166,34 @@ def test_vault_daily_ui_csv_and_restore_confirmation(live_server, tmp_path):
 
             row = settings.get_by_role("listitem").filter(has_text=backup.name)
             row.get_by_role("button", name="重命名备份", exact=True).click()
-            rename = page.get_by_role("dialog", name="重命名备份", exact=True)
-            rename.get_by_label("备份名称", exact=True).fill("恢复测试快照")
-            rename.get_by_role("button", name="保存", exact=True).click()
+            editing_row = settings.get_by_role("listitem").filter(has=page.get_by_role("textbox", name="备份名称", exact=True))
+            editor = editing_row.get_by_role("textbox", name="备份名称", exact=True)
+            expect(editor).to_have_value(backup.stem)
+            expect(editor).to_be_focused()
+            for theme, width in [("light", 1440), ("dark", 390)]:
+                page.set_viewport_size({"width": width, "height": 1000})
+                page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
+                assert editing_row.evaluate("row => row.scrollWidth <= row.clientWidth")
+                editing_row.screenshot(animations="disabled", path=str(tmp_path / f"vault-rename-{theme}-{width}.png"))
+            editor.press("Escape")
+            expect(settings).to_be_visible()
+            expect(row.get_by_role("button", name="重命名备份", exact=True)).to_be_focused()
+            conflict = directory / "已有备份.age"
+            conflict.write_bytes(backup.read_bytes())
+            row.get_by_role("button", name="重命名备份", exact=True).click()
+            editor.fill(conflict.stem)
+            editing_row.get_by_role("button", name="保存备份名称", exact=True).click()
+            expect(editing_row.get_by_role("alert")).to_contain_text("已存在同名备份")
+            assert backup.is_file()
+            editor.fill("恢复测试快照")
+            editor.press("Enter")
+            renamed_backup = directory / "恢复测试快照.age"
             row = settings.get_by_role("listitem").filter(has_text="恢复测试快照")
+            expect(row.get_by_text(renamed_backup.name, exact=True)).to_be_visible()
+            assert renamed_backup.is_file() and not backup.exists()
+            listbox = settings.get_by_role("list", name="密码库备份列表")
+            expect(listbox.get_by_text(conflict.name, exact=True)).to_be_visible()
+            assert {file.name for file in directory.glob("*.age")} == set(listbox.locator(".vault-backup-file > span").all_text_contents())
             row.get_by_role("button", name="恢复", exact=True).click()
             verify = page.get_by_role("dialog", name="校验密码库备份", exact=True)
             verify.get_by_label("当前密码库主密码", exact=True).fill(MASTER)
@@ -176,16 +206,17 @@ def test_vault_daily_ui_csv_and_restore_confirmation(live_server, tmp_path):
             expect(delete).to_have_accessible_description("此备份将被永久删除，此操作无法撤消。")
             expect(delete.locator(".consequence-warning")).to_have_count(0)
             filename = delete.locator(".backup-file strong")
-            expect(filename).to_have_text("恢复测试快照")
+            expect(filename).to_have_text(renamed_backup.name)
             expect(filename).to_have_css("text-align", "center")
             for theme, width in [("light", 1440), ("dark", 390)]:
                 page.set_viewport_size({"width": width, "height": 1000})
                 page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
                 assert delete.evaluate("dialog => dialog.scrollWidth <= dialog.clientWidth")
                 page.screenshot(animations="disabled", path=str(tmp_path / f"vault-delete-{theme}-{width}.png"))
-            assert backup.is_file()
+            assert renamed_backup.is_file()
             delete.get_by_role("button", name="确认删除", exact=True).click()
             expect(row).not_to_be_visible()
+            assert not renamed_backup.exists()
             settings.get_by_role("button", name="完成", exact=True).click()
             expect(page.get_by_role("heading", name="保险箱已锁定", exact=True)).to_be_visible()
             assert len(restore_requests) == 1
@@ -256,7 +287,10 @@ def test_import_disclosures_and_security_risks_on_small_screens(live_server, tmp
 
 @pytest.mark.browser
 def test_manual_and_automatic_files_restore_locally_and_on_a_different_vault(live_server, tmp_path, monkeypatch):
+    import base64
     import sqlite3
+
+    from pyrage import decrypt, encrypt, x25519
 
     from backend import auth, database
     from backend.routers import vault as vault_router
@@ -307,11 +341,21 @@ def test_manual_and_automatic_files_restore_locally_and_on_a_different_vault(liv
             settings = _backup_settings(page)
             directory = Path(_backup_directory(settings).inner_text())
             identity, = Path(_key_directory(settings).inner_text()).glob("*.key")
-            automatic = next(directory.rglob("auto-*.age"))
+            automatic = _listed_backup(settings, directory, "自动备份")
+            key = x25519.Identity.from_str(identity.read_text(encoding="ascii").strip())
+            document = json.loads(decrypt(automatic.read_bytes(), [key]))
+            encoded_key = document["wrapped_dek"]
+            data_key = decrypt(base64.urlsafe_b64decode(encoded_key + "=" * (-len(encoded_key) % 4)), [key])
+            for _ in range(256):
+                if len(document["wrapped_dek"]) > 512:
+                    break
+                document["wrapped_dek"] = base64.urlsafe_b64encode(encrypt(data_key, [key.to_public()])).decode("ascii").rstrip("=")
+            assert len(document["wrapped_dek"]) > 512
+            automatic.write_bytes(encrypt(json.dumps(document).encode(), [key.to_public()], armored=True))
 
             _create_manual_backup(page, settings)
             expect(settings.get_by_role("listitem").filter(has_text="自动备份")).to_be_visible()
-            manual = next(directory.rglob("backup-*.age"))
+            manual = _listed_backup(settings, directory, "手动备份")
 
             panel = settings.get_by_role("region", name="备份与恢复", exact=True)
             expect(panel.get_by_role("listitem")).to_have_count(2)
@@ -343,16 +387,28 @@ def test_manual_and_automatic_files_restore_locally_and_on_a_different_vault(liv
                 expect(button.locator(".task-morph-label svg")).to_have_count(0)
                 button.click()
                 expect(button).to_have_attribute("data-phase", "pending")
-                expect(button).to_have_attribute("data-phase", "success")
+                try:
+                    expect(button).to_have_attribute("data-phase", "success")
+                except AssertionError as exc:
+                    details = verify.get_by_role("alert").all_text_contents()
+                    raise AssertionError(f"Local verification did not complete. Dialog errors: {details}") from exc
                 review = page.get_by_role("dialog", name="确认恢复密码库", exact=True)
                 steps = review.get_by_role("list", name="恢复步骤")
                 expect(steps.locator('[data-state="done"]')).to_have_text("验证主密码")
                 expect(steps.locator('[aria-current="step"]')).to_have_text("2确认恢复")
                 expect(review).to_contain_text("当前的 1 条凭据")
+                review.evaluate("""dialog => {
+                    delete document.body.dataset.restoreMotionFinished;
+                    new MutationObserver(() => {
+                        if (dialog.querySelector('.vault-import-progress[data-complete]')) {
+                            document.body.dataset.restoreMotionFinished = 'true';
+                        }
+                    }).observe(dialog, { subtree: true, childList: true, attributes: true });
+                }""")
                 review.get_by_role("button", name="确认恢复", exact=True).click()
                 progress = review.get_by_role("status", name="正在恢复")
                 expect(progress.get_by_text(re.compile(r"^[1-9]\d?%$"))).to_be_visible()
-                expect(review.get_by_role("status", name="恢复完成")).to_be_visible()
+                expect(page.locator("body")).to_have_attribute("data-restore-motion-finished", "true")
                 expect(review).not_to_be_visible()
                 expect(settings.get_by_text("已恢复 1 条。覆盖前的安全备份已保存。", exact=True)).to_be_visible()
 

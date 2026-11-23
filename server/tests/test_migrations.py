@@ -37,6 +37,24 @@ def test_stage_one_legacy_schema_is_baselined_then_upgraded(tmp_path: Path) -> N
         assert conn.execute("SELECT COUNT(*) FROM roles").fetchone()[0] == 4
 
 
+def test_vault_backup_file_migration_keeps_previous_names_and_policy(tmp_path, monkeypatch):
+    path = tmp_path / "pre-backup-files.db"
+    files = migration_module._migration_files()
+    with monkeypatch.context() as patch:
+        patch.setattr(migration_module, "_migration_files", lambda: [entry for entry in files if entry[0] <= 14])
+        migrate(path)
+    with sqlite3.connect(path) as conn:
+        conn.execute("INSERT INTO users(id, username, password_hash) VALUES (1, 'owner', 'test-hash')")
+        conn.execute("INSERT INTO vault_backup_settings(user_id, interval_hours, retention) VALUES (1, 12, 5)")
+        conn.execute("INSERT INTO vault_backup_names VALUES (1, 'snapshot.age', 'previous label')")
+    migrate(path)
+    with sqlite3.connect(path) as conn:
+        assert conn.execute("SELECT * FROM vault_backup_names").fetchone() == (1, "snapshot.age", "previous label")
+        assert conn.execute("SELECT interval_hours, retention FROM vault_backup_settings").fetchone() == (12, 5)
+        assert conn.execute("SELECT * FROM vault_backup_layout").fetchall() == []
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
 def test_user_profile_upgrade_preserves_existing_accounts_and_sessions(tmp_path, monkeypatch):
     path = tmp_path / "pre-profile.db"
     files = migration_module._migration_files()

@@ -6,6 +6,8 @@ const ageFormat = "dba-vault-backup-v3";
 const ageHeader = "-----BEGIN AGE ENCRYPTED FILE-----";
 const text = new TextEncoder();
 const backupSizeLimit = 64 * 1024 * 1024;
+// age can include a random recipient stanza in addition to the X25519 stanza.
+const wrappedKeyLimit = 4096;
 
 type Cipher = Pick<VaultCipherItem, "item_key" | "envelope_version" | "nonce" | "ciphertext" | "aad" | "revision">;
 type Seal = { salt: string; nonce: string; wrapped_keys: string };
@@ -77,7 +79,7 @@ export async function readBackupIdentity(file: File) {
     const lines = (await file.text()).split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
     if (lines.length === 1 && /^AGE-SECRET-KEY-1[0-9A-Z]+$/.test(lines[0])) return lines[0];
   }
-  throw new Error("请选择工作台另存的备份恢复密钥文件。");
+  throw new Error("请选择工作台生成的备份恢复密钥文件。");
 }
 
 function secret(value: unknown): VaultSecret {
@@ -138,7 +140,7 @@ export async function openBackup(backup: VaultBackup, password: string, userId: 
     } catch { throw new Error("恢复密钥与备份不匹配，或备份文件已损坏。"); }
     if (!isRecord(document) || document.format !== ageFormat || Object.keys(document).length !== 4
       || !within(document.source_user_id, 1, Number.MAX_SAFE_INTEGER) || !encoded(document.wrapped_dek)
-      || document.wrapped_dek.length > 512 || !Array.isArray(document.items) || !document.items.every(validItem)) {
+      || document.wrapped_dek.length > wrappedKeyLimit || !Array.isArray(document.items) || !document.items.every(validItem)) {
       throw new Error("请选择工作台生成且支持的密码库加密备份文件。");
     }
     const rawKey = await decrypt.decrypt(decodeBase64(document.wrapped_dek));

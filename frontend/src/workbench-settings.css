@@ -64,6 +64,11 @@
 .workbench-settings .vault-backup-row-actions .button:hover:enabled { background:var(--surface-tint); color:var(--primary); }
 .workbench-settings .vault-backup-row-actions .vault-backup-delete { color:var(--danger); }
 .workbench-settings .vault-backup-row-actions .vault-backup-delete:hover:enabled { background:var(--danger-soft); color:var(--danger); }
+.vault-backup-rename { display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:center; gap:5px; width:100%; min-width:0; }
+.vault-backup-rename input { width:100%; min-width:0; height:30px; padding:0 9px; font-size:12px; }
+.workbench-settings .vault-backup-rename .button { width:28px; min-height:28px; padding:0; border-color:transparent; background:transparent; color:var(--text); }
+.workbench-settings .vault-backup-rename .button:hover:enabled { background:var(--surface-tint); color:var(--primary); }
+.vault-backup-rename-error { grid-column:1 / -1; margin:0; color:var(--danger); font-size:12px; overflow-wrap:anywhere; }
 .modal.vault-restore-dialog { width:min(460px, calc(100vw - 2rem)); max-height:calc(100dvh - 2rem); overflow:auto; }
 @container (max-width:340px) { .vault-backup-policy { grid-template-columns:1fr; gap:10px; } }
 

@@ -5,15 +5,19 @@ from __future__ import annotations
 import hashlib
 import base64
 import ctypes
+import filecmp
 import json
 import os
 import re
 import secrets
+import shutil
 import tempfile
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from ctypes import wintypes
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from threading import RLock
+from unicodedata import normalize
 
 from pyrage import IdentityError, encrypt, x25519
 
@@ -21,7 +25,8 @@ from backend import database
 from backend.observability import logger
 
 MAX_BACKUP_BYTES = 64 * 1024 * 1024
-BACKUP_NAME = r"^(?:backup|auto|before-restore)-\d{8}-\d{6}-[0-9a-f]{12}\.(?:age|json)$"
+BACKUP_NAME = r"^(?:backup|auto|before-restore)-\d{8}-\d{6}-[0-9a-f]{12}(?:-legacy-\d+)?\.(?:age|json)$"
+AGE_HEADER = b"-----BEGIN AGE ENCRYPTED FILE-----"
 FILE_LOCK = RLock()
 FORMAT = "dba-vault-backup-v3"
 
@@ -37,12 +42,92 @@ def directory(user_id: int) -> Path:
     return backup_root() / str(user_id)
 
 
-def _folders(user_id: int) -> tuple[Path, Path]:
-    return directory(user_id), Path(database.DB_PATH).resolve().parent / "vault-backups" / str(user_id)
+def _legacy_directory(user_id: int) -> Path:
+    return Path(database.DB_PATH).resolve().parent / "vault-backups" / str(user_id)
 
 
 def _safe_folder(folder: Path) -> bool:
     return folder.resolve() == folder
+
+
+def _filename_allowed(filename: str) -> bool:
+    if not filename or filename.endswith((" ", ".")) or re.search(r'[<>:"/\\|?*\x00-\x1f\x7f]', filename):
+        return False
+    path = PureWindowsPath(filename)
+    return path.suffix.lower() in {".age", ".json"} and not path.is_reserved()
+
+
+def _backup_file(path: Path) -> bool:
+    if not _filename_allowed(path.name) or path.is_symlink() or not path.is_file():
+        return False
+    if re.fullmatch(BACKUP_NAME, path.name, re.IGNORECASE):
+        return True
+    try:
+        with path.open("rb") as handle:
+            if path.suffix.lower() == ".age":
+                return handle.read(len(AGE_HEADER)) == AGE_HEADER
+            data = handle.read(MAX_BACKUP_BYTES + 1)
+        if len(data) > MAX_BACKUP_BYTES:
+            return False
+        document = json.loads(data)
+        return isinstance(document, dict) and document.get("format") in {"dba-vault-backup-v1", "dba-vault-backup-v2"}
+    except (FileNotFoundError, ValueError):
+        return False
+
+
+def _rename_without_replacing(source: Path, target: Path) -> None:
+    if os.name == "nt":
+        source.rename(target)
+    else:
+        os.link(source, target)
+        try:
+            source.unlink()
+        except OSError:
+            target.unlink()
+            raise
+
+
+def _copy_legacy_file(source: Path, destination: Path) -> None:
+    temporary = None
+    try:
+        stat = source.stat()
+        with tempfile.NamedTemporaryFile(dir=destination.parent, delete=False) as handle:
+            temporary = Path(handle.name)
+            with source.open("rb") as backup:
+                shutil.copyfileobj(backup, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.utime(temporary, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        _rename_without_replacing(temporary, destination)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def prepare_directory(conn, user_id: int) -> None:
+    """Copy prior releases' backups once, leaving the old directory intact."""
+    if conn.execute("SELECT 1 FROM vault_backup_layout WHERE user_id=?", (user_id,)).fetchone():
+        return
+    folder = directory(user_id)
+    legacy = _legacy_directory(user_id)
+    if not _safe_folder(folder) or not _safe_folder(legacy):
+        raise OSError("Backup directory must not redirect to another location")
+    if legacy.is_dir():
+        folder.mkdir(parents=True, exist_ok=True)
+        for source in legacy.iterdir():
+            if not re.fullmatch(BACKUP_NAME, source.name, re.IGNORECASE) or not _backup_file(source):
+                continue
+            target = folder / source.name
+            suffix = 2
+            while target.exists() or target.is_symlink():
+                if not target.is_symlink() and target.is_file() and filecmp.cmp(source, target, shallow=False):
+                    break
+                target = folder / f"{source.stem}-legacy-{suffix}{source.suffix}"
+                suffix += 1
+            else:
+                _copy_legacy_file(source, target)
+    conn.execute("INSERT INTO vault_backup_layout(user_id) VALUES (?)", (user_id,))
+    conn.commit()
 
 
 def settings(conn, user_id: int) -> dict:
@@ -212,8 +297,8 @@ def encrypted_snapshot(user_id: int, items: list[dict], key) -> bytes:
     return encrypt(canonical(document), [x25519.Recipient.from_str(key["recipient"])], armored=True)
 
 
-def _write(path: Path, data: bytes) -> None:
-    folder = path.parent
+@contextmanager
+def _staged_file(folder: Path, data: bytes):
     folder.mkdir(parents=True, exist_ok=True)
     temporary = None
     try:
@@ -222,67 +307,129 @@ def _write(path: Path, data: bytes) -> None:
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
-        temporary.replace(path)
+        yield temporary
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
 
 
-def save(user_id: int, data: bytes, *, prefix: str = "backup") -> str:
+def _write(path: Path, data: bytes) -> None:
+    with _staged_file(path.parent, data) as temporary:
+        temporary.replace(path)
+
+
+def save(user_id: int, data: bytes, *, conn=None, kind: str = "manual") -> str:
     if len(data) > MAX_BACKUP_BYTES:
         raise ValueError("备份文件不能超过 64 MiB。")
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    filename = f"{prefix}-{timestamp}-{secrets.token_hex(6)}.age"
+    timestamp = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
     folder = directory(user_id)
     if not _safe_folder(folder):
         raise OSError("Backup directory must not redirect to another location")
-    _write(folder / filename, data)
-    return filename
-
-
-def entries(user_id: int) -> list[dict]:
-    result = {}
-    for folder in _folders(user_id):
-        if not _safe_folder(folder) or not folder.is_dir():
-            continue
-        for path in folder.iterdir():
-            if path.name in result or not re.fullmatch(BACKUP_NAME, path.name) or path.is_symlink() or not path.is_file():
-                continue
+    with _staged_file(folder, data) as temporary:
+        if conn is not None:
+            _remember_kind(conn, user_id, temporary.stat(), kind)
+        number = 1
+        while True:
+            name = timestamp if number == 1 else f"{timestamp} ({number})"
+            path = folder / f"{name}.age"
             try:
-                stat = path.stat()
-            except FileNotFoundError:
-                continue
-            result[path.name] = {
-                "filename": path.name,
-                "created_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
-                "size": stat.st_size,
-                "kind": "safety" if path.name.startswith("before-restore-") else "auto" if path.name.startswith("auto-") else "manual",
-            }
-    return sorted(result.values(), key=lambda entry: entry["created_at"], reverse=True)
+                if not path.with_suffix(".json").exists():
+                    _rename_without_replacing(temporary, path)
+                    return path.name
+            except FileExistsError:
+                pass
+            number += 1
 
 
-def prune(user_id: int, retention: int, newest: str) -> None:
+def _file_id(stat: os.stat_result) -> str:
+    return f"{stat.st_dev}:{stat.st_ino}:{getattr(stat, 'st_birthtime_ns', 0)}"
+
+
+def _remember_kind(conn, user_id: int, stat: os.stat_result, kind: str) -> None:
+    conn.execute("INSERT OR IGNORE INTO vault_backup_file_kinds(user_id, file_id, kind) VALUES (?, ?, ?)",
+                 (user_id, _file_id(stat), kind))
+
+
+def _kind(filename: str) -> str:
+    if re.fullmatch(BACKUP_NAME, filename, re.IGNORECASE):
+        if filename.lower().startswith("before-restore-"):
+            return "safety"
+        if filename.lower().startswith("auto-"):
+            return "auto"
+    return "manual"
+
+
+def entries(conn, user_id: int) -> list[dict]:
+    folder = directory(user_id)
+    if not _safe_folder(folder):
+        raise OSError("Backup directory must not redirect to another location")
+    if not folder.is_dir():
+        return []
+    kinds = dict(conn.execute("SELECT file_id, kind FROM vault_backup_file_kinds WHERE user_id=?", (user_id,)))
+    result = []
+    for path in folder.iterdir():
+        if not _backup_file(path):
+            continue
+        try:
+            stat = path.stat()
+        except FileNotFoundError:
+            continue
+        result.append({
+            "filename": path.name,
+            "created_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+            "size": stat.st_size,
+            "kind": kinds.get(_file_id(stat), _kind(path.name)),
+        })
+    return sorted(result, key=lambda entry: (entry["created_at"], entry["filename"]), reverse=True)
+
+
+def prune(user_id: int, retention: int, previous: list[dict]) -> None:
     try:
         folder = directory(user_id)
         if not _safe_folder(folder):
             return
-        older = [entry["filename"] for entry in entries(user_id) if entry["kind"] == "auto" and entry["filename"].endswith(".age")
-                 and entry["filename"] != newest and not (folder / entry["filename"]).is_symlink()
-                 and (folder / entry["filename"]).is_file()]
+        older = [entry["filename"] for entry in previous if entry["kind"] == "auto" and entry["filename"].lower().endswith(".age")]
         for filename in older[retention - 1:]:
-            (folder / filename).unlink(missing_ok=True)
+            path = folder / filename
+            if not path.is_symlink():
+                path.unlink(missing_ok=True)
     except OSError:
         logger.warning("Could not complete vault backup retention")
 
 
 def existing_path(user_id: int, filename: str) -> Path:
-    if not re.fullmatch(BACKUP_NAME, filename):
+    if not _filename_allowed(filename):
         raise FileNotFoundError(filename)
-    for folder in _folders(user_id):
-        path = folder / filename
-        if _safe_folder(folder) and not path.is_symlink() and path.is_file():
-            return path
+    folder = directory(user_id)
+    path = folder / filename
+    if _safe_folder(folder) and _backup_file(path):
+        return path
     raise FileNotFoundError(filename)
+
+
+def rename(conn, user_id: int, filename: str, requested: str) -> str:
+    source = existing_path(user_id, filename)
+    name = normalize("NFC", requested.strip())
+    if name.lower().endswith(source.suffix.lower()):
+        name = name[:-len(source.suffix)]
+    new_filename = name + source.suffix
+    if not name or name.endswith((" ", ".")) or not _filename_allowed(new_filename):
+        raise ValueError("请输入有效的 Windows 文件名，扩展名会自动保留。")
+    if new_filename == source.name:
+        return new_filename
+
+    for sibling in source.parent.iterdir():
+        candidate = normalize("NFC", sibling.stem).casefold()
+        if sibling.name != source.name and sibling.suffix.lower() in {".age", ".json"} and candidate == name.casefold():
+            raise FileExistsError(new_filename)
+
+    # A file's identity survives renaming. Commit the type before moving the file
+    # so it stays consistent even if the move fails or the process stops.
+    stat = source.stat()
+    _remember_kind(conn, user_id, stat, _kind(source.name))
+    conn.commit()
+    _rename_without_replacing(source, source.with_name(new_filename))
+    return new_filename
 
 
 def read(user_id: int, filename: str) -> bytes:

@@ -13,12 +13,12 @@ import { DialogFocusBoundary } from "./DialogFocusBoundary";
 import { playTaskStatusFeedback, SubmitMorph, useTaskStatusReducedMotion, type TaskStatusPhase } from "./TaskStatusButton";
 import { VaultBackupProgress, VaultBackupSteps, type VaultImportStep } from "./VaultBackupProgress";
 
-type BackupEntry = { filename: string; display_name?: string; created_at: string; size: number; kind: "auto" | "manual" | "safety" };
+type BackupEntry = { filename: string; created_at: string; size: number; kind: "auto" | "manual" | "safety" };
 type BackupPolicy = { interval_hours: number; retention: number; directory: string; key_directory: string; portable_ready: boolean };
 type ProfileStatus = { initialized: boolean; profile: VaultProfile | null };
 type Operation =
   | { kind: "file" }
-  | { kind: "restore" | "rename" | "delete"; entry: BackupEntry };
+  | { kind: "restore" | "delete"; entry: BackupEntry };
 type Prepared = {
   expected_digest: string;
   items: Awaited<ReturnType<typeof encryptSecret>>[];
@@ -34,8 +34,6 @@ const clearAuthorization = (authorization: { current: { dek: Uint8Array<ArrayBuf
 
 const policyPath = "/api/vault/backup-settings";
 const filesPath = "/api/vault/backups";
-const listKey = ["vault", "backups"];
-const policyKey = ["vault", "backup-settings"];
 const profileKey = ["vault", "profile"];
 const intervalOptions = [[0, "禁用"], [6, "6 小时"], [12, "12 小时"], [24, "24 小时"], [48, "48 小时"], [168, "7 天"]] as const;
 const retentionOptions = [3, 5, 10, 15, 20, 30, 50];
@@ -60,6 +58,8 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
   const { isCurrent } = useReauthStatus(session?.reauthenticated_until);
   const client = useQueryClient();
   const userId = session!.user!.id;
+  const listKey = ["vault", "backups", userId];
+  const policyKey = ["vault", "backup-settings", userId];
   const selection = useRef(0);
   const review = useRef<HTMLParagraphElement>(null);
   const stepFocus = useRef<HTMLInputElement>(null);
@@ -71,6 +71,9 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
   const contentId = useId();
   const heading = useId();
   const [operation, setOperation] = useState<Operation | null>(null);
+  const [editingFilename, setEditingFilename] = useState<string | null>(null);
+  const [renameBusy, setRenameBusy] = useState(false);
+  const [renameError, setRenameError] = useState("");
   const [selected, setSelected] = useState<{ name: string; path: string; document: VaultBackup } | null>(null);
   const [identityFile, setIdentityFile] = useState<{ file: File; path: string } | null>(null);
   const [submitPhase, setSubmitPhase] = useState<TaskStatusPhase>();
@@ -116,6 +119,7 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
   }
 
   function start(action: Operation) {
+    setEditingFilename(null); setRenameError("");
     setSelected(null); setIdentityFile(null); setSubmitPhase(undefined);
     setImportStep(1); setProgressTarget(0); setProgressComplete(false);
     setOperation(action); setPrepared(null); setDialogError(""); setSectionError(""); setNotice("");
@@ -188,20 +192,39 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
     finally { setCreating(false); }
   }
 
-  async function manageBackup(event: FormEvent<HTMLFormElement>) {
+  function renameButtonId(filename: string) {
+    return `${contentId}-rename-${filename}`;
+  }
+
+  function finishRename(filename: string) {
+    setEditingFilename(null); setRenameError("");
+    requestAnimationFrame(() => document.getElementById(renameButtonId(filename))?.focus());
+  }
+
+  async function renameBackup(event: FormEvent<HTMLFormElement>, entry: BackupEntry) {
     event.preventDefault();
-    if (!operation || busy || (operation.kind !== "rename" && operation.kind !== "delete")) return;
-    const path = `${filesPath}/${encodeURIComponent(operation.entry.filename)}`;
     const name = String(new FormData(event.currentTarget).get("name") ?? "").trim();
+    if (!name || renameBusy) return;
+    setRenameBusy(true); setRenameError(""); setNotice("");
+    try {
+      const path = `${filesPath}/${encodeURIComponent(entry.filename)}`;
+      const { filename } = await api<{ filename: string }>(path, { method: "PATCH", body: jsonBody({ display_name: name }) });
+      client.setQueryData<BackupEntry[]>(listKey, (current) => current?.map((item) => item.filename === entry.filename ? { ...item, filename } : item));
+      finishRename(filename);
+      setNotice("备份名称已更新。");
+      void client.invalidateQueries({ queryKey: listKey });
+    } catch (cause) { setRenameError(cause instanceof Error ? cause.message : "无法重命名备份。"); }
+    finally { setRenameBusy(false); }
+  }
+
+  async function deleteBackup(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (operation?.kind !== "delete" || busy) return;
+    const path = `${filesPath}/${encodeURIComponent(operation.entry.filename)}`;
     setBusy(true); setDialogError("");
     try {
-      if (operation.kind === "rename") {
-        await api(path, { method: "PATCH", body: jsonBody({ display_name: name }) });
-        setNotice("备份名称已更新。");
-      } else {
-        const result = await api<{ replacement: string | null }>(path, { method: "DELETE" });
-        setNotice(result.replacement ? "已删除并自动补建一份加密备份。" : "已删除备份。");
-      }
+      const result = await api<{ replacement: string | null }>(path, { method: "DELETE" });
+      setNotice(result.replacement ? "已删除并自动补建一份加密备份。" : "已删除备份。");
       setOperation(null);
       void client.invalidateQueries({ queryKey: listKey });
     } catch (cause) { setDialogError(cause instanceof Error ? cause.message : "无法更新备份。"); }
@@ -353,12 +376,11 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
   const restoring = operation?.kind === "restore";
   const mode = importing ? "import" : "restore";
   const deleting = operation?.kind === "delete";
-  const managing = operation?.kind === "rename" || deleting;
   const deletingLast = deleting && files.data?.length === 1 && Boolean(policy.data?.interval_hours);
   const legacyImport = Boolean(selected && selected.document.format !== "dba-vault-backup-v3");
   const canImport = Boolean(selected && (legacyImport || identityFile));
-  const name = importing ? selected?.name : operation && "entry" in operation ? operation.entry.display_name ?? operation.entry.filename : undefined;
-  const needsLegacyPassword = legacyImport || (operation?.kind === "restore" && operation.entry.filename.endsWith(".json"));
+  const name = importing ? selected?.name : operation && "entry" in operation ? operation.entry.filename : undefined;
+  const needsLegacyPassword = legacyImport || (operation?.kind === "restore" && /\.json$/i.test(operation.entry.filename));
   const canUseFile = Boolean(profile.data);
   return <section className="vault-backup-settings" aria-labelledby={contentId}>
     <h4 id={contentId}>备份与恢复</h4>
@@ -412,32 +434,44 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
     {files.data?.length === 0 && <p className="vault-backup-status">暂无密码库备份。</p>}
     {Boolean(files.data?.length) && <ul className="vault-backup-list" aria-label="密码库备份列表">
       {files.data!.map((entry) => <li className="vault-backup-entry" key={entry.filename}>
-        <div className="vault-backup-file">
-          <span title={entry.display_name ?? entry.filename}>{entry.display_name ?? entry.filename}</span>
+        {editingFilename === entry.filename ? <form className="vault-backup-rename" onSubmit={(event) => void renameBackup(event, entry)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              if (!renameBusy) finishRename(entry.filename);
+            }
+          }}>
+          <input aria-label="备份名称" aria-invalid={Boolean(renameError)} aria-describedby={renameError ? `${contentId}-rename-error` : undefined}
+            name="name" defaultValue={entry.filename.replace(/\.(age|json)$/i, "")} maxLength={120} required autoFocus disabled={renameBusy}
+            onChange={() => setRenameError("")} />
+          <button type="submit" className="button small" aria-label="保存备份名称" title="保存" disabled={renameBusy}><Check aria-hidden="true" /></button>
+          <button type="button" className="button small" aria-label="取消重命名" title="取消" disabled={renameBusy} onClick={() => finishRename(entry.filename)}><X aria-hidden="true" /></button>
+          {renameError && <p className="vault-backup-rename-error" role="alert" id={`${contentId}-rename-error`}>{renameError}</p>}
+        </form> : <><div className="vault-backup-file">
+          <span title={entry.filename}>{entry.filename}</span>
           <small>{labels[entry.kind]} · {new Date(entry.created_at).toLocaleString()} · {Math.max(1, Math.round(entry.size / 1024))} KB</small>
         </div>
         <div className="button-row vault-backup-row-actions">
-          <button type="button" className="button small" aria-label="重命名备份" title="重命名" onClick={() => start({ kind: "rename", entry })}><Pencil aria-hidden="true" /></button>
-          <button type="button" className="button small vault-backup-delete" aria-label="删除备份" title="删除" onClick={() => start({ kind: "delete", entry })}><Trash2 aria-hidden="true" /></button>
-          <button type="button" className="button small" disabled={!initialized} onClick={() => start({ kind: "restore", entry })}><RotateCcw aria-hidden="true" />恢复</button>
-        </div>
+          <button type="button" id={renameButtonId(entry.filename)} className="button small" aria-label="重命名备份" title="重命名" disabled={renameBusy}
+            onClick={() => { setEditingFilename(entry.filename); setRenameError(""); setNotice(""); }}><Pencil aria-hidden="true" /></button>
+          <button type="button" className="button small vault-backup-delete" aria-label="删除备份" title="删除" disabled={renameBusy} onClick={() => start({ kind: "delete", entry })}><Trash2 aria-hidden="true" /></button>
+          <button type="button" className="button small" disabled={!initialized || renameBusy} onClick={() => start({ kind: "restore", entry })}><RotateCcw aria-hidden="true" />恢复</button>
+        </div></>}
       </li>)}
     </ul>}
     {operation && <AppDialog className={`modal vault-restore-dialog${deleting ? " vault-backup-delete-dialog" : ""}`}
       labelledBy={heading} describedBy={deleting ? `${heading}-description` : undefined} onClose={close}>
       <DialogFocusBoundary>
         <div className="modal-header"><div><h2 id={heading}>{importing ? "导入密码库备份" :
-          operation.kind === "rename" ? "重命名备份" : deleting ? "删除备份" : prepared ? "确认恢复密码库" : "校验密码库备份"}</h2>
+          deleting ? "删除备份" : prepared ? "确认恢复密码库" : "校验密码库备份"}</h2>
           {deleting && <p id={`${heading}-description`} className="vault-backup-delete-description">此备份将被永久删除，此操作无法撤消。</p>}</div>
           <button type="button" aria-label="关闭备份对话框" className="icon-button" onClick={close} disabled={busy || picking}><X size={19} /></button></div>
         {((importing && initialized) || restoring) && <VaultBackupSteps mode={mode}
           step={importing ? importStep : prepared ? 2 : 1} complete={progressComplete} reduced={reducedMotion} />}
-        {name && operation.kind !== "rename" && (!importing || prepared) && <div className="backup-file"><strong title={name}>{name}</strong></div>}
-        {managing ? <form className="stack" onSubmit={manageBackup}>
-          {operation.kind === "rename" && <label>备份名称<input name="name" defaultValue={name} maxLength={120} required disabled={busy} /></label>}
+        {name && (!importing || prepared) && <div className="backup-file"><strong title={name}>{name}</strong></div>}
+        {deleting ? <form className="stack" onSubmit={deleteBackup}>
           {deletingLast && <p className="vault-backup-status">自动备份已开启，删除后会尝试补建一份新备份。</p>}
-          <div className="modal-actions"><button type="submit" className={operation.kind === "rename" ? "button primary" : "button danger"} disabled={busy}>
-            {operation.kind === "rename" ? "保存" : "确认删除"}</button></div>
+          <div className="modal-actions"><button type="submit" className="button danger" disabled={busy}>确认删除</button></div>
         </form> : importing && !initialized ? <>
           <p>请先前往保险箱设置主密码，再返回导入备份。</p>
           <div className="modal-actions">
