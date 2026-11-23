@@ -99,7 +99,6 @@ def test_knowledge_topics_platforms_and_preview(live_server, tmp_path, monkeypat
             expect(categories.get_by_role("button")).to_have_count(3)
             categories.get_by_role("button", name="安全与权限 1", exact=True).click()
             record = page.locator(".library-record").filter(has_text="Windows安全分类首篇文章")
-            record.get_by_label("更多操作：Windows安全分类首篇文章").click()
             page.once("dialog", lambda dialog: dialog.accept())
             record.get_by_role("button", name="删除记录", exact=True).click()
             # The last article was removed; the same topic must disappear automatically.

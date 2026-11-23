@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { FileText, FolderOpen, Maximize2, Minimize2, MoreHorizontal, Pencil, Pin, Trash2, X } from "lucide-react";
+import { FileText, FolderOpen, Maximize2, Minimize2, Pencil, Pin, Trash2, X } from "lucide-react";
 import screenfull from "screenfull";
 import { api, Entity } from "../api/client";
 import type { CrudConfig } from "./CrudPage";
@@ -89,9 +89,7 @@ export function LibraryRecords({ config, rows, selectedId, disabled, searchQuery
               <FavoriteButton active={Boolean(row.is_favorite)} disabled={disabled} onToggle={() => onUpdate(row, { is_favorite: row.is_favorite ? 0 : 1 })} />
               {config.key === "articles" && <button type="button" className={`icon-button${row.is_pinned ? " is-pinned" : ""}`} aria-label={row.is_pinned ? "取消置顶" : "置顶"} title={row.is_pinned ? "取消置顶" : "置顶"} disabled={disabled} onClick={() => void onUpdate(row, { is_pinned: row.is_pinned ? 0 : 1 })}><Pin size={15} fill={row.is_pinned ? "currentColor" : "none"} /></button>}
               <button type="button" className="icon-button" aria-label="查看/编辑" title={`编辑：${title}`} disabled={disabled} onClick={() => onEdit(row.id)}><Pencil size={15} /></button>
-              <details className="library-more"><summary aria-label={`更多操作：${title}`} title="更多操作"><MoreHorizontal size={17} /></summary><div>
-                <button type="button" className="button small danger" disabled={disabled} onClick={() => void onRemove(row)}><Trash2 size={14} />删除记录</button>
-              </div></details>
+              <button type="button" className="icon-button danger" aria-label="删除记录" title={`删除：${title}`} disabled={disabled} onClick={() => void onRemove(row)}><Trash2 size={15} aria-hidden="true" /></button>
             </div>
           </div>
           <RecordMeta config={config} row={row} />

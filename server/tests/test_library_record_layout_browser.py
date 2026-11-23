@@ -67,13 +67,12 @@ def test_record_icons_tags_and_actions_stay_inside_rows(live_server, tmp_path, m
             page.set_viewport_size({"width": 320, "height": 1000})
             first.get_by_role("button", name="查看/编辑", exact=True).focus()
             page.keyboard.press("Tab")
-            more = first.locator(".library-more summary")
-            expect(more).to_be_focused()
-            more.press("Enter")
-            expect(first.get_by_role("button", name="删除记录")).to_be_visible()
-            menu = first.locator(".library-more > div").bounding_box()
-            assert menu["x"] >= 0 and menu["x"] + menu["width"] <= 320
-            page.screenshot(animations="disabled", path=str(tmp_path / f"{module}-record-menu-keyboard.png"))
+            remove = first.get_by_role("button", name="删除记录")
+            expect(remove).to_be_visible()
+            expect(remove).to_be_focused()
+            bounds = remove.bounding_box()
+            assert bounds["x"] >= 0 and bounds["x"] + bounds["width"] <= 320
+            page.screenshot(animations="disabled", path=str(tmp_path / f"{module}-record-delete-keyboard.png"))
         finally:
             browser.close()
             client.close()

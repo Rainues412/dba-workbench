@@ -24,8 +24,7 @@ it.each([articlesConfig, scriptsConfig])("$key opens from card content and keeps
   expect(onEdit).toHaveBeenCalledExactlyOnceWith(1);
   fireEvent.click(screen.getByRole("button", { name: "收藏" }));
   expect(onUpdate).toHaveBeenCalledExactlyOnceWith(row, { is_favorite: 1 });
-  fireEvent.click(screen.getByLabelText("更多操作：短"));
-  fireEvent.click(screen.getByRole("button", { name: "删除记录" }));
+  fireEvent.click(screen.getByRole("button", { name: "删除记录" }).querySelector("svg")!);
   expect(onRemove).toHaveBeenCalledExactlyOnceWith(row);
   expect(onPreview).toHaveBeenCalledTimes(5);
   // Selecting a path to copy it should not toggle the preview on mouse release.
@@ -34,9 +33,20 @@ it.each([articlesConfig, scriptsConfig])("$key opens from card content and keeps
   expect(onPreview).toHaveBeenCalledTimes(5);
 });
 
-it.each([articlesConfig, resourcesConfig])("$key does not add card actions to disabled rows or resources", (config) => {
+it.each([articlesConfig, resourcesConfig])("$key handles delete availability without opening a preview", (config) => {
   const onPreview = vi.fn();
-  render(<MemoryRouter><LibraryRecords config={config} rows={[{ id: 1, revision: 1, title: "短", name: "短" }]} selectedId={null} disabled={config.key === "articles"} onPreview={onPreview} onEdit={() => {}} onUpdate={async () => {}} onRemove={async () => {}} onNotice={() => {}} /></MemoryRouter>);
+  const onRemove = vi.fn(async () => {});
+  const row = { id: 1, revision: 1, title: "短", name: "短" };
+  render(<MemoryRouter><LibraryRecords config={config} rows={[row]} selectedId={null} disabled={config.key === "articles"} onPreview={onPreview} onEdit={() => {}} onUpdate={async () => {}} onRemove={onRemove} onNotice={() => {}} /></MemoryRouter>);
   fireEvent.click(screen.getByRole("listitem"));
+  const remove = screen.getByRole("button", { name: "删除记录" });
+  if (config.key === "articles") {
+    expect(remove).toBeDisabled();
+    fireEvent.click(remove);
+    expect(onRemove).not.toHaveBeenCalled();
+  } else {
+    fireEvent.click(remove);
+    expect(onRemove).toHaveBeenCalledExactlyOnceWith(row);
+  }
   expect(onPreview).not.toHaveBeenCalled();
 });
