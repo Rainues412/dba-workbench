@@ -13,10 +13,11 @@ function wait(ms: number) {
   return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 }
 
-export async function playTaskStatusFeedback(request: Promise<unknown>, reducedMotion: boolean, showSuccess: () => void) {
-  await Promise.all([request, reducedMotion ? undefined : wait(240)]);
+export async function playTaskStatusFeedback<T>(request: Promise<T>, reducedMotion: boolean, showSuccess: () => void) {
+  const [result] = await Promise.all([request, reducedMotion ? undefined : wait(240)]);
   showSuccess();
   if (!reducedMotion) await wait(500);
+  return result;
 }
 
 export function TaskStatusButton({ completed = false, phase, disabled, accessibleLabel, title, onClick }: {

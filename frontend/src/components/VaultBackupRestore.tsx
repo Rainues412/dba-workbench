@@ -11,7 +11,7 @@ import { useReauthStatus } from "../vault/useReauthStatus";
 import { AppDialog } from "./AppDialog";
 import { DialogFocusBoundary } from "./DialogFocusBoundary";
 import { playTaskStatusFeedback, SubmitMorph, useTaskStatusReducedMotion, type TaskStatusPhase } from "./TaskStatusButton";
-import { VaultImportProgress, VaultImportSteps, type VaultImportStep } from "./VaultImportProgress";
+import { VaultBackupProgress, VaultBackupSteps, type VaultImportStep } from "./VaultBackupProgress";
 
 type BackupEntry = { filename: string; display_name?: string; created_at: string; size: number; kind: "auto" | "manual" | "safety" };
 type BackupPolicy = { interval_hours: number; retention: number; directory: string; key_directory: string; portable_ready: boolean };
@@ -76,7 +76,7 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
   const [submitPhase, setSubmitPhase] = useState<TaskStatusPhase>();
   const [importStep, setImportStep] = useState<VaultImportStep>(1);
   const [progressTarget, setProgressTarget] = useState(0);
-  const [importComplete, setImportComplete] = useState(false);
+  const [progressComplete, setProgressComplete] = useState(false);
   const [prepared, setPrepared] = useState<Prepared | null>(null);
   const [busy, setBusy] = useState(false);
   const [policyBusy, setPolicyBusy] = useState(false);
@@ -117,7 +117,7 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
 
   function start(action: Operation) {
     setSelected(null); setIdentityFile(null); setSubmitPhase(undefined);
-    setImportStep(1); setProgressTarget(0); setImportComplete(false);
+    setImportStep(1); setProgressTarget(0); setProgressComplete(false);
     setOperation(action); setPrepared(null); setDialogError(""); setSectionError(""); setNotice("");
   }
 
@@ -260,13 +260,14 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
 
   async function prepare(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!operation || busy || picking || (operation.kind === "file" && !canImport)) return;
+    if (!operation || busy || picking || (operation.kind !== "file" && operation.kind !== "restore")) return;
+    if (operation.kind === "file" && !canImport) return;
     setBusy(true); setDialogError("");
     const form = new FormData(event.currentTarget);
     const read = (name: string) => String(form.get(name) ?? "");
     let dek: Uint8Array<ArrayBuffer> | undefined;
     let wrappingKey = "";
-    try {
+    const prepareSnapshot = async (): Promise<Prepared> => {
       const current = profile.data?.profile;
       if (!current) throw new Error("请先前往保险箱设置主密码。");
       if (operation.kind !== "file" && userNeedsReauth) await reauthenticate(read("login_password"));
@@ -281,9 +282,7 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
       } else {
         dek = await unlockCurrent(read("master"), current, (key) => { wrappingKey = key; });
         const headers = grantHeaders(temporaryGrant.current);
-        if (operation.kind === "restore") {
-          document = parseBackup(await api(filesPath + "/" + encodeURIComponent(operation.entry.filename), { headers }));
-        }
+        document = parseBackup(await api(filesPath + "/" + encodeURIComponent(operation.entry.filename), { headers }));
         if (document?.format === "dba-vault-backup-v3") {
           const { identity } = await api<{ identity: string }>("/api/vault/backup/key", {
             method: "POST", body: jsonBody({ wrapping_key: wrappingKey }), headers,
@@ -302,14 +301,22 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
       if (!targetDek) throw new Error("请重新验证主密码。");
       const items = await Promise.all(records.map((record) => encryptSecret(targetDek, userId, record)));
       if (items.some((item) => item.ciphertext.length > 131072)) throw new Error("备份包含超出密码库支持长度的条目。");
-      setPrepared({ expected_digest: snapshot.digest, currentCount: snapshot.items.length, items, wrapping_key: wrappingKey,
-        preview: records.map(({ site, username, category }) => ({ site, username, category })) });
+      return { expected_digest: snapshot.digest, currentCount: snapshot.items.length, items, wrapping_key: wrappingKey,
+        preview: records.map(({ site, username, category }) => ({ site, username, category })) };
+    };
+    try {
+      if (operation.kind === "restore") {
+        setSubmitPhase("pending");
+        setPrepared(await playTaskStatusFeedback(prepareSnapshot(), reducedMotion, () => setSubmitPhase("success")));
+      } else {
+        setPrepared(await prepareSnapshot());
+        setImportStep(3);
+      }
       clearAuthorization(authorization);
-      if (operation.kind === "file") setImportStep(3);
     } catch (cause) {
       if (operation.kind !== "file") releaseGrant();
       setDialogError(cause instanceof Error ? cause.message : "无法校验密码库备份。");
-    } finally { dek?.fill(0); setBusy(false); }
+    } finally { dek?.fill(0); setBusy(false); setSubmitPhase(undefined); }
   }
 
   async function restore() {
@@ -317,7 +324,7 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
     setBusy(true); setDialogError("");
     try {
       const { currentCount: _count, preview: _preview, ...payload } = prepared;
-      if (operation?.kind === "file") setProgressTarget(35);
+      setProgressTarget(35);
       const result = await api<{ item_count: number; safety_backup: string | null }>("/api/vault/backup/restore", {
         method: "POST", body: jsonBody({ ...payload, confirm: "RESTORE" }), headers: grantHeaders(temporaryGrant.current),
       });
@@ -326,27 +333,25 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
       setVaultAccessToken();
       setNotice("已恢复 " + result.item_count + " 条。" + (result.safety_backup ? "覆盖前的安全备份已保存。" : ""));
       void client.invalidateQueries({ queryKey: ["vault"] });
-      if (operation?.kind === "file") {
-        setProgressTarget(100);
-        return;
-      }
-      setPrepared(null); setOperation(null); setBusy(false);
+      setProgressTarget(100);
     } catch (cause) {
       setProgressTarget(0); setBusy(false);
       setDialogError(cause instanceof Error ? cause.message : "恢复失败。");
     }
   }
 
-  const finishImport = useCallback(() => setImportComplete(true), []);
+  const finishProgress = useCallback(() => setProgressComplete(true), []);
   useEffect(() => {
-    if (!importComplete) return;
+    if (!progressComplete) return;
     const timer = window.setTimeout(() => {
       setBusy(false); setOperation(null); setPrepared(null); setSelected(null); setIdentityFile(null);
     }, 460);
     return () => window.clearTimeout(timer);
-  }, [importComplete]);
+  }, [progressComplete]);
 
   const importing = operation?.kind === "file";
+  const restoring = operation?.kind === "restore";
+  const mode = importing ? "import" : "restore";
   const deleting = operation?.kind === "delete";
   const managing = operation?.kind === "rename" || deleting;
   const deletingLast = deleting && files.data?.length === 1 && Boolean(policy.data?.interval_hours);
@@ -425,7 +430,8 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
           operation.kind === "rename" ? "重命名备份" : deleting ? "删除备份" : prepared ? "确认恢复密码库" : "校验密码库备份"}</h2>
           {deleting && <p id={`${heading}-description`} className="vault-backup-delete-description">此备份将被永久删除，此操作无法撤消。</p>}</div>
           <button type="button" aria-label="关闭备份对话框" className="icon-button" onClick={close} disabled={busy || picking}><X size={19} /></button></div>
-        {importing && initialized && <VaultImportSteps step={importStep} complete={importComplete} reduced={reducedMotion} />}
+        {((importing && initialized) || restoring) && <VaultBackupSteps mode={mode}
+          step={importing ? importStep : prepared ? 2 : 1} complete={progressComplete} reduced={reducedMotion} />}
         {name && operation.kind !== "rename" && (!importing || prepared) && <div className="backup-file"><strong title={name}>{name}</strong></div>}
         {managing ? <form className="stack" onSubmit={manageBackup}>
           {operation.kind === "rename" && <label>备份名称<input name="name" defaultValue={name} maxLength={120} required disabled={busy} /></label>}
@@ -453,9 +459,8 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
           </div>}
           <div className="modal-actions">
             {dialogError && <button type="button" className="button" onClick={() => { releaseGrant(); start(operation); }} disabled={busy}>重新校验</button>}
-            {importing ? busy ? <VaultImportProgress target={progressTarget} complete={importComplete} reduced={reducedMotion} onReachedEnd={finishImport} />
-              : <button type="button" className="button primary" onClick={() => void restore()}>导入</button>
-              : <button type="button" className="button primary" onClick={() => void restore()} disabled={busy}>{busy ? "正在恢复…" : "确认恢复"}</button>}</div>
+            {busy ? <VaultBackupProgress mode={mode} target={progressTarget} complete={progressComplete} reduced={reducedMotion} onReachedEnd={finishProgress} />
+              : <button type="button" className="button primary" onClick={() => void restore()}>{importing ? "导入" : "确认恢复"}</button>}</div>
         </> : <form className="stack" onSubmit={prepare}>
           {!importing && userNeedsReauth && <label>登录密码<input name="login_password" type="password" autoComplete="current-password" required disabled={busy} /></label>}
           {importing && <>
@@ -485,7 +490,7 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
           {!importing && <label>当前密码库主密码<input name="master" type="password" autoComplete="current-password" minLength={9} maxLength={256} required disabled={busy} /></label>}
           <div className="modal-actions">
             {importing ? <button type="submit" className="button primary" disabled={!canImport || busy || picking}>{busy ? "正在校验…" : "下一步"}</button>
-              : <button type="submit" className="button primary" disabled={busy}>{busy ? "正在验证…" : "验证"}</button>}</div>
+              : <VerifyButton phase={submitPhase} />}</div>
         </form>}
         {dialogError && <p role="alert" className="alert error">{dialogError}</p>}
       </DialogFocusBoundary>

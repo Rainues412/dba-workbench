@@ -72,7 +72,7 @@
 .vault-backup-delete-description { margin:4px 0 0; color:var(--muted); font-size:13px; line-height:1.5; }
 .vault-backup-delete-dialog .backup-file { text-align:center; }
 .vault-restore-dialog .task-morph-slot { width:5.25rem; margin:0; }
-.vault-import-steps { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); list-style:none; margin:4px 0 14px; padding:0; }
+.vault-import-steps { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(0,1fr); list-style:none; margin:4px 0 14px; padding:0; }
 .vault-import-steps li { position:relative; display:grid; place-items:center; gap:9px; min-width:0; }
 .vault-import-steps li:not(:last-child)::before,.vault-import-steps li:not(:last-child)::after { content:""; position:absolute; top:14px; left:50%; width:100%; height:2px; background:var(--border-strong); }
 .vault-import-steps li:not(:last-child)::after { background:var(--primary); transform:scaleX(0); transform-origin:left; transition:transform .46s ease-in-out; }

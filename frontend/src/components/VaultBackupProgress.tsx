@@ -3,11 +3,12 @@ import { Check } from "lucide-react";
 import { animate, motion, useMotionValue, useTransform } from "motion/react";
 
 export type VaultImportStep = 1 | 2 | 3;
-const steps = ["验证主密码", "选择文件", "导入"];
+type Mode = "import" | "restore";
+const steps = { import: ["验证主密码", "选择文件", "导入"], restore: ["验证主密码", "确认恢复"] };
 
-export function VaultImportSteps({ step, complete, reduced }: { step: VaultImportStep; complete: boolean; reduced: boolean }) {
-  return <ol className="vault-import-steps" aria-label="导入步骤" data-reduced={reduced || undefined}>
-    {steps.map((label, index) => {
+export function VaultBackupSteps({ mode, step, complete, reduced }: { mode: Mode; step: VaultImportStep; complete: boolean; reduced: boolean }) {
+  return <ol className="vault-import-steps" aria-label={mode === "import" ? "导入步骤" : "恢复步骤"} data-reduced={reduced || undefined}>
+    {steps[mode].map((label, index) => {
       const position = index + 1;
       const done = position < step || complete;
       return <li key={label} data-state={done ? "done" : position === step ? "active" : "waiting"}
@@ -19,8 +20,8 @@ export function VaultImportSteps({ step, complete, reduced }: { step: VaultImpor
   </ol>;
 }
 
-export function VaultImportProgress({ target, complete, reduced, onReachedEnd }: {
-  target: number; complete: boolean; reduced: boolean; onReachedEnd: () => void;
+export function VaultBackupProgress({ mode, target, complete, reduced, onReachedEnd }: {
+  mode: Mode; target: number; complete: boolean; reduced: boolean; onReachedEnd: () => void;
 }) {
   const progress = useMotionValue(0);
   const path = useTransform(progress, [0, 100], [0, 1]);
@@ -39,7 +40,8 @@ export function VaultImportProgress({ target, complete, reduced, onReachedEnd }:
     return () => animation.stop();
   }, [target, reduced, progress, onReachedEnd]);
 
-  return <div className="vault-import-progress" role="status" aria-label={complete ? "导入完成" : "正在导入"} data-complete={complete || undefined} data-reduced={reduced || undefined}>
+  const action = mode === "import" ? "导入" : "恢复";
+  return <div className="vault-import-progress" role="status" aria-label={complete ? `${action}完成` : `正在${action}`} data-complete={complete || undefined} data-reduced={reduced || undefined}>
     <svg viewBox="0 0 64 64" aria-hidden="true">
       <circle cx="32" cy="32" r="27" />
       <motion.circle cx="32" cy="32" r="27" pathLength={path} transform="rotate(-90 32 32)" />

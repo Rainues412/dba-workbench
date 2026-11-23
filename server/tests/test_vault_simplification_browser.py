@@ -1,6 +1,7 @@
 """Exercise vault disclosures and restore only against an isolated synthetic vault."""
 import json
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -334,11 +335,25 @@ def test_manual_and_automatic_files_restore_locally_and_on_a_different_vault(liv
                 row = settings.get_by_role("listitem").filter(has_text=selected.name)
                 row.get_by_role("button", name="恢复", exact=True).click()
                 verify = page.get_by_role("dialog", name="校验密码库备份", exact=True)
+                steps = verify.get_by_role("list", name="恢复步骤")
+                expect(steps.get_by_role("listitem")).to_have_count(2)
+                expect(steps.locator('[aria-current="step"]')).to_have_text("1验证主密码")
                 verify.get_by_label("当前密码库主密码", exact=True).fill(MASTER)
-                verify.get_by_role("button", name="验证", exact=True).click()
+                button = verify.get_by_role("button", name="验证", exact=True)
+                expect(button.locator(".task-morph-label svg")).to_have_count(0)
+                button.click()
+                expect(button).to_have_attribute("data-phase", "pending")
+                expect(button).to_have_attribute("data-phase", "success")
                 review = page.get_by_role("dialog", name="确认恢复密码库", exact=True)
+                steps = review.get_by_role("list", name="恢复步骤")
+                expect(steps.locator('[data-state="done"]')).to_have_text("验证主密码")
+                expect(steps.locator('[aria-current="step"]')).to_have_text("2确认恢复")
                 expect(review).to_contain_text("当前的 1 条凭据")
                 review.get_by_role("button", name="确认恢复", exact=True).click()
+                progress = review.get_by_role("status", name="正在恢复")
+                expect(progress.get_by_text(re.compile(r"^[1-9]\d?%$"))).to_be_visible()
+                expect(review.get_by_role("status", name="恢复完成")).to_be_visible()
+                expect(review).not_to_be_visible()
                 expect(settings.get_by_text("已恢复 1 条。覆盖前的安全备份已保存。", exact=True)).to_be_visible()
 
             # Compare with backups made before v2. These are accepted for the source account.
