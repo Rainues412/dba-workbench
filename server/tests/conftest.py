@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 from collections.abc import Generator
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -35,7 +36,10 @@ def isolated_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     import main
     from backend import file_visual_preview
     from backend import word_preview
+    from backend.routers import auth as auth_router
 
+    # Legacy credential fixtures are isolated to explicit development mode.
+    monkeypatch.setattr(auth_router, "settings", replace(auth_router.settings, mode="development"))
     if not os.environ.get("DBA_TEST_PREVIEW_SAMPLES"):
         monkeypatch.setattr(file_visual_preview, "_viewer_available", lambda: False)
     if not os.environ.get("DBA_TEST_NATIVE_WORD"):

@@ -122,7 +122,7 @@ async function openLegacy(backup: LegacyBackup, password: string, userId: number
   const computed = Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, "0")).join("");
   if (computed !== digest) throw new Error("旧版备份完整性校验失败。");
   if (items.some(({ aad }) => !aad.startsWith("dba-vault:item:" + userId + ":"))) {
-    throw new Error("旧版备份绑定原账户。换机请使用新版备份文件。");
+    throw new Error("此旧版备份只能在原工作台数据中恢复。换机请使用新版备份文件。");
   }
   const dek = await unlockVault(password, userId, profile);
   try { return await entries(items, dek, userId); }

@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 
 from backend import database
-from backend.auth import hash_password, validate_password
+from backend.auth import validate_password
 from backend.database import get_db_ctx, run_startup_migrations
 from backend.observability import record_audit
 from backend.vault_recovery import (
@@ -24,28 +24,6 @@ def _prompt_new_secret(label: str) -> str:
         raise SystemExit("Values do not match")
     validate_password(first)
     return first
-
-
-def reset_login_password(username: str) -> None:
-    password = _prompt_new_secret("login password")
-    with get_db_ctx() as conn:
-        cursor = conn.execute(
-            """UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP
-               WHERE username = ? COLLATE NOCASE""",
-            (hash_password(password), username),
-        )
-        if cursor.rowcount != 1:
-            raise SystemExit("User not found")
-        user_id = conn.execute(
-            "SELECT id FROM users WHERE username = ? COLLATE NOCASE", (username,)
-        ).fetchone()["id"]
-        conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
-        conn.commit()
-    record_audit(
-        action="reset-login-password", object_type="user", object_id=str(user_id),
-        result="success", source="offline-cli", actor="offline-admin",
-    )
-    print("Login password reset; all sessions were revoked.")
 
 
 def recover_vault(username: str) -> None:
@@ -119,8 +97,6 @@ def verify_recovery_key() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
-    reset = subparsers.add_parser("reset-login-password")
-    reset.add_argument("username")
     recover = subparsers.add_parser("recover-vault")
     recover.add_argument("username")
     backup = subparsers.add_parser("backup-recovery-key")
@@ -128,9 +104,7 @@ def main() -> None:
     subparsers.add_parser("verify-recovery-key")
     args = parser.parse_args()
     run_startup_migrations()
-    if args.command == "reset-login-password":
-        reset_login_password(args.username)
-    elif args.command == "recover-vault":
+    if args.command == "recover-vault":
         recover_vault(args.username)
     elif args.command == "backup-recovery-key":
         backup_recovery_key(args.output)

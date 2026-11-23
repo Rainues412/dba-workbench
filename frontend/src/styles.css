@@ -142,9 +142,6 @@ code { font-family: "Cascadia Code", Consolas, monospace; }
 .user-card .user-copy { font-size: .9rem; line-height: 1.25; }
 .avatar { display: grid; place-items: center; flex: 0 0 auto; width: 32px; height: 32px; overflow: hidden; border-radius: var(--radius-sm); color: #dce7ff; background: linear-gradient(145deg, #315bbd, #263f78); font-weight: 750; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
-.account-logout { justify-self: center; color: var(--sidebar-muted); }
-.sidebar .account-logout:hover { color: var(--sidebar-text); background: var(--sidebar-hover); }
-.account-logout-error { grid-column: 1 / -1; margin: 0; color: #ffb3bd; font-size: .75rem; }
 .sidebar-collapsed { grid-template-columns: 72px minmax(0, 1fr); }
 .sidebar-collapsed :is(.brand-copy, .nav-copy, .nav-section-label, .user-copy) { display: none; }
 .sidebar-collapsed .brand-row { justify-content: center; flex-wrap: wrap; }
@@ -1011,8 +1008,6 @@ body:has(.desktop-shell) .profile-dialog { inset-block: 64px; max-height: calc(1
   .sidebar-collapsed:not(.desktop-shell) .brand-row { justify-content: flex-start; }
   .app-shell:not(.desktop-shell) :is(.sidebar-toggle, .nav-section-label, .user-copy) { display: none; }
   .app-shell:not(.desktop-shell) .sidebar-footer { position: absolute; top: var(--sidebar-section-gap); right: var(--sidebar-inset); z-index: 1; margin: 0; padding: 0; border: 0; }
-  .app-shell:not(.desktop-shell):has(.account-logout) .brand-row { padding-inline-end: calc(var(--sidebar-hit-size) + 36px + var(--sidebar-gap)); }
-  .app-shell:not(.desktop-shell) .sidebar-footer:has(.account-logout) { grid-template-columns: auto auto; }
   .app-shell:not(.desktop-shell) .user-card { display: flex; width: var(--sidebar-hit-size); height: var(--sidebar-hit-size); justify-content: center; padding: 0; }
   .sidebar-collapsed:not(.desktop-shell) :is(.brand-copy, .nav-copy) { display: block; }
   .app-shell:not(.desktop-shell) .sidebar nav { display: flex; padding-bottom: calc(var(--sidebar-gap) / 2); overflow: auto hidden; overscroll-behavior-inline: contain; }

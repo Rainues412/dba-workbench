@@ -35,7 +35,7 @@ const navigationGroups = [
 const navigation = navigationGroups.flatMap(({ items }) => items);
 
 export function Shell() {
-  const { session, logout } = useAuth();
+  const { session } = useAuth();
   const desktopWindow = useDesktopWindow();
   const location = useLocation();
   const content = useRef<HTMLElement>(null);
@@ -135,7 +135,7 @@ export function Shell() {
           <button type="button" className="workbench-settings-entry" aria-haspopup="dialog" aria-label="快捷操作" title="快捷操作（Ctrl+Shift+P）" onClick={() => setDialog("commands")}><Command /><span>快捷操作</span></button>
           <button type="button" className="workbench-settings-entry navigation-settings" aria-haspopup="dialog" aria-label="设置" title="设置（Ctrl+,）" onClick={() => setDialog("settings")}><Settings /><span>设置</span></button>
           {session?.user?.id !== undefined && <AccountProfile key={session.user.id} userId={session.user.id}
-            username={session.user.username} logout={session.desktop ? undefined : logout} />}
+            username={session.user.username} />}
         </div>
         {position === "top" && <div className="top-navigation-actions"><DesktopDragRegion actions={desktopWindow}>{null}</DesktopDragRegion><div className="topbar-actions">{topbarActions}</div></div>}
         {!horizontal && !collapsed && <div className="sidebar-resize" role="separator" tabIndex={0} aria-label="调整主侧边栏宽度" aria-orientation="vertical"

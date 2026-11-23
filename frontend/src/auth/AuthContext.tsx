@@ -7,7 +7,6 @@ type AuthContextValue = {
   loading: boolean;
   refreshError: boolean;
   authenticate: (mode: "setup" | "login", username: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
   reauthenticate: (password: string) => Promise<string>;
 };
 
@@ -51,12 +50,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await client.cancelQueries({ queryKey: SESSION_KEY });
       setCsrfToken(next.csrf_token);
       client.setQueryData(SESSION_KEY, next);
-    },
-    logout: async () => {
-      await authApi.logout();
-      await client.cancelQueries({ queryKey: SESSION_KEY });
-      setCsrfToken();
-      client.setQueryData<Session>(SESSION_KEY, { authenticated: false, setup_required: false });
     },
     reauthenticate: async (password) => {
       const result = await authApi.reauthenticate(password);

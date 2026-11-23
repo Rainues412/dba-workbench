@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Camera, LockKeyhole, LogOut, Plus, X } from "lucide-react";
+import { Camera, LockKeyhole, Plus, X } from "lucide-react";
 import { ApiError } from "../api/client";
 import { profileKey, updateProfile, useProfile, type Profile, type ProfileFields } from "../auth/profile";
 import { ErrorState, LoadingState } from "./States";
@@ -16,30 +16,15 @@ function Avatar({ name, src }: { name: string; src?: string | null }) {
   </span>;
 }
 
-export function AccountProfile({ userId, username, logout }: {
+export function AccountProfile({ userId, username }: {
   userId: number;
   username: string;
-  logout?: () => Promise<void>;
 }) {
   const client = useQueryClient();
   const profile = useProfile(userId);
   const name = profile.data?.display_name || username;
   const [editing, setEditing] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
-  const [logoutError, setLogoutError] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
-
-  async function signOut() {
-    setLogoutError(false);
-    setLoggingOut(true);
-    try {
-      await logout?.();
-      client.removeQueries({ queryKey: profileKey(userId), exact: true });
-    } catch {
-      setLogoutError(true);
-      setLoggingOut(false);
-    }
-  }
 
   return <div className="sidebar-footer">
     <button ref={trigger} className="user-card" type="button" aria-label={`个人资料：${name}`} title={`编辑个人资料 · ${name}`}
@@ -47,9 +32,6 @@ export function AccountProfile({ userId, username, logout }: {
       <Avatar name={name} src={profile.data?.avatar} />
       <span className="user-copy"><strong>{name}</strong></span>
     </button>
-    {logout && <button className="icon-button account-logout" type="button" aria-label="退出登录" title="退出登录"
-      disabled={loggingOut} onClick={() => void signOut()}><LogOut size={16} aria-hidden="true" /></button>}
-    {logoutError && <p className="account-logout-error" role="alert">退出失败，请重试。</p>}
     {editing && <ProfileDialog username={username} profile={profile} onClose={() => {
       setEditing(false);
       trigger.current?.focus();
@@ -247,7 +229,7 @@ function ProfileForm({ initial, titleId, username, busy, setBusy, reload, onDirt
     <section className="profile-details">
       <h2 id={titleId}>个人资料</h2>
       <div className="profile-fields">
-        <label className="profile-field"><span>用户名</span>
+        <label className="profile-field"><span>显示名称</span>
           <input name="display_name" autoFocus value={draft.display_name} maxLength={80} placeholder={username} disabled={busy}
             title="用于侧栏和仪表盘，留空时使用登录名" aria-invalid={tooLong || undefined}
             onChange={(event) => changeDraft({ display_name: event.target.value })} />
@@ -281,7 +263,7 @@ function ProfileForm({ initial, titleId, username, busy, setBusy, reload, onDirt
         </label>
       </div>
       <p className="profile-local-note"><LockKeyhole size={12} aria-hidden="true" />资料仅保存在本机。</p>
-      {tooLong && <p className="alert error" role="alert">用户名最多 40 个字符。</p>}
+      {tooLong && <p className="alert error" role="alert">显示名称最多 40 个字符。</p>}
       {error && <p className="alert error" role="alert">{error}</p>}
       <footer className="modal-actions">
         <button type="button" className="button profile-secondary" disabled={busy} onClick={onCancel}>取消</button>

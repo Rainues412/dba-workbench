@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import sqlite3
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 
@@ -12,11 +13,38 @@ from PIL import Image
 OWNER = {"username": "test-owner", "password": "test-only-owner-passphrase"}
 
 
+def test_local_workbench_requires_launch_session_instead_of_password_login(raw_client, monkeypatch) -> None:
+    from backend import auth
+    from backend.routers import auth as auth_router
+
+    assert raw_client.post("/api/auth/setup", json=OWNER).status_code == 201
+    raw_client.cookies.clear()
+    monkeypatch.setattr(auth_router, "settings", replace(auth_router.settings, mode="local"))
+    assert raw_client.get("/api/auth/status").json() == {"authenticated": False, "setup_required": False}
+    assert raw_client.post("/api/auth/setup", json=OWNER).status_code == 403
+    assert raw_client.post("/api/auth/login", json=OWNER).status_code == 403
+    assert raw_client.get("/api/dashboard/stats").status_code == 401
+
+    monkeypatch.setattr(auth, "_desktop_token", None)
+    token = auth.enable_desktop_login()
+    try:
+        assert raw_client.post("/api/auth/desktop", headers={"X-DBA-Desktop-Token": token}).status_code == 204
+        session = raw_client.get("/api/auth/status").json()
+        assert session["authenticated"] and session["vault_password_only"]
+        headers = {"X-CSRF-Token": session["csrf_token"]}
+        assert raw_client.post("/api/auth/logout", headers=headers).status_code == 403
+        assert raw_client.post("/api/auth/reauthenticate", json={"password": OWNER["password"]}, headers=headers).status_code == 403
+        assert raw_client.get("/api/dashboard/stats").status_code == 200
+    finally:
+        auth._desktop_token = None
+
+
 def test_first_owner_setup_session_and_csrf(raw_client: TestClient, isolated_app) -> None:
     _, test_db = isolated_app
     assert raw_client.get("/api/auth/status").json() == {
         "authenticated": False,
         "setup_required": True,
+        "manual_login_available": True,
     }
     assert raw_client.get("/api/dashboard/stats").status_code == 401
 

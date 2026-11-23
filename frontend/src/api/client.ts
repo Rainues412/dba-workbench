@@ -109,6 +109,7 @@ export type Session = {
   setup_required: boolean;
   desktop?: boolean;
   vault_password_only?: boolean;
+  manual_login_available?: boolean;
   csrf_token?: string;
   reauthenticated_until?: string | null;
   reauth_minutes?: number;
@@ -178,7 +179,6 @@ export const authApi = {
     api<Session>("/api/auth/setup", { method: "POST", body: jsonBody({ username, password }) }),
   login: (username: string, password: string) =>
     api<Session>("/api/auth/login", { method: "POST", body: jsonBody({ username, password }) }),
-  logout: () => api<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
   reauthenticate: (password: string) =>
     api<{ reauthenticated_until: string }>("/api/auth/reauthenticate", {
       method: "POST",

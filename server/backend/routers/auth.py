@@ -55,6 +55,10 @@ def _username(value: str) -> str:
     return normalized
 
 
+def _manual_auth_available() -> bool:
+    return settings.mode == "development" and not desktop_login_enabled()
+
+
 def _set_cookie(response: Response, token: str) -> None:
     response.set_cookie(
         SESSION_COOKIE,
@@ -87,14 +91,16 @@ def _session_payload(session: dict, csrf: str | None = None) -> dict:
 def status(request: Request):
     session = load_session(request)
     if not session:
-        return {"authenticated": False, "setup_required": not desktop_login_enabled() and not owner_exists()}
+        if _manual_auth_available():
+            return {"authenticated": False, "setup_required": not owner_exists(), "manual_login_available": True}
+        return {"authenticated": False, "setup_required": False}
     return _session_payload(session, session["csrf_token"])
 
 
 @router.post("/setup", status_code=201)
 def setup(data: Credentials, response: Response):
-    if desktop_login_enabled():
-        raise HTTPException(403, "Manual owner setup is disabled in desktop mode")
+    if not _manual_auth_available():
+        raise HTTPException(403, "请从工作台启动入口打开本机会话。")
     if owner_exists():
         raise HTTPException(409, "Owner already exists")
     username = _username(data.username)
@@ -124,7 +130,7 @@ def setup(data: Credentials, response: Response):
 
 @router.post("/desktop", status_code=204)
 def desktop_login(request: Request, response: Response):
-    if settings.mode != "local" or not verify_desktop_login(request.headers.get("X-DBA-Desktop-Token")):
+    if settings.mode not in {"local", "development"} or not verify_desktop_login(request.headers.get("X-DBA-Desktop-Token")):
         raise HTTPException(401, "Invalid desktop launch token")
     user_id = desktop_owner_id()
     revoke_session(request.cookies.get(SESSION_COOKIE))
@@ -134,6 +140,8 @@ def desktop_login(request: Request, response: Response):
 
 @router.post("/login")
 def login(data: Credentials, request: Request, response: Response):
+    if not _manual_auth_available():
+        raise HTTPException(403, "请从工作台启动入口打开本机会话。")
     username = _username(data.username)
     identifier = attempt_identifier(request, username)
     delay = retry_after(identifier)
@@ -173,6 +181,8 @@ def login(data: Credentials, request: Request, response: Response):
 
 @router.post("/logout")
 def logout(request: Request, response: Response):
+    if not _manual_auth_available():
+        raise HTTPException(403, "请从工作台托盘退出。")
     revoke_session(request.cookies.get(SESSION_COOKIE))
     response.delete_cookie(SESSION_COOKIE, path="/")
     return {"ok": True}
@@ -186,7 +196,7 @@ def get_profile(request: Request, response: Response):
             (request.state.session["user_id"],),
         ).fetchone()
     if row is None:
-        raise HTTPException(404, "找不到当前账号的个人资料。")
+        raise HTTPException(404, "找不到本机个人资料。")
     response.headers["Cache-Control"] = "no-store"
     return profile_payload(row)
 
@@ -214,7 +224,7 @@ def update_profile(data: ProfileUpdate, request: Request, if_match: str | None =
 
 @router.post("/reauthenticate")
 def reauthenticate(data: Reauthenticate, request: Request):
-    if desktop_login_enabled():
+    if not _manual_auth_available():
         raise HTTPException(403, "请使用保险箱主密码解锁。")
     session = request.state.session
     identifier = attempt_identifier(request, f"reauth:{session['username']}")

@@ -1,13 +1,21 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
 import { startVaultAutoLock, VAULT_IDLE_TIMEOUT_MS } from "../vault/autoLock";
 
-afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe("application shell", () => {
-  it("shows first-owner setup without fake dashboard data", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ authenticated: false, setup_required: true }), { status: 200, headers: { "Content-Type": "application/json" } })));
+  it("propts for the desktop launcher when the local session is missing", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ authenticated: false, setup_required: false })));
+    render(<App />);
+    expect(await screen.findByText("请从桌面快捷方式打开 DBA 工作台。")).toBeInTheDocument();
+    expect(screen.queryByLabelText("用户名")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("登录密码")).not.toBeInTheDocument();
+  });
+
+  it("shows first-owner setup only when enabled by the development server", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ authenticated: false, setup_required: true, manual_login_available: true }), { status: 200, headers: { "Content-Type": "application/json" } })));
     render(<App />);
     expect(await screen.findByRole("heading", { name: "创建首位 Owner" })).toBeInTheDocument();
     expect(screen.getByLabelText("登录密码")).toHaveAttribute("type", "password");

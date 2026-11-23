@@ -20,7 +20,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from backend.config import settings
 from backend.database import run_startup_migrations
 from backend.file_visual_preview import VIEWER_ORIGIN, router as preview_file_router
-from backend.auth import PUBLIC_API_PATHS, load_session, verify_csrf
+from backend.auth import PUBLIC_API_PATHS, enable_desktop_login, load_session, verify_csrf
 from backend.errors import (error_response, http_exception_handler, unhandled_exception_handler,
                             validation_exception_handler)
 from backend.observability import (logger, record_audit, request_id_var)
@@ -228,9 +228,10 @@ async def frontend_fallback(frontend_path: str):
     return await index()
 
 
-def open_browser():
+def open_browser(launch_token: str | None):
     time.sleep(1.5)
-    webbrowser.open(f"http://localhost:{settings.port}")
+    fragment = f"#desktop={launch_token}" if launch_token else ""
+    webbrowser.open(f"http://localhost:{settings.port}/{fragment}")
 
 
 if __name__ == "__main__":
@@ -245,8 +246,9 @@ if __name__ == "__main__":
     print("  Press Ctrl+C to stop")
     print("=" * 50)
 
+    launch_token = enable_desktop_login() if settings.mode == "local" else None
     if settings.open_browser:
-        threading.Thread(target=open_browser, daemon=True).start()
+        threading.Thread(target=open_browser, args=(launch_token,), daemon=True).start()
 
     uvicorn.run(
         "main:app" if settings.reload else app,
