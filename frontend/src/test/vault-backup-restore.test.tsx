@@ -31,9 +31,9 @@ const identity = new File(["identity"], "vault-key.txt");
 const records = [{ site: "测试连接", username: "tester", category: "数据库", password: "test-only-secret" }];
 
 function show(initialized = true, onOpenVault = vi.fn()) {
-  vi.mocked(api).mockImplementation(async (path) => {
+  vi.mocked(api).mockImplementation(async (path, options) => {
     if (path === "/api/vault/backup-settings") return { interval_hours: 24, retention: 10, portable_ready: false, directory: "D:/data/vault-backups/9" } as never;
-    if (path === "/api/vault/backups") return [] as never;
+    if (path === "/api/vault/backups") return (options?.method === "POST" ? { filename: "backup-test.age" } : []) as never;
     if (path === "/api/vault/profile") return { initialized, profile: initialized ? currentProfile : null } as never;
     if (path === "/api/vault/backup/verify-master") return undefined as never;
     if (path === "/api/vault/backup") return { digest: "current-digest", items: [{}, {}], profile: currentProfile } as never;
@@ -52,7 +52,7 @@ async function submitFile() {
   const dialog = await screen.findByRole("dialog", { name: "导入密码库备份" });
   expect(within(dialog).queryByLabelText("选择备份文件")).not.toBeInTheDocument();
   fireEvent.change(within(dialog).getByLabelText("当前密码库主密码"), { target: { value: "test-only-master" } });
-  fireEvent.click(within(dialog).getByRole("button", { name: "验证主密码" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "验证" }));
   fireEvent.change(await within(dialog).findByLabelText("选择备份文件"), { target: { files: [file] } });
   expect(within(dialog).getByRole("button", { name: "下一步" })).toBeDisabled();
   fireEvent.change(within(dialog).getByLabelText("选择备份恢复密钥"), { target: { files: [identity] } });
@@ -68,6 +68,16 @@ function restoreCalls() {
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe("password vault backup settings", () => {
+  it("creates a manual backup without a password prompt and reports success", async () => {
+    show();
+    const button = await screen.findByRole("button", { name: "立即备份" });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    expect(await screen.findByText("备份成功，文件已保存到备份目录。")).toBeVisible();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(api).toHaveBeenCalledWith("/api/vault/backups", { method: "POST" });
+  });
+
   it("shows the interval and retention options and writes nothing before confirmation", async () => {
     show();
     expect(await screen.findByLabelText("自动备份间隔")).toHaveValue("24");
@@ -79,7 +89,8 @@ describe("password vault backup settings", () => {
     expect(review).toHaveTextContent("包含 1 条凭据");
     expect(review).toHaveTextContent("当前的 2 条凭据");
     expect(restoreCalls()).toHaveLength(0);
-    fireEvent.click(within(review).getByRole("button", { name: "取消" }));
+    expect(within(review).queryByRole("button", { name: "取消" })).not.toBeInTheDocument();
+    fireEvent.click(within(review).getByRole("button", { name: "关闭备份对话框" }));
     expect(restoreCalls()).toHaveLength(0);
   });
 

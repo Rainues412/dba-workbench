@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Download, FolderOpen, KeyRound, RotateCcw, ShieldCheck, Upload, X } from "lucide-react";
+import { AlertTriangle, Download, FolderOpen, KeyRound, Pencil, RotateCcw, ShieldCheck, Trash2, Upload, X } from "lucide-react";
 import { api, hasVaultAccessToken, jsonBody, setVaultAccessToken, VAULT_LOCKED_EVENT } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { openBackup, parseBackup, readBackupFile, readBackupIdentity, type VaultBackup } from "../vault/backup";
@@ -12,12 +12,12 @@ import { DialogFocusBoundary } from "./DialogFocusBoundary";
 import { playTaskStatusFeedback, SubmitMorph, useTaskStatusReducedMotion, type TaskStatusPhase } from "./TaskStatusButton";
 import { VaultImportProgress, VaultImportSteps, type VaultImportStep } from "./VaultImportProgress";
 
-type BackupEntry = { filename: string; created_at: string; size: number; kind: "auto" | "manual" | "safety" };
+type BackupEntry = { filename: string; display_name?: string; created_at: string; size: number; kind: "auto" | "manual" | "safety" };
 type BackupPolicy = { interval_hours: number; retention: number; directory: string; portable_ready: boolean; key_exported: boolean };
 type ProfileStatus = { initialized: boolean; profile: VaultProfile | null };
 type Operation =
   | { kind: "file" | "key" }
-  | { kind: "restore"; entry: BackupEntry };
+  | { kind: "restore" | "rename" | "delete"; entry: BackupEntry };
 type Prepared = {
   expected_digest: string;
   items: Awaited<ReturnType<typeof encryptSecret>>[];
@@ -58,6 +58,11 @@ function revoke(token: string) {
     .catch(() => undefined);
 }
 
+function VerifyButton({ phase }: { phase?: TaskStatusPhase }) {
+  return <SubmitMorph submit phase={phase} accessibleLabel="验证" feedback={phase === "pending" ? "正在验证…" : phase === "success" ? "主密码验证通过" : ""}>
+    <ShieldCheck size={14} />验证</SubmitMorph>;
+}
+
 export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean; onOpenVault?: () => void }) {
   const { session, reauthenticate } = useAuth();
   const { isCurrent } = useReauthStatus(session?.reauthenticated_until);
@@ -66,14 +71,16 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
   const selection = useRef(0);
   const review = useRef<HTMLParagraphElement>(null);
   const stepFocus = useRef<HTMLInputElement>(null);
+  const backupInput = useRef<HTMLInputElement>(null);
+  const keyInput = useRef<HTMLInputElement>(null);
   const temporaryGrant = useRef<string | null>(null);
   const mounted = useRef(false);
   const authorization = useRef<{ dek: Uint8Array<ArrayBuffer>; wrappingKey: string; envelope: string } | null>(null);
   const contentId = useId();
   const heading = useId();
   const [operation, setOperation] = useState<Operation | null>(null);
-  const [selected, setSelected] = useState<{ name: string; document: VaultBackup } | null>(null);
-  const [identityFile, setIdentityFile] = useState<File | null>(null);
+  const [selected, setSelected] = useState<{ name: string; path: string; document: VaultBackup } | null>(null);
+  const [identityFile, setIdentityFile] = useState<{ file: File; path: string } | null>(null);
   const [submitPhase, setSubmitPhase] = useState<TaskStatusPhase>();
   const [importStep, setImportStep] = useState<VaultImportStep>(1);
   const [progressTarget, setProgressTarget] = useState(0);
@@ -82,11 +89,12 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
   const [busy, setBusy] = useState(false);
   const [policyBusy, setPolicyBusy] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [sectionError, setSectionError] = useState("");
   const [dialogError, setDialogError] = useState("");
   const [notice, setNotice] = useState("");
-  const files = useQuery({ queryKey: listKey, queryFn: () => api<BackupEntry[]>(filesPath), refetchInterval: 30_000 });
-  const policy = useQuery({ queryKey: policyKey, queryFn: () => api<BackupPolicy>(policyPath) });
+  const files = useQuery({ queryKey: listKey, queryFn: () => api<BackupEntry[]>(filesPath), staleTime: 0, refetchInterval: 10_000 });
+  const policy = useQuery({ queryKey: policyKey, queryFn: () => api<BackupPolicy>(policyPath), staleTime: 0 });
   const profile = useQuery({ queryKey: profileKey, queryFn: () => api<ProfileStatus>("/api/vault/profile") });
   const initialized = Boolean(profile.data?.profile);
   const userNeedsReauth = !desktop && !isCurrent();
@@ -116,7 +124,7 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
   }
 
   function close() {
-    if (busy) return;
+    if (busy || picking) return;
     selection.current++;
     clearAuthorization(authorization);
     releaseGrant(); setPrepared(null); setOperation(null); setDialogError("");
@@ -133,14 +141,14 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
     finally { setPolicyBusy(false); }
   }
 
-  async function selectFile(file?: File) {
+  async function selectFile(file?: File, path = file?.name ?? "") {
     const id = ++selection.current;
     setSelected(null); setDialogError("");
     if (!file) return;
     try {
       const document = await readBackupFile(file);
       if (selection.current === id) {
-        setSelected({ name: file.name, document });
+        setSelected({ name: file.name, path, document });
         if (document.format !== "dba-vault-backup-v3") setIdentityFile(null);
       }
     } catch (cause) {
@@ -148,14 +156,58 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
     }
   }
 
+  function selectIdentity(file?: File, path = file?.name ?? "") {
+    setIdentityFile(file ? { file, path } : null);
+    setDialogError("");
+  }
+
+  async function pickFile(kind: "backup" | "key") {
+    if (!desktop) {
+      (kind === "backup" ? backupInput : keyInput).current?.click();
+      return;
+    }
+    setPicking(true); setDialogError("");
+    try {
+      const result = await api<{ name: string; path: string; text: string } | null>(`${filesPath}/pick-file?kind=${kind}`, {
+        method: "POST", headers: grantHeaders(temporaryGrant.current),
+      });
+      if (!result || !mounted.current) return;
+      const file = new File([result.text], result.name);
+      if (kind === "backup") await selectFile(file, result.path);
+      else selectIdentity(file, result.path);
+    } catch (cause) { setDialogError(cause instanceof Error ? cause.message : "无法选择文件。"); }
+    finally { setPicking(false); }
+  }
+
   async function createBackup() {
+    if (creating) return;
     setCreating(true); setSectionError(""); setNotice("");
     try {
       await api(filesPath, { method: "POST" });
-      setNotice("加密备份已保存到备份存放目录。");
+      setNotice("备份成功，文件已保存到备份目录。");
       void client.invalidateQueries({ queryKey: listKey });
     } catch (cause) { setSectionError(cause instanceof Error ? cause.message : "备份失败。"); }
     finally { setCreating(false); }
+  }
+
+  async function manageBackup(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!operation || busy || (operation.kind !== "rename" && operation.kind !== "delete")) return;
+    const path = `${filesPath}/${encodeURIComponent(operation.entry.filename)}`;
+    const name = String(new FormData(event.currentTarget).get("name") ?? "").trim();
+    setBusy(true); setDialogError("");
+    try {
+      if (operation.kind === "rename") {
+        await api(path, { method: "PATCH", body: jsonBody({ display_name: name }) });
+        setNotice("备份名称已更新。");
+      } else {
+        const result = await api<{ replacement: string | null }>(path, { method: "DELETE" });
+        setNotice(result.replacement ? "已删除并自动补建一份加密备份。" : "已删除备份。");
+      }
+      setOperation(null);
+      void client.invalidateQueries({ queryKey: listKey });
+    } catch (cause) { setDialogError(cause instanceof Error ? cause.message : "无法更新备份。"); }
+    finally { setBusy(false); }
   }
 
   async function openDirectory() {
@@ -210,7 +262,7 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
 
   async function prepare(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!operation || busy || (operation.kind === "file" && !canImport)) return;
+    if (!operation || busy || picking || (operation.kind === "file" && !canImport)) return;
     setBusy(true); setDialogError("");
     const form = new FormData(event.currentTarget);
     const read = (name: string) => String(form.get(name) ?? "");
@@ -251,7 +303,7 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
       if (snapshot.profile.wrapped_dek !== current.wrapped_dek) throw new Error("密码库已变更，请重新校验备份。");
       if (!document) throw new Error("无法读取备份条目。");
       if (operation.kind === "file" && document.format === "dba-vault-backup-v3" && identityFile) {
-        password = await readBackupIdentity(identityFile);
+        password = await readBackupIdentity(identityFile.file);
       }
       const records = await openBackup(document, password, userId);
       const targetDek = dek ?? authorization.current?.dek;
@@ -304,9 +356,11 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
 
   const importing = operation?.kind === "file";
   const exportingKey = operation?.kind === "key";
+  const managing = operation?.kind === "rename" || operation?.kind === "delete";
+  const deletingLast = operation?.kind === "delete" && files.data?.length === 1 && Boolean(policy.data?.interval_hours);
   const legacyImport = Boolean(selected && selected.document.format !== "dba-vault-backup-v3");
   const canImport = Boolean(selected && (legacyImport || identityFile));
-  const name = importing ? selected?.name : operation?.kind === "restore" ? operation.entry.filename : undefined;
+  const name = importing ? selected?.name : operation && "entry" in operation ? operation.entry.display_name ?? operation.entry.filename : undefined;
   const needsLegacyPassword = legacyImport || (operation?.kind === "restore" && operation.entry.filename.endsWith(".json"));
   const canUseFile = Boolean(profile.data);
   return <section className="vault-backup-settings" aria-labelledby={contentId}>
@@ -339,7 +393,7 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
     <div className="vault-backup-heading">
       <h5>密码库备份</h5>
       <div className="button-row">
-        <button type="button" className="button small" disabled={!initialized || !policy.data?.portable_ready || creating} onClick={() => void createBackup()}><Download aria-hidden="true" />{creating ? "正在备份…" : "立即备份"}</button>
+        <button type="button" className="button small" disabled={!initialized || creating} onClick={() => void createBackup()}><Download aria-hidden="true" />立即备份</button>
         <button type="button" className="button small" disabled={!canUseFile} onClick={() => start({ kind: "file" })}><Upload aria-hidden="true" />导入</button>
       </div>
     </div>
@@ -353,10 +407,12 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
     {Boolean(files.data?.length) && <ul className="vault-backup-list" aria-label="密码库备份列表">
       {files.data!.map((entry) => <li className="vault-backup-entry" key={entry.filename}>
         <div className="vault-backup-file">
-          <span title={entry.filename}>{entry.filename}</span>
+          <span title={entry.display_name ?? entry.filename}>{entry.display_name ?? entry.filename}</span>
           <small>{labels[entry.kind]} · {new Date(entry.created_at).toLocaleString()} · {Math.max(1, Math.round(entry.size / 1024))} KB</small>
         </div>
         <div className="button-row vault-backup-row-actions">
+          <button type="button" className="button small" aria-label="重命名备份" title="重命名" onClick={() => start({ kind: "rename", entry })}><Pencil aria-hidden="true" /></button>
+          <button type="button" className="button small vault-backup-delete" aria-label="删除备份" title="删除" onClick={() => start({ kind: "delete", entry })}><Trash2 aria-hidden="true" /></button>
           <button type="button" className="button small" disabled={!initialized} onClick={() => start({ kind: "restore", entry })}><RotateCcw aria-hidden="true" />恢复</button>
         </div>
       </li>)}
@@ -367,20 +423,25 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
     </div>}
     {operation && <AppDialog className="modal vault-restore-dialog" labelledBy={heading} onClose={close}>
       <DialogFocusBoundary>
-        <div className="modal-header"><h2 id={heading}>{importing ? "导入密码库备份" : exportingKey ? "另存备份恢复密钥" : prepared ? "确认恢复密码库" : "校验密码库备份"}</h2>
-          <button type="button" aria-label="关闭备份对话框" className="icon-button" onClick={close} disabled={busy}><X size={19} /></button></div>
+        <div className="modal-header"><h2 id={heading}>{importing ? "导入密码库备份" :
+          exportingKey ? "另存备份恢复密钥" : operation.kind === "rename" ? "重命名备份" : operation.kind === "delete" ? "删除备份" : prepared ? "确认恢复密码库" : "校验密码库备份"}</h2>
+          <button type="button" aria-label="关闭备份对话框" className="icon-button" onClick={close} disabled={busy || picking}><X size={19} /></button></div>
         {importing && initialized && <VaultImportSteps step={importStep} complete={importComplete} reduced={reducedMotion} />}
-        {name && (!importing || prepared) && <div className="backup-file"><strong title={name}>{name}</strong></div>}
-        {importing && !initialized ? <>
+        {name && operation.kind !== "rename" && (!importing || prepared) && <div className="backup-file"><strong title={name}>{name}</strong></div>}
+        {managing ? <form className="stack" onSubmit={manageBackup}>
+          {operation.kind === "rename" ? <label>备份名称<input name="name" defaultValue={name} maxLength={120} required disabled={busy} /></label>
+            : <div className="consequence-warning"><AlertTriangle size={19} aria-hidden="true" /><div><strong>删除后无法撤销。</strong>
+              {deletingLast && <p>自动备份已开启，删除后会尝试补建一份新备份。</p>}</div></div>}
+          <div className="modal-actions"><button type="submit" className={operation.kind === "rename" ? "button primary" : "button danger"} disabled={busy}>
+            {operation.kind === "rename" ? "保存" : "确认删除"}</button></div>
+        </form> : importing && !initialized ? <>
           <p>请先前往保险箱设置主密码，再返回导入备份。</p>
-          <div className="modal-actions"><button type="button" className="button" onClick={close}>取消</button>
+          <div className="modal-actions">
             {onOpenVault && <button type="button" className="button primary" onClick={() => { close(); onOpenVault(); }}>前往保险箱</button>}</div>
         </> : importing && importStep === 1 ? <form className="stack" onSubmit={verifyImport}>
           {userNeedsReauth && <label>登录密码<input name="login_password" type="password" autoComplete="current-password" required disabled={busy} /></label>}
           <label>当前密码库主密码<input ref={stepFocus} name="master" type="password" autoComplete="current-password" minLength={9} maxLength={256} required disabled={busy} /></label>
-          <div className="modal-actions"><button type="button" className="button" onClick={close} disabled={busy}>取消</button>
-            <SubmitMorph submit phase={submitPhase} accessibleLabel="验证主密码" feedback={submitPhase === "pending" ? "正在验证…" : submitPhase === "success" ? "主密码验证通过" : ""}>
-              <ShieldCheck size={14} />验证主密码</SubmitMorph></div>
+          <div className="modal-actions"><VerifyButton phase={submitPhase} /></div>
         </form> : prepared ? <>
           <p ref={review} tabIndex={-1}>备份已通过校验，包含 <strong>{prepared.items.length}</strong> 条凭据。</p>
           {importing && prepared.preview.length > 0 && <ul className="vault-import-preview" aria-label="将导入的密码条目" tabIndex={0}>
@@ -392,7 +453,7 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
           {prepared.currentCount > 0 && <div className="consequence-warning"><AlertTriangle size={19} aria-hidden="true" />
             <div><strong>恢复将替换本机密码库当前的 {prepared.currentCount} 条凭据。</strong><p>覆盖前会自动创建安全备份。</p></div>
           </div>}
-          <div className="modal-actions"><button type="button" className="button" onClick={close} disabled={busy}>取消</button>
+          <div className="modal-actions">
             {dialogError && <button type="button" className="button" onClick={() => { releaseGrant(); start(operation); }} disabled={busy}>重新校验</button>}
             {importing ? busy ? <VaultImportProgress target={progressTarget} complete={importComplete} reduced={reducedMotion} onReachedEnd={finishImport} />
               : <button type="button" className="button primary" onClick={() => void restore()}>导入</button>
@@ -400,16 +461,33 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
         </> : <form className="stack" onSubmit={prepare}>
           {!importing && userNeedsReauth && <label>登录密码<input name="login_password" type="password" autoComplete="current-password" required disabled={busy} /></label>}
           {importing && <>
-            <label>备份文件<input ref={stepFocus} type="file" accept=".age,.json" aria-label="选择备份文件" disabled={busy} onChange={(event) => void selectFile(event.target.files?.[0])} /></label>
-            {!legacyImport && <label>备份恢复密钥<input type="file" accept=".txt,.key" aria-label="选择备份恢复密钥" disabled={busy}
-              onChange={(event) => { setIdentityFile(event.target.files?.[0] ?? null); setDialogError(""); }} /></label>}
+            <div className="vault-import-file-field">
+              <label htmlFor={heading + "-backup"}>备份文件</label>
+              <div className="vault-path-row">
+                <input id={heading + "-backup"} ref={stepFocus} value={selected?.path ?? policy.data?.directory ?? ""}
+                  title={selected?.path ?? policy.data?.directory} readOnly />
+                <button type="button" className="button small" aria-label="浏览备份文件" title="浏览备份文件" disabled={busy || picking} onClick={() => void pickFile("backup")}><FolderOpen size={16} aria-hidden="true" /></button>
+                <input ref={backupInput} hidden type="file" accept=".age,.json" aria-label="选择备份文件" disabled={busy}
+                  onChange={(event) => { if (event.target.files?.[0]) void selectFile(event.target.files[0]); event.target.value = ""; }} />
+              </div>
+            </div>
+            {!legacyImport && <div className="vault-import-file-field">
+              <label htmlFor={heading + "-key"}>备份恢复密钥</label>
+              <div className="vault-path-row">
+                <input id={heading + "-key"} value={identityFile?.path ?? policy.data?.directory ?? ""}
+                  title={identityFile?.path ?? policy.data?.directory} readOnly />
+                <button type="button" className="button small" aria-label="浏览备份恢复密钥" title="浏览备份恢复密钥" disabled={busy || picking} onClick={() => void pickFile("key")}><FolderOpen size={16} aria-hidden="true" /></button>
+                <input ref={keyInput} hidden type="file" accept=".txt,.key" aria-label="选择备份恢复密钥" disabled={busy}
+                  onChange={(event) => { if (event.target.files?.[0]) selectIdentity(event.target.files[0]); event.target.value = ""; }} />
+              </div>
+            </div>}
           </>}
           {needsLegacyPassword && <label>旧版备份密码<input name="backup_password" type="password" autoComplete="off" minLength={9} maxLength={256} required disabled={busy} /></label>}
           {selected?.document.format === "dba-vault-backup-v1" && <p className="muted">此旧版文件使用备份时的密码库主密码。</p>}
           {!importing && <label>当前密码库主密码<input name="master" type="password" autoComplete="current-password" minLength={9} maxLength={256} required disabled={busy} /></label>}
-          <div className="modal-actions"><button type="button" className="button" onClick={close} disabled={busy}>取消</button>
-            {importing ? <button type="submit" className="button primary" disabled={!canImport || busy}>{busy ? "正在校验…" : "下一步"}</button>
-              : <button type="submit" className="button primary" disabled={busy}>{busy ? "处理中…" : exportingKey ? "另存密钥" : "校验备份"}</button>}</div>
+          <div className="modal-actions">
+            {importing ? <button type="submit" className="button primary" disabled={!canImport || busy || picking}>{busy ? "正在校验…" : "下一步"}</button>
+              : <button type="submit" className="button primary" disabled={busy}>{busy ? "正在验证…" : "验证"}</button>}</div>
         </form>}
         {dialogError && <p role="alert" className="alert error">{dialogError}</p>}
       </DialogFocusBoundary>

@@ -171,6 +171,7 @@ export function Vault() {
       const grant = await desktopVaultApi.autoUnlock(request.signal);
       if (grant && !request.signal.aborted) {
         acceptGrant(grant);
+        void client.invalidateQueries({ queryKey: ["vault", "backup-settings"] });
         setDek(Uint8Array.from(atob(grant.data_key.replaceAll("-", "+").replaceAll("_", "/")), (character) => character.charCodeAt(0)));
       }
     }).catch((reason) => {

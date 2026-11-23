@@ -35,9 +35,10 @@
 .vault-backup-settings > h4,.vault-backup-heading h5 { margin:0; color:var(--text-strong); font-size:14px; font-weight:600; }
 .vault-backup-location { display:grid; gap:8px; padding:12px; border:1px solid var(--border); border-radius:10px; }
 .vault-backup-location > label { color:var(--text-strong); font-size:12px; font-weight:600; }
-.vault-backup-location > div { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px; }
-.vault-backup-location input { min-width:0; min-height:33px; padding:0 9px; font-size:12px; }
-.vault-backup-location .button { width:34px; min-height:33px; padding:0; }
+.vault-backup-location > div,.vault-path-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px; }
+.vault-backup-location input,.vault-path-row input[readonly] { min-width:0; min-height:33px; padding:0 9px; font-size:12px; }
+.vault-backup-location .button,.vault-path-row .button { width:34px; min-height:33px; padding:0; }
+.vault-import-file-field { display:grid; gap:6px; min-width:0; }
 .vault-backup-policy { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; }
 .vault-backup-policy > div { display:grid; gap:6px; min-width:0; }
 .vault-backup-policy label { color:var(--text-strong); font-size:12px; font-weight:500; }
@@ -61,10 +62,13 @@
 .vault-backup-file small { display:block; margin-top:2px; color:var(--muted); font-size:11px; line-height:1.45; }
 .workbench-settings .vault-backup-row-actions .button { border-color:transparent; background:transparent; color:var(--text); }
 .workbench-settings .vault-backup-row-actions .button:hover:enabled { background:var(--surface-tint); color:var(--primary); }
+.workbench-settings .vault-backup-row-actions .vault-backup-delete { color:var(--danger); }
+.workbench-settings .vault-backup-row-actions .vault-backup-delete:hover:enabled { background:var(--danger-soft); color:var(--danger); }
 .modal.vault-restore-dialog { width:min(460px, calc(100vw - 2rem)); max-height:calc(100dvh - 2rem); overflow:auto; }
 @container (max-width:340px) { .vault-backup-policy { grid-template-columns:1fr; gap:10px; } }
 
-.vault-restore-dialog .task-morph-slot { width:7.4rem; margin:0; }
+.vault-restore-dialog .modal-actions { justify-content:center; }
+.vault-restore-dialog .task-morph-slot { width:5.25rem; margin:0; }
 .vault-import-steps { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); list-style:none; margin:4px 0 14px; padding:0; }
 .vault-import-steps li { position:relative; display:grid; place-items:center; gap:9px; min-width:0; }
 .vault-import-steps li:not(:last-child)::before,.vault-import-steps li:not(:last-child)::after { content:""; position:absolute; top:14px; left:50%; width:100%; height:2px; background:var(--border-strong); }

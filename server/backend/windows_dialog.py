@@ -6,6 +6,7 @@ import ctypes.wintypes
 import os
 import queue
 import threading
+from collections.abc import Callable
 
 
 _CANCELLED_HRESULT = 0x800704C7  # HRESULT_FROM_WIN32(ERROR_CANCELLED)
@@ -59,8 +60,15 @@ def _show_dialog(dialog: ctypes.c_void_p, show_address: int, owner_hwnd: int) ->
     return True
 
 
+class _Filter(ctypes.Structure):
+    _fields_ = [("label", ctypes.wintypes.LPCWSTR), ("pattern", ctypes.wintypes.LPCWSTR)]
+
+
 def _pick_folder_sta(title: str, initial_dir: str, owner_hwnd: int = 0) -> str:
-    del initial_dir  # Windows remembers the last folder used by its common dialog.
+    return _pick_item_sta(title, "", owner_hwnd)  # Let Windows remember the last directory.
+
+
+def _pick_item_sta(title: str, initial_dir: str, owner_hwnd: int, pattern: str = "") -> str:
     ole32 = ctypes.windll.ole32
     ole32.CoInitializeEx.argtypes = [ctypes.c_void_p, ctypes.c_uint]
     ole32.CoInitializeEx.restype = ctypes.HRESULT
@@ -75,6 +83,7 @@ def _pick_folder_sta(title: str, initial_dir: str, owner_hwnd: int = 0) -> str:
 
     dialog = ctypes.c_void_p()
     result_item = ctypes.c_void_p()
+    folder_item = ctypes.c_void_p()
     path_pointer = ctypes.wintypes.LPWSTR()
     try:
         clsid = _guid("{DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7}")
@@ -98,9 +107,21 @@ def _pick_folder_sta(title: str, initial_dir: str, owner_hwnd: int = 0) -> str:
         options = ctypes.c_uint()
         if get_options(dialog, ctypes.byref(options)) != 0:
             raise OSError("Unable to read folder picker options")
-        flags = 0x20 | 0x40 | 0x08  # PICKFOLDERS | FORCEFILESYSTEM | NOCHANGEDIR
+        flags = 0x40 | 0x08 | (0x1000 | 0x800 if pattern else 0x20)  # FORCEFILESYSTEM | NOCHANGEDIR | FILEMUSTEXIST/PATHMUSTEXIST or PICKFOLDERS
         if set_options(dialog, options.value | flags) != 0:
             raise OSError("Unable to configure the Windows folder picker")
+
+        if pattern:
+            set_file_types = ctypes.WINFUNCTYPE(ctypes.HRESULT, ctypes.c_void_p, ctypes.c_uint, ctypes.POINTER(_Filter))(table[4])
+            set_file_types(dialog, 1, ctypes.byref(_Filter(title, pattern)))
+        if initial_dir:
+            create_item = ctypes.windll.shell32.SHCreateItemFromParsingName
+            create_item.argtypes = [ctypes.wintypes.LPCWSTR, ctypes.c_void_p, ctypes.POINTER(GUID), ctypes.POINTER(ctypes.c_void_p)]
+            create_item.restype = ctypes.HRESULT
+            shell_item = _guid("{43826D1E-E718-42EE-BC55-A1E261C37BFE}")
+            if create_item(initial_dir, None, ctypes.byref(shell_item), ctypes.byref(folder_item)) == 0:
+                set_folder = ctypes.WINFUNCTYPE(ctypes.HRESULT, ctypes.c_void_p, ctypes.c_void_p)(table[12])
+                set_folder(dialog, folder_item)
 
         if title:
             set_title = ctypes.WINFUNCTYPE(
@@ -139,12 +160,22 @@ def _pick_folder_sta(title: str, initial_dir: str, owner_hwnd: int = 0) -> str:
         if path_pointer:
             ole32.CoTaskMemFree(path_pointer)
         _release(result_item)
+        _release(folder_item)
         _release(dialog)
         ole32.CoUninitialize()
 
 
 def pick_folder(title: str, initial_dir: str = "") -> str:
     """Show the native folder picker on its own Windows STA thread."""
+    return _show_on_sta(lambda owner: _pick_folder_sta(title, initial_dir, owner))
+
+
+def pick_file(title: str, initial_dir: str, pattern: str) -> str:
+    """Show the native file picker in the specified starting directory."""
+    return _show_on_sta(lambda owner: _pick_item_sta(title, initial_dir, owner, pattern))
+
+
+def _show_on_sta(pick: Callable[[int], str]) -> str:
     if os.name != "nt":
         raise OSError("The native folder picker is only available on Windows")
     result: queue.Queue[tuple[str, object]] = queue.Queue(maxsize=1)
@@ -152,7 +183,7 @@ def pick_folder(title: str, initial_dir: str = "") -> str:
 
     def run() -> None:
         try:
-            result.put(("ok", _pick_folder_sta(title, initial_dir, owner_hwnd)))
+            result.put(("ok", pick(owner_hwnd)))
         except Exception as error:
             result.put(("error", error))
 

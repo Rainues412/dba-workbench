@@ -24,7 +24,7 @@ def _export_identity(page, settings, directory):
     settings.get_by_role("button", name="另存恢复密钥", exact=True).click()
     dialog = page.get_by_role("dialog", name="另存备份恢复密钥", exact=True)
     dialog.get_by_label("当前密码库主密码", exact=True).fill(MASTER)
-    dialog.get_by_role("button", name="另存密钥", exact=True).click()
+    dialog.get_by_role("button", name="验证", exact=True).click()
     return _saved_download(page, directory)
 
 
@@ -33,8 +33,11 @@ def _verify_import(page, settings, password):
     dialog = page.get_by_role("dialog", name="导入密码库备份", exact=True)
     expect(dialog.get_by_label("选择备份文件")).to_have_count(0)
     dialog.get_by_label("当前密码库主密码", exact=True).fill(password)
-    dialog.get_by_role("button", name="验证主密码", exact=True).click()
-    expect(dialog.get_by_label("选择备份文件")).to_be_visible()
+    dialog.get_by_role("button", name="验证", exact=True).click()
+    expect(dialog.get_by_role("button", name="浏览备份文件", exact=True)).to_be_visible()
+    expected = settings.get_by_label("备份存放目录").input_value()
+    expect(dialog.get_by_label("备份文件", exact=True)).to_have_value(expected)
+    expect(dialog.get_by_label("备份恢复密钥", exact=True)).to_have_value(expected)
     return dialog
 
 
@@ -45,6 +48,13 @@ def _select_age_files(dialog, backup, identity):
     dialog.get_by_label("选择备份恢复密钥", exact=True).set_input_files(str(identity))
     expect(next_step).to_be_enabled()
     next_step.click()
+
+
+def _create_manual_backup(page, settings):
+    settings.get_by_role("button", name="立即备份", exact=True).click()
+    expect(settings.get_by_role("status").filter(has_text="备份成功")).to_be_visible()
+    expect(page.get_by_role("dialog", name="立即备份", exact=True)).to_have_count(0)
+    expect(settings.get_by_role("listitem").filter(has_text="立即备份")).to_be_visible()
 
 
 def _capture_downloads(page):
@@ -127,17 +137,20 @@ def test_vault_daily_ui_csv_and_restore_confirmation(live_server, tmp_path):
 
             settings = _backup_settings(page)
             identity = _export_identity(page, settings, tmp_path)
-            settings.get_by_role("button", name="立即备份", exact=True).click()
-            expect(settings.get_by_role("listitem").filter(has_text="立即备份")).to_be_visible()
+            _create_manual_backup(page, settings)
             directory = Path(settings.get_by_label("备份存放目录").input_value())
             assert settings.get_by_label("备份存放目录").evaluate("node => node.readOnly")
-            backup = next(directory.glob("backup-*.age"))
+            backup = next(directory.rglob("backup-*.age"))
             assert backup.read_text(encoding="utf-8").startswith("-----BEGIN AGE ENCRYPTED FILE-----")
             assert "synthetic-secret" not in backup.read_text(encoding="utf-8")
 
             restore_requests = []
             page.on("request", lambda request: restore_requests.append(request) if "/api/vault/backup/restore" in request.url else None)
             restore = _verify_import(page, settings, MASTER)
+            footer = restore.locator(".modal-actions").bounding_box()
+            next_button = restore.get_by_role("button", name="下一步", exact=True).bounding_box()
+            assert abs((footer["x"] + footer["width"] / 2) - (next_button["x"] + next_button["width"] / 2)) < 2
+            page.screenshot(animations="disabled", path=str(tmp_path / "vault-import-file-selection.png"))
             wrong = tmp_path / "wrong-identity.txt"
             from pyrage import x25519
             wrong.write_text(str(x25519.Identity.generate()), encoding="utf-8")
@@ -155,17 +168,29 @@ def test_vault_daily_ui_csv_and_restore_confirmation(live_server, tmp_path):
                 page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
                 assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
                 page.screenshot(animations="disabled", path=str(tmp_path / f"vault-restore-{theme}-{width}.png"))
-            restore.get_by_role("button", name="取消", exact=True).click()
+            expect(restore.get_by_role("button", name="取消", exact=True)).to_have_count(0)
+            restore.get_by_role("button", name="关闭备份对话框", exact=True).click()
             assert not restore_requests
 
             row = settings.get_by_role("listitem").filter(has_text=backup.name)
+            row.get_by_role("button", name="重命名备份", exact=True).click()
+            rename = page.get_by_role("dialog", name="重命名备份", exact=True)
+            rename.get_by_label("备份名称", exact=True).fill("恢复测试快照")
+            rename.get_by_role("button", name="保存", exact=True).click()
+            row = settings.get_by_role("listitem").filter(has_text="恢复测试快照")
             row.get_by_role("button", name="恢复", exact=True).click()
             verify = page.get_by_role("dialog", name="校验密码库备份", exact=True)
             verify.get_by_label("当前密码库主密码", exact=True).fill(MASTER)
-            verify.get_by_role("button", name="校验备份", exact=True).click()
+            verify.get_by_role("button", name="验证", exact=True).click()
             page.get_by_role("dialog", name="确认恢复密码库", exact=True).get_by_role("button", name="确认恢复", exact=True).click()
             expect(settings.get_by_text("已恢复 1 条。覆盖前的安全备份已保存。", exact=True)).to_be_visible()
             expect(settings.get_by_role("listitem").filter(has_text="恢复前安全备份")).to_be_visible()
+            row.get_by_role("button", name="删除备份", exact=True).click()
+            delete = page.get_by_role("dialog", name="删除备份", exact=True)
+            expect(delete).to_contain_text("删除后无法撤销")
+            assert backup.is_file()
+            delete.get_by_role("button", name="确认删除", exact=True).click()
+            expect(row).not_to_be_visible()
             settings.get_by_role("button", name="完成", exact=True).click()
             expect(page.get_by_role("heading", name="保险箱已锁定", exact=True)).to_be_visible()
             assert len(restore_requests) == 1
@@ -288,12 +313,11 @@ def test_manual_and_automatic_files_restore_locally_and_on_a_different_vault(liv
             settings.get_by_role("button", name="完成", exact=True).click()
             settings = _backup_settings(page)
             directory = Path(settings.get_by_label("备份存放目录").input_value())
-            automatic = next(directory.glob("auto-*.age"))
+            automatic = next(directory.rglob("auto-*.age"))
 
-            settings.get_by_role("button", name="立即备份", exact=True).click()
-            expect(settings.get_by_role("listitem").filter(has_text="立即备份")).to_be_visible()
+            _create_manual_backup(page, settings)
             expect(settings.get_by_role("listitem").filter(has_text="自动备份")).to_be_visible()
-            manual = next(directory.glob("backup-*.age"))
+            manual = next(directory.rglob("backup-*.age"))
 
             panel = settings.get_by_role("region", name="备份与恢复", exact=True)
             expect(panel.get_by_role("listitem")).to_have_count(2)
@@ -318,7 +342,7 @@ def test_manual_and_automatic_files_restore_locally_and_on_a_different_vault(liv
                 row.get_by_role("button", name="恢复", exact=True).click()
                 verify = page.get_by_role("dialog", name="校验密码库备份", exact=True)
                 verify.get_by_label("当前密码库主密码", exact=True).fill(MASTER)
-                verify.get_by_role("button", name="校验备份", exact=True).click()
+                verify.get_by_role("button", name="验证", exact=True).click()
                 review = page.get_by_role("dialog", name="确认恢复密码库", exact=True)
                 expect(review).to_contain_text("当前的 1 条凭据")
                 review.get_by_role("button", name="确认恢复", exact=True).click()

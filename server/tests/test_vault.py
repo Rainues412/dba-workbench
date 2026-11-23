@@ -393,23 +393,24 @@ def test_scheduled_portable_backup_respects_interval_and_retention(client, isola
     assert client.post("/api/vault/items", json=item).status_code == 201
     response = client.get("/api/vault/backup-settings")
     assert response.json() == {"interval_hours": 24, "retention": 10, "portable_ready": False, "key_exported": False,
-                               "directory": str(vault_backups.directory(1))}
+                               "directory": str(vault_backups.backup_root())}
     opened_paths = []
     monkeypatch.setattr(os, "startfile", opened_paths.append)
     assert client.post("/api/vault/backups/open-directory", json={"path": "C:/test-other"}).status_code == 204
-    assert opened_paths == [vault_backups.directory(1)]
+    assert opened_paths == [vault_backups.backup_root()]
     assert client.put("/api/vault/backup-settings", json={"interval_hours": 7, "retention": 3}).status_code == 422
     assert client.put("/api/vault/backup-settings", json={"interval_hours": 6, "retention": 3}).status_code == 200
 
     proof = master_proof(client, MASTER_PASSWORD)
     assert client.post("/api/vault/backups").status_code == 409
+    assert client.get("/api/vault/backups").json() == []
     assert client.post("/api/vault/backup-settings/prepare", json=proof).status_code == 204
+    assert client.post("/api/vault/backups").status_code == 201
     assert client.get("/api/vault/backup-settings").json()["portable_ready"]
     key_response = client.post("/api/vault/backup/key?export=true", json=proof)
     assert key_response.status_code == 200
     identity = x25519.Identity.from_str(key_response.json()["identity"])
     assert client.get("/api/vault/backup-settings").json()["key_exported"]
-    assert client.post("/api/vault/backups").status_code == 201
     vault_router.run_scheduled_backups()
 
     def verify_document(entry):
@@ -445,6 +446,78 @@ def test_scheduled_portable_backup_respects_interval_and_retention(client, isola
     disabled = client.get("/api/vault/backups").json()
     vault_router.run_scheduled_backups()
     assert client.get("/api/vault/backups").json() == disabled
+
+
+def test_backup_names_and_deleting_the_last_file(client, isolated_app):
+    from backend import vault_backups
+
+    initialize_vault(client)
+    proof = master_proof(client, MASTER_PASSWORD)
+    assert client.post("/api/vault/backup-settings/prepare", json=proof).status_code == 204
+    legacy_dir = Path(isolated_app[1]).parent / "vault-backups" / "1"
+    legacy_dir.mkdir(parents=True)
+    name = "backup-20261010-120000-abcdefabcdef.json"
+    file = legacy_dir / name
+    original = client.get("/api/vault/backup").content
+    file.write_bytes(original)
+    url = f"/api/vault/backups/{name}"
+    assert client.patch(url, json={"display_name": "  升级前快照  "}).status_code == 204
+    listing = client.get("/api/vault/backups").json()
+    assert [(entry["filename"], entry["display_name"]) for entry in listing] == [(name, "升级前快照")]
+    assert file.read_bytes() == original
+    assert client.get(url).content == original
+    assert client.delete("/api/vault/backups/ordinary.txt").status_code == 404
+
+    replacement = client.delete(url).json()["replacement"]
+    assert not file.exists()
+    assert replacement.startswith("auto-")
+    new_file = vault_backups.directory(1) / replacement
+    assert new_file.is_file()
+    sample_age = new_file.read_bytes()
+    assert [entry["filename"] for entry in client.get("/api/vault/backups").json()] == [replacement]
+
+    assert client.put("/api/vault/backup-settings", json={"interval_hours": 0}).status_code == 200
+    assert client.delete(f"/api/vault/backups/{replacement}").json() == {"replacement": None}
+    vault_router.run_scheduled_backups()
+    assert client.get("/api/vault/backups").json() == []
+
+    old_auto = legacy_dir / "auto-20261010-120000-abcdefabcdef.age"
+    old_auto.write_bytes(sample_age)
+    assert client.put("/api/vault/backup-settings", json={"interval_hours": 24}).status_code == 200
+    vault_router.run_scheduled_backups()
+    assert old_auto.read_bytes() == sample_age
+    assert len(list(vault_backups.directory(1).glob("auto-*.age"))) == 1
+
+
+def test_desktop_picks_only_one_user_selected_supported_file(client, tmp_path, monkeypatch):
+    from backend import auth, vault_backups
+
+    monkeypatch.setattr(auth, "_desktop_token", "test-only-desktop-token")
+    initialize_vault(client, [{"question": "测试问题", "answer": "test-only-picker-answer"}])
+    grant = {"X-DBA-Vault-Token": desktop_unlock(client, MASTER_PASSWORD).json()["token"]}
+    calls = []
+    route = "/api/vault/backups/pick-file?kind=key"
+    key = tmp_path / "test-only-key.txt"
+    key.write_text("unrelated file", encoding="utf-8")
+    monkeypatch.setattr(vault_router, "pick_native_file", lambda *args: calls.append(args) or str(key))
+    assert client.post(route).status_code == 403
+    assert not calls
+    assert client.post(route, headers=grant).status_code == 422
+    identity = str(x25519.Identity.generate())
+    key.write_text(identity, encoding="utf-8")
+    result = client.post(route, headers=grant, json={"path": "C:/unrelated.txt"})
+    assert result.status_code == 200
+    assert result.headers["cache-control"] == "no-store"
+    assert result.json() == {"name": key.name, "path": str(key), "text": identity}
+    assert calls[-1] == ("选择备份恢复密钥", str(vault_backups.directory(1)), "*.txt;*.key")
+
+
+def test_source_backup_root_is_fixed_at_the_repository_root(monkeypatch):
+    from backend import database, vault_backups
+
+    server = Path(vault_backups.__file__).resolve().parents[1]
+    monkeypatch.setattr(database, "DB_PATH", str(server / "workspace.db"))
+    assert vault_backups.backup_root() == server.parent / "backups"
 
 
 def test_offline_admin_recovery_rewraps_without_reencrypting_items(

@@ -15,7 +15,7 @@ from ctypes import wintypes
 from pathlib import Path
 from threading import RLock
 
-from pyrage import encrypt, x25519
+from pyrage import IdentityError, encrypt, x25519
 
 from backend import database
 from backend.observability import logger
@@ -26,8 +26,23 @@ FILE_LOCK = RLock()
 FORMAT = "dba-vault-backup-v3"
 
 
+def backup_root() -> Path:
+    data_dir = Path(database.DB_PATH).resolve().parent
+    if data_dir == Path(__file__).resolve().parents[1]:
+        return data_dir.parent / "backups"
+    return data_dir / "backups"
+
+
 def directory(user_id: int) -> Path:
-    return Path(database.DB_PATH).resolve().parent / "vault-backups" / str(user_id)
+    return backup_root() / str(user_id)
+
+
+def _folders(user_id: int) -> tuple[Path, Path]:
+    return directory(user_id), Path(database.DB_PATH).resolve().parent / "vault-backups" / str(user_id)
+
+
+def _safe_folder(folder: Path) -> bool:
+    return folder.resolve() == folder
 
 
 def settings(conn, user_id: int) -> dict:
@@ -84,7 +99,7 @@ def _dpapi(data: bytes, protect: bool) -> bytes:
 
 def _key_path(user_id: int, recipient: str) -> Path:
     name = hashlib.sha256(recipient.encode("ascii")).hexdigest()
-    return directory(user_id).parent.parent / "vault-backup-keys" / str(user_id) / (name + ".dpapi")
+    return Path(database.DB_PATH).resolve().parent / "vault-backup-keys" / str(user_id) / (name + ".dpapi")
 
 
 def read_identity(user_id: int, recipient: str) -> str:
@@ -134,46 +149,87 @@ def save(user_id: int, data: bytes, *, prefix: str = "backup") -> str:
         raise ValueError("备份文件不能超过 64 MiB。")
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     filename = f"{prefix}-{timestamp}-{secrets.token_hex(6)}.age"
-    _write(directory(user_id) / filename, data)
+    folder = directory(user_id)
+    if not _safe_folder(folder):
+        raise OSError("Backup directory must not redirect to another location")
+    _write(folder / filename, data)
     return filename
 
 
 def entries(user_id: int) -> list[dict]:
-    folder = directory(user_id)
-    if not folder.is_dir():
-        return []
-    result = []
-    for path in folder.iterdir():
-        if not re.fullmatch(BACKUP_NAME, path.name) or path.is_symlink() or not path.is_file():
+    result = {}
+    for folder in _folders(user_id):
+        if not _safe_folder(folder) or not folder.is_dir():
             continue
-        stat = path.stat()
-        result.append({
-            "filename": path.name,
-            "created_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
-            "size": stat.st_size,
-            "kind": "safety" if path.name.startswith("before-restore-") else "auto" if path.name.startswith("auto-") else "manual",
-        })
-    return sorted(result, key=lambda entry: entry["created_at"], reverse=True)
+        for path in folder.iterdir():
+            if path.name in result or not re.fullmatch(BACKUP_NAME, path.name) or path.is_symlink() or not path.is_file():
+                continue
+            try:
+                stat = path.stat()
+            except FileNotFoundError:
+                continue
+            result[path.name] = {
+                "filename": path.name,
+                "created_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+                "size": stat.st_size,
+                "kind": "safety" if path.name.startswith("before-restore-") else "auto" if path.name.startswith("auto-") else "manual",
+            }
+    return sorted(result.values(), key=lambda entry: entry["created_at"], reverse=True)
 
 
 def prune(user_id: int, retention: int, newest: str) -> None:
     try:
-        older = [entry["filename"] for entry in entries(user_id)
-                 if entry["kind"] == "auto" and entry["filename"].endswith(".age") and entry["filename"] != newest]
+        folder = directory(user_id)
+        if not _safe_folder(folder):
+            return
+        older = [entry["filename"] for entry in entries(user_id) if entry["kind"] == "auto" and entry["filename"].endswith(".age")
+                 and entry["filename"] != newest and not (folder / entry["filename"]).is_symlink()
+                 and (folder / entry["filename"]).is_file()]
         for filename in older[retention - 1:]:
-            (directory(user_id) / filename).unlink(missing_ok=True)
+            (folder / filename).unlink(missing_ok=True)
     except OSError:
         logger.warning("Could not complete vault backup retention")
 
 
-def read(user_id: int, filename: str) -> bytes:
+def existing_path(user_id: int, filename: str) -> Path:
     if not re.fullmatch(BACKUP_NAME, filename):
         raise FileNotFoundError(filename)
-    path = directory(user_id) / filename
-    if path.is_symlink():
-        raise FileNotFoundError(filename)
-    with path.open("rb") as handle:
+    for folder in _folders(user_id):
+        path = folder / filename
+        if _safe_folder(folder) and not path.is_symlink() and path.is_file():
+            return path
+    raise FileNotFoundError(filename)
+
+
+def read(user_id: int, filename: str) -> bytes:
+    with existing_path(user_id, filename).open("rb") as handle:
         content = handle.read(MAX_BACKUP_BYTES + 1)
     if len(content) > MAX_BACKUP_BYTES:
         raise ValueError("备份文件不能超过 64 MiB。")
     return content
+
+
+def read_selected_file(path: Path, *, recovery_key: bool) -> str:
+    path = path.resolve(strict=True)
+    suffixes = {".txt", ".key"} if recovery_key else {".age", ".json"}
+    if not re.fullmatch(r"[a-zA-Z]:", path.drive) or path.suffix.lower() not in suffixes or not path.is_file():
+        raise ValueError("Unsupported backup selection")
+    limit = 4096 if recovery_key else MAX_BACKUP_BYTES
+    with path.open("rb") as handle:
+        data = handle.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError("Backup selection exceeds its size limit")
+    text = data.decode("utf-8-sig")
+    if recovery_key:
+        lines = [line.strip() for line in text.splitlines() if line.strip() and not line.strip().startswith("#")]
+        if len(lines) != 1:
+            raise ValueError("Invalid recovery key file")
+        try:
+            x25519.Identity.from_str(lines[0])
+        except IdentityError as exc:
+            raise ValueError("Invalid recovery key file") from exc
+    elif not text.startswith("-----BEGIN AGE ENCRYPTED FILE-----"):
+        document = json.loads(text)
+        if not isinstance(document, dict) or document.get("format") not in ("dba-vault-backup-v1", "dba-vault-backup-v2"):
+            raise ValueError("Invalid backup file")
+    return text

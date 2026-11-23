@@ -36,10 +36,10 @@ def test_server_reauth_rejection_updates_badge_without_refresh(live_server, isol
             backup = page.get_by_role("dialog", name="导入密码库备份", exact=True)
             backup.get_by_label("当前密码库主密码", exact=True).fill("test-only-master-password")
             with page.expect_response(lambda response: response.url.endswith("/api/vault/backup/verify-master") and response.request.method == "POST") as rejected:
-                backup.get_by_role("button", name="验证主密码", exact=True).click()
+                backup.get_by_role("button", name="验证", exact=True).click()
             assert rejected.value.status == 403
             expect(backup.get_by_role("alert")).to_be_visible()
-            backup.get_by_role("button", name="取消", exact=True).click()
+            backup.get_by_role("button", name="关闭备份对话框", exact=True).click()
             settings.get_by_role("button", name="完成", exact=True).click()
             expect(page.locator(".reauth-state .badge")).to_have_text("已过期", timeout=5000)
             expect(page.get_by_label("验证剩余时间", exact=True)).to_have_count(0)
