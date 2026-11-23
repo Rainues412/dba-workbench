@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, Download, FolderOpen, Pencil, RotateCcw, ShieldCheck, Trash2, Upload, X } from "lucide-react";
+import { AlertTriangle, Check, Download, FolderOpen, Pencil, RotateCcw, Trash2, Upload, X } from "lucide-react";
 import { api, hasVaultAccessToken, jsonBody, setVaultAccessToken, VAULT_LOCKED_EVENT } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { openBackup, parseBackup, readBackupFile, readBackupIdentity, type VaultBackup } from "../vault/backup";
@@ -52,7 +52,7 @@ function revoke(token: string) {
 
 function VerifyButton({ phase }: { phase?: TaskStatusPhase }) {
   return <SubmitMorph submit phase={phase} accessibleLabel="验证" feedback={phase === "pending" ? "正在验证…" : phase === "success" ? "主密码验证通过" : ""}>
-    <ShieldCheck size={14} />验证</SubmitMorph>;
+    验证</SubmitMorph>;
 }
 
 export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean; onOpenVault?: () => void }) {
