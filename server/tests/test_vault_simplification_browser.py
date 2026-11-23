@@ -274,6 +274,22 @@ def test_manual_and_automatic_files_restore_locally_and_on_a_different_vault(liv
             dialog.get_by_role("button", name="生成备份", exact=True).click()
             manual = _saved_download(page, tmp_path)
 
+            panel = settings.get_by_role("region", name="密码库备份", exact=True)
+            expect(panel.get_by_role("listitem")).to_have_count(2)
+            for theme, width in [("light", 1320), ("dark", 390)]:
+                page.set_viewport_size({"width": width, "height": 900})
+                page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
+                interval = panel.get_by_role("combobox", name="自动备份间隔").bounding_box()
+                retention = panel.get_by_role("combobox", name="备份保留数量").bounding_box()
+                if width == 390:
+                    assert retention["y"] > interval["y"]
+                else:
+                    assert retention["x"] > interval["x"] and retention["y"] == interval["y"]
+                assert panel.evaluate("element => element.scrollWidth <= element.clientWidth")
+                expect(panel.get_by_text(manual.name, exact=True)).to_have_attribute("title", manual.name)
+                panel.screenshot(animations="disabled", path=str(tmp_path / f"password-backups-{theme}-{width}.png"))
+            page.set_viewport_size({"width": 1320, "height": 900})
+
             for selected in (automatic, manual):
                 data = json.loads(selected.read_text(encoding="utf-8"))
                 assert data["format"] == "dba-vault-backup-v2"

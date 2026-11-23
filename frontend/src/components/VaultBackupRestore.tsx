@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Download, Upload, X } from "lucide-react";
+import { AlertTriangle, Download, RotateCcw, Upload, X } from "lucide-react";
 import { api, hasVaultAccessToken, jsonBody, setVaultAccessToken, VAULT_LOCKED_EVENT } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { createBackupSeal, openBackup, parseBackup, readBackupFile, type PortableBackup, type VaultBackup } from "../vault/backup";
@@ -227,46 +227,54 @@ export function VaultBackupRestore({ desktop }: { desktop: boolean }) {
     : operation?.kind === "restore" || operation?.kind === "copy" ? operation.entry.filename : undefined;
   const canUseFile = Boolean(profile.data);
   return <section className="vault-backup-settings" aria-labelledby={contentId}>
+    {policy.isError && <p role="alert" className="vault-backup-status">无法读取备份设置。<button type="button" className="button small" onClick={() => void policy.refetch()}>重试</button></p>}
+    {policy.data && <>
+      <div className="vault-backup-policy">
+        <div>
+          <label htmlFor={contentId + "-interval"}>自动备份间隔</label>
+          <select id={contentId + "-interval"} value={policy.data.interval_hours} disabled={policyBusy} onChange={(event) => void changePolicy("interval_hours", Number(event.target.value))}>
+            {intervalOptions.map(([value, title]) => <option key={value} value={value}>{title}</option>)}
+          </select>
+        </div>
+        <div>
+          <label htmlFor={contentId + "-retention"}>备份保留数量</label>
+          <select id={contentId + "-retention"} value={policy.data.retention} disabled={policyBusy} onChange={(event) => void changePolicy("retention", Number(event.target.value))}>
+            {retentionOptions.map((value) => <option key={value} value={value}>{value} 个</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="vault-backup-password">
+        <div><strong>自动备份密码</strong><small>{policy.data.portable_ready ? "旧文件仍使用生成时的备份密码。" : "设置密码后，工作台运行时才会自动备份。"}</small></div>
+        <button type="button" className="button small" disabled={!initialized} onClick={() => start({ kind: "schedule" })}>{policy.data.portable_ready ? "更改备份密码" : "设置备份密码"}</button>
+      </div>
+    </>}
     <div className="vault-backup-heading">
       <h4 id={contentId}>密码库备份</h4>
-      <div className="button-row vault-backup-actions">
-        <button type="button" className="button" disabled={!initialized} onClick={() => start({ kind: "create" })}><Download size={16} />立即备份</button>
-        <button type="button" className="button" disabled={!canUseFile} onClick={() => input.current?.click()}><Upload size={16} />导入备份文件</button>
+      <div className="button-row">
+        <button type="button" className="button small" disabled={!initialized} onClick={() => start({ kind: "create" })}><Download aria-hidden="true" />立即备份</button>
+        <button type="button" className="button small" disabled={!canUseFile} onClick={() => input.current?.click()}><Upload aria-hidden="true" />导入备份文件</button>
         <input ref={input} type="file" accept=".json,application/json" className="sr-only" tabIndex={-1} aria-label="选择密码库备份文件" onChange={(event) => {
           const selected = event.target.files?.[0]; event.target.value = "";
           if (selected) void selectFile(selected);
         }} />
       </div>
     </div>
-    {policy.isError && <p role="alert">无法读取备份设置。<button type="button" className="button small" onClick={() => void policy.refetch()}>重试</button></p>}
-    {policy.data && <>
-      <label className="preference-row"><span><strong>自动备份间隔</strong><small>工作台运行时按间隔生成可换机的加密文件。</small></span>
-        <select aria-label="自动备份间隔" value={policy.data.interval_hours} disabled={policyBusy} onChange={(event) => void changePolicy("interval_hours", Number(event.target.value))}>
-          {intervalOptions.map(([value, title]) => <option key={value} value={value}>{title}</option>)}
-        </select>
-      </label>
-      <label className="preference-row"><span><strong>备份保留数量</strong><small>生成新备份后自动清理较早的本机副本。</small></span>
-        <select aria-label="备份保留数量" value={policy.data.retention} disabled={policyBusy} onChange={(event) => void changePolicy("retention", Number(event.target.value))}>
-          {retentionOptions.map((value) => <option key={value} value={value}>{value} 个</option>)}
-        </select>
-      </label>
-      <div className="preference-row"><span><strong>自动备份密码</strong><small>{policy.data.portable_ready ? "已设置。更改密码后，旧文件仍使用原备份密码。" : "先设置备份密码，定时备份才会运行。"}</small></span>
-        <button type="button" className="button" disabled={!initialized} onClick={() => start({ kind: "schedule" })}>{policy.data.portable_ready ? "更改备份密码" : "设置备份密码"}</button>
-      </div>
-    </>}
-    {profile.isError && <p role="alert">无法读取密码库状态。<button type="button" className="button small" onClick={() => void profile.refetch()}>重试</button></p>}
-    {!initialized && profile.data && <p className="muted">已有备份可以直接导入，恢复时会设置本机主密码。</p>}
+    {profile.isError && <p role="alert" className="vault-backup-status">无法读取密码库状态。<button type="button" className="button small" onClick={() => void profile.refetch()}>重试</button></p>}
+    {!initialized && profile.data && <p className="vault-backup-status">已有备份可以直接导入，恢复时会设置本机主密码。</p>}
     {notice && <p role="status" className="alert">{notice}</p>}
     {sectionError && <p role="alert" className="alert error">{sectionError}</p>}
-    {files.isPending && <p role="status">正在读取备份列表…</p>}
-    {files.isError && <p role="alert">无法读取备份列表。<button type="button" className="button small" onClick={() => void files.refetch()}>重试</button></p>}
-    {files.data?.length === 0 && <p className="muted">暂无密码库备份。</p>}
+    {files.isPending && <p role="status" className="vault-backup-status">正在读取备份列表…</p>}
+    {files.isError && <p role="alert" className="vault-backup-status">无法读取备份列表。<button type="button" className="button small" onClick={() => void files.refetch()}>重试</button></p>}
+    {files.data?.length === 0 && <p className="vault-backup-status">暂无密码库备份。</p>}
     {Boolean(files.data?.length) && <ul className="vault-backup-list" aria-label="密码库备份列表">
-      {files.data!.map((entry) => <li className="preference-row" key={entry.filename}>
-        <span><strong>{labels[entry.kind]}</strong><small title={entry.filename}>{entry.filename}</small><small>{new Date(entry.created_at).toLocaleString()} · {Math.max(1, Math.round(entry.size / 1024))} KB</small></span>
-        <div className="button-row">
-          <button type="button" className="button small" disabled={!initialized} onClick={() => start({ kind: "copy", entry })}>保存副本</button>
-          <button type="button" className="button small" disabled={!initialized} onClick={() => start({ kind: "restore", entry })}>恢复</button>
+      {files.data!.map((entry) => <li className="vault-backup-entry" key={entry.filename}>
+        <div className="vault-backup-file">
+          <span title={entry.filename}>{entry.filename}</span>
+          <small>{labels[entry.kind]} · {new Date(entry.created_at).toLocaleString()} · {Math.max(1, Math.round(entry.size / 1024))} KB</small>
+        </div>
+        <div className="button-row vault-backup-row-actions">
+          <button type="button" className="button small" disabled={!initialized} onClick={() => start({ kind: "copy", entry })}><Download aria-hidden="true" />保存副本</button>
+          <button type="button" className="button small" disabled={!initialized} onClick={() => start({ kind: "restore", entry })}><RotateCcw aria-hidden="true" />恢复</button>
         </div>
       </li>)}
     </ul>}

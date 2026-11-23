@@ -31,16 +31,32 @@
 .preference-switch:has(:focus-visible) { outline:2px solid var(--primary); outline-offset:3px; }
 .preference-row kbd { padding:5px 8px; border:1px solid var(--border); border-radius:4px; background:var(--surface-soft); font:11px Consolas,monospace; color:var(--text); white-space:nowrap; }
 .preference-row .button { flex-shrink:0; }
-.vault-backup-settings { margin-top:22px; }
-.vault-backup-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
-.vault-backup-settings h4 { margin:0; color:var(--text-strong); font-size:14px; font-weight:600; }
-.vault-backup-settings > p { margin:12px 0; font-size:12px; }
-.vault-backup-actions { flex-wrap:wrap; }
-.vault-backup-list { margin:0; padding:0; list-style:none; }
-.vault-backup-list .preference-row { gap:12px; flex-wrap:wrap; }
-.vault-backup-list .preference-row > span { flex:1 1 180px; overflow:hidden; }
-.vault-backup-list .preference-row > span small { max-width:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.vault-restore-dialog { max-height:calc(100dvh - 2rem); overflow:auto; }
+.vault-backup-settings { display:grid; gap:12px; margin-top:20px; container-type:inline-size; }
+.vault-backup-policy { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; }
+.vault-backup-policy > div { display:grid; gap:6px; min-width:0; }
+.vault-backup-policy label { color:var(--text-strong); font-size:12px; font-weight:500; }
+.vault-backup-policy select { width:100%; min-height:34px; padding:0 9px; border:1px solid var(--border-strong); border-radius:6px; background:var(--surface-raised); color:var(--text); font-size:12px; }
+.vault-backup-policy select:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
+.vault-backup-password { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px 12px; padding:9px 11px; border-radius:8px; background:var(--surface-soft); }
+.vault-backup-password strong { display:block; color:var(--text-strong); font-size:12px; font-weight:500; }
+.vault-backup-password small { display:block; margin-top:3px; color:var(--muted); font-size:11px; line-height:1.5; }
+.vault-backup-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+.vault-backup-heading h4 { margin:0; color:var(--text-strong); font-size:14px; font-weight:600; }
+.vault-backup-settings .button-row { width:auto; justify-content:flex-start; flex-wrap:wrap; gap:4px; }
+.vault-backup-settings .button-row > .button { flex:0 0 auto; min-height:28px; gap:4px; }
+.vault-backup-settings .button svg { width:14px; height:14px; }
+.vault-backup-status { margin:0; color:var(--muted); font-size:12px; line-height:1.55; }
+.vault-backup-status[role=alert] { color:var(--danger); }
+.vault-backup-status .button { margin-left:8px; }
+.vault-backup-list { display:grid; gap:6px; max-height:12rem; overflow-y:auto; margin:0; padding:1px 2px; list-style:none; }
+.vault-backup-entry { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:4px 9px; padding:8px 10px; border-radius:8px; background:var(--surface-soft); }
+.vault-backup-file { flex:1 1 10rem; min-width:0; }
+.vault-backup-file > span { display:block; overflow:hidden; color:var(--text-strong); font:12px/1.5 ui-monospace, Consolas, monospace; text-overflow:ellipsis; white-space:nowrap; }
+.vault-backup-file small { display:block; margin-top:2px; color:var(--muted); font-size:11px; line-height:1.45; }
+.workbench-settings .vault-backup-row-actions .button { border-color:transparent; background:transparent; color:var(--text); }
+.workbench-settings .vault-backup-row-actions .button:hover:enabled { background:var(--surface-tint); color:var(--primary); }
+.modal.vault-restore-dialog { width:min(460px, calc(100vw - 2rem)); max-height:calc(100dvh - 2rem); overflow:auto; }
+@container (max-width:340px) { .vault-backup-policy { grid-template-columns:1fr; gap:10px; } }
 .workbench-settings>footer { display:flex; align-items:center; gap:12px; padding:10px 18px; min-height:54px; flex-shrink:0; border-top:1px solid var(--border); }
 .workbench-settings>footer>span { display:flex; align-items:center; gap:6px; color:var(--muted); font-size:11px; }
 .workbench-settings>footer [role=alert] { color:var(--danger); }
