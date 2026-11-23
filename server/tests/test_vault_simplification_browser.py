@@ -1,5 +1,6 @@
 """Exercise vault disclosures and restore only against an isolated synthetic vault."""
 import json
+import os
 
 import pytest
 from playwright.sync_api import expect, sync_playwright
@@ -198,10 +199,15 @@ def test_import_disclosures_and_security_risks_on_small_screens(live_server, tmp
             expect(settings.get_by_text("主密码通过 Argon2id", exact=False)).not_to_be_visible()
             expect(settings.get_by_text("恢复密钥与备份方法", exact=True)).to_have_count(0)
             expect(settings.get_by_label("自动备份间隔", exact=True)).to_have_value("24")
+            directory = settings.locator(".preferences-content > :last-child")
+            expect(directory.get_by_role("heading", name="数据目录", exact=True)).to_be_visible()
+            expect(directory.locator("p")).to_have_text(str(tmp_path.resolve()) + os.sep)
             for theme, width in [("light", 1440), ("dark", 390)]:
                 page.set_viewport_size({"width": width, "height": 1000})
                 page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
                 assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+                directory.scroll_into_view_if_needed()
+                assert directory.evaluate("element => element.scrollWidth <= element.clientWidth")
                 page.screenshot(animations="disabled", path=str(tmp_path / f"vault-security-{theme}-{width}.png"))
         finally:
             browser.close()

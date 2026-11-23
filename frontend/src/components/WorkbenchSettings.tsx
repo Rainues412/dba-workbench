@@ -32,7 +32,6 @@ export function WorkbenchSettings({ desktop, onClose }: { desktop: boolean; onCl
   const [savedAt, setSavedAt] = useState(0);
   const [error, setError] = useState("");
   const [autoBusy, setAutoBusy] = useState(false);
-  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [changing, setChanging] = useState(false);
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [windowBusy, setWindowBusy] = useState(false);
@@ -43,7 +42,7 @@ export function WorkbenchSettings({ desktop, onClose }: { desktop: boolean; onCl
   const windowSettings = useDesktopSettings(desktop && active === "window");
   const unlocked = useDesktopVaultUnlocked();
   const auto = useQuery({ queryKey: ["vault", "auto-status"], queryFn: ({ signal }) => desktopVaultApi.autoStatus(signal), enabled: desktop && active === "security" });
-  const diagnostics = useQuery({ queryKey: ["vault", "diagnostics"], queryFn: desktopVaultApi.diagnostics, enabled: desktop && showDiagnostics });
+  const diagnostics = useQuery({ queryKey: ["vault", "diagnostics"], queryFn: desktopVaultApi.diagnostics, enabled: desktop && active === "security" });
   const stats = useQuery({
     queryKey: ["dashboard", "stats"],
     queryFn: () => api<{ script_count: number; article_count: number }>("/api/dashboard/stats"),
@@ -154,13 +153,14 @@ export function WorkbenchSettings({ desktop, onClose }: { desktop: boolean; onCl
             <label>确认新主密码<input name="confirm_password" type="password" autoComplete="new-password" minLength={9} maxLength={256} required /></label>
             <button type="submit" className="button" disabled={passwordBusy}>{passwordBusy ? "正在保存…" : "保存新主密码"}</button>
           </form>}
-          <details className="vault-diagnostics context-details" onToggle={(event) => setShowDiagnostics(event.currentTarget.open)}><summary>数据位置与技术详情</summary>
-            <p>主密码通过 Argon2id 派生密钥，凭据使用 AES-256-GCM 加密。</p>
-            {diagnostics.isLoading && <p>正在读取密码库信息…</p>}
-            {diagnostics.data && <p>{diagnostics.data.database_path}<br />{diagnostics.data.credential_count} 条凭据</p>}
-            {diagnostics.error && <p role="alert">无法读取密码库信息。</p>}
-          </details></>}
+          </>}
           <VaultBackupRestore desktop={desktop} />
+          {desktop && <section className="vault-data-directory context-details">
+            <h4>数据目录</h4>
+            {diagnostics.isLoading && <p>正在读取数据目录…</p>}
+            {diagnostics.data && <p>{diagnostics.data.database_path.replace(/[^\\/]+$/, "")}</p>}
+            {diagnostics.error && <p role="alert">无法读取数据目录。</p>}
+          </section>}
         </>}
         {active === "shortcuts" && <><h3>快捷键</h3>{shortcuts.map(([label, key]) =>
           <div className="preference-row" key={label}><strong>{label}</strong><kbd>{key}</kbd></div>)}</>}
