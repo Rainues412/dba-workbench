@@ -71,6 +71,9 @@
 @container (max-width:340px) { .vault-backup-policy { grid-template-columns:1fr; gap:10px; } }
 
 .vault-restore-dialog .modal-actions { justify-content:center; }
+.vault-backup-delete-dialog .modal-header { align-items:flex-start; }
+.vault-backup-delete-description { margin:4px 0 0; color:var(--muted); font-size:13px; line-height:1.5; }
+.vault-backup-delete-dialog .backup-file { text-align:center; }
 .vault-restore-dialog .task-morph-slot { width:5.25rem; margin:0; }
 .vault-import-steps { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); list-style:none; margin:4px 0 14px; padding:0; }
 .vault-import-steps li { position:relative; display:grid; place-items:center; gap:9px; min-width:0; }

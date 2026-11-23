@@ -363,8 +363,9 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
 
   const importing = operation?.kind === "file";
   const exportingKey = operation?.kind === "key";
-  const managing = operation?.kind === "rename" || operation?.kind === "delete";
-  const deletingLast = operation?.kind === "delete" && files.data?.length === 1 && Boolean(policy.data?.interval_hours);
+  const deleting = operation?.kind === "delete";
+  const managing = operation?.kind === "rename" || deleting;
+  const deletingLast = deleting && files.data?.length === 1 && Boolean(policy.data?.interval_hours);
   const legacyImport = Boolean(selected && selected.document.format !== "dba-vault-backup-v3");
   const canImport = Boolean(selected && (legacyImport || identityFile));
   const name = importing ? selected?.name : operation && "entry" in operation ? operation.entry.display_name ?? operation.entry.filename : undefined;
@@ -432,17 +433,18 @@ export function VaultBackupRestore({ desktop, onOpenVault }: { desktop: boolean;
       <div><strong>备份恢复密钥</strong>{!policy.data.key_exported && <small>换机或重装时，请带上备份文件和另存的恢复密钥。</small>}</div>
       <button type="button" className="button small" onClick={() => start({ kind: "key" })}><KeyRound aria-hidden="true" />另存恢复密钥</button>
     </div>}
-    {operation && <AppDialog className="modal vault-restore-dialog" labelledBy={heading} onClose={close}>
+    {operation && <AppDialog className={`modal vault-restore-dialog${deleting ? " vault-backup-delete-dialog" : ""}`}
+      labelledBy={heading} describedBy={deleting ? `${heading}-description` : undefined} onClose={close}>
       <DialogFocusBoundary>
-        <div className="modal-header"><h2 id={heading}>{importing ? "导入密码库备份" :
-          exportingKey ? "另存备份恢复密钥" : operation.kind === "rename" ? "重命名备份" : operation.kind === "delete" ? "删除备份" : prepared ? "确认恢复密码库" : "校验密码库备份"}</h2>
+        <div className="modal-header"><div><h2 id={heading}>{importing ? "导入密码库备份" :
+          exportingKey ? "另存备份恢复密钥" : operation.kind === "rename" ? "重命名备份" : deleting ? "删除备份" : prepared ? "确认恢复密码库" : "校验密码库备份"}</h2>
+          {deleting && <p id={`${heading}-description`} className="vault-backup-delete-description">此备份将被永久删除，此操作无法撤消。</p>}</div>
           <button type="button" aria-label="关闭备份对话框" className="icon-button" onClick={close} disabled={busy || picking}><X size={19} /></button></div>
         {importing && initialized && <VaultImportSteps step={importStep} complete={importComplete} reduced={reducedMotion} />}
         {name && operation.kind !== "rename" && (!importing || prepared) && <div className="backup-file"><strong title={name}>{name}</strong></div>}
         {managing ? <form className="stack" onSubmit={manageBackup}>
-          {operation.kind === "rename" ? <label>备份名称<input name="name" defaultValue={name} maxLength={120} required disabled={busy} /></label>
-            : <div className="consequence-warning"><AlertTriangle size={19} aria-hidden="true" /><div><strong>删除后无法撤销。</strong>
-              {deletingLast && <p>自动备份已开启，删除后会尝试补建一份新备份。</p>}</div></div>}
+          {operation.kind === "rename" && <label>备份名称<input name="name" defaultValue={name} maxLength={120} required disabled={busy} /></label>}
+          {deletingLast && <p className="vault-backup-status">自动备份已开启，删除后会尝试补建一份新备份。</p>}
           <div className="modal-actions"><button type="submit" className={operation.kind === "rename" ? "button primary" : "button danger"} disabled={busy}>
             {operation.kind === "rename" ? "保存" : "确认删除"}</button></div>
         </form> : importing && !initialized ? <>

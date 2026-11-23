@@ -3,10 +3,11 @@ import { createPortal } from "react-dom";
 import { preferenceEvent } from "../preferences";
 
 // Keep desktop window controls available while the dialog blocks the workspace.
-export function AppDialog({ children, className, labelledBy, onClose, initialFocus, dimBackground = true, inert = false }: {
+export function AppDialog({ children, className, labelledBy, describedBy, onClose, initialFocus, dimBackground = true, inert = false }: {
   children: ReactNode;
   className: string;
   labelledBy: string;
+  describedBy?: string;
   onClose: () => void;
   initialFocus?: RefObject<HTMLElement | null>;
   dimBackground?: boolean;
@@ -75,7 +76,7 @@ export function AppDialog({ children, className, labelledBy, onClose, initialFoc
   return createPortal(<div className="app-dialog-layer" data-desktop={bounds.top > 0 ? "" : undefined} style={style} inert={inert} aria-hidden={inert || undefined}>
     {dimBackground && <div className="app-dialog-shade" aria-hidden="true" />}
     <div className="app-dialog-dismiss" aria-hidden="true" onPointerDown={(event) => { if (event.button === 0) close.current(); }} />
-    <dialog open data-app-dialog ref={dialog} className={className} aria-labelledby={labelledBy} tabIndex={-1}>
+    <dialog open data-app-dialog ref={dialog} className={className} aria-labelledby={labelledBy} aria-describedby={describedBy} tabIndex={-1}>
       {children}
     </dialog>
   </div>, document.body);
