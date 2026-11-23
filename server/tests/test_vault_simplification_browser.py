@@ -1,6 +1,7 @@
 """Exercise vault disclosures and restore only against an isolated synthetic vault."""
 import json
 import os
+from pathlib import Path
 
 import pytest
 from playwright.sync_api import expect, sync_playwright
@@ -9,7 +10,6 @@ from test_browser_smoke import OWNER, _api_client, _edge, _login
 
 
 MASTER = "test-only-ui-master"
-BACKUP_PASSWORD = "test-only-portable-backup"
 
 
 def _backup_settings(page):
@@ -20,10 +20,31 @@ def _backup_settings(page):
     return settings
 
 
-def _fill_backup_form(dialog):
+def _export_identity(page, settings, directory):
+    settings.get_by_role("button", name="另存恢复密钥", exact=True).click()
+    dialog = page.get_by_role("dialog", name="另存备份恢复密钥", exact=True)
     dialog.get_by_label("当前密码库主密码", exact=True).fill(MASTER)
-    dialog.get_by_label("备份密码", exact=True).fill(BACKUP_PASSWORD)
-    dialog.get_by_label("确认备份密码", exact=True).fill(BACKUP_PASSWORD)
+    dialog.get_by_role("button", name="另存密钥", exact=True).click()
+    return _saved_download(page, directory)
+
+
+def _verify_import(page, settings, password):
+    settings.get_by_role("button", name="导入", exact=True).click()
+    dialog = page.get_by_role("dialog", name="导入密码库备份", exact=True)
+    expect(dialog.get_by_label("选择备份文件")).to_have_count(0)
+    dialog.get_by_label("当前密码库主密码", exact=True).fill(password)
+    dialog.get_by_role("button", name="验证主密码", exact=True).click()
+    expect(dialog.get_by_label("选择备份文件")).to_be_visible()
+    return dialog
+
+
+def _select_age_files(dialog, backup, identity):
+    dialog.get_by_label("选择备份文件", exact=True).set_input_files(str(backup))
+    next_step = dialog.get_by_role("button", name="下一步", exact=True)
+    expect(next_step).to_be_disabled()
+    dialog.get_by_label("选择备份恢复密钥", exact=True).set_input_files(str(identity))
+    expect(next_step).to_be_enabled()
+    next_step.click()
 
 
 def _capture_downloads(page):
@@ -105,30 +126,29 @@ def test_vault_daily_ui_csv_and_restore_confirmation(live_server, tmp_path):
             expect(page.get_by_role("heading", name="导入演示条目", exact=True)).to_be_visible()
 
             settings = _backup_settings(page)
+            identity = _export_identity(page, settings, tmp_path)
             settings.get_by_role("button", name="立即备份", exact=True).click()
-            dialog = page.get_by_role("dialog", name="立即备份", exact=True)
-            _fill_backup_form(dialog)
-            dialog.get_by_role("button", name="生成备份", exact=True).click()
-            backup = _saved_download(page, tmp_path)
-            document = json.loads(backup.read_text(encoding="utf-8"))
-            assert document["format"] == "dba-vault-backup-v2"
-            assert set(document) == {"format", "source_user_id", "salt", "nonce", "wrapped_keys", "items", "mac"}
+            expect(settings.get_by_role("listitem").filter(has_text="立即备份")).to_be_visible()
+            directory = Path(settings.get_by_label("备份存放目录").input_value())
+            assert settings.get_by_label("备份存放目录").evaluate("node => node.readOnly")
+            backup = next(directory.glob("backup-*.age"))
+            assert backup.read_text(encoding="utf-8").startswith("-----BEGIN AGE ENCRYPTED FILE-----")
             assert "synthetic-secret" not in backup.read_text(encoding="utf-8")
 
             restore_requests = []
             page.on("request", lambda request: restore_requests.append(request) if "/api/vault/backup/restore" in request.url else None)
-            file_input = settings.get_by_label("选择密码库备份文件", exact=True)
-            file_input.set_input_files(str(backup))
-            verify = page.get_by_role("dialog", name="校验密码库备份", exact=True)
-            verify.get_by_label("备份密码", exact=True).fill("wrong-backup-password")
-            verify.get_by_label("当前密码库主密码", exact=True).fill(MASTER)
-            verify.get_by_role("button", name="校验备份", exact=True).click()
-            expect(verify.get_by_role("alert")).to_contain_text("备份密码不正确")
-            verify.get_by_label("备份密码", exact=True).fill(BACKUP_PASSWORD)
-            verify.get_by_role("button", name="校验备份", exact=True).click()
-            restore = page.get_by_role("dialog", name="确认恢复密码库", exact=True)
+            restore = _verify_import(page, settings, MASTER)
+            wrong = tmp_path / "wrong-identity.txt"
+            from pyrage import x25519
+            wrong.write_text(str(x25519.Identity.generate()), encoding="utf-8")
+            _select_age_files(restore, backup, wrong)
+            expect(restore.get_by_role("alert")).to_contain_text("恢复密钥与备份不匹配")
+            restore.get_by_label("选择备份恢复密钥", exact=True).set_input_files(str(identity))
+            restore.get_by_role("button", name="下一步", exact=True).click()
             expect(restore).to_contain_text("包含 1 条凭据")
             expect(restore).to_contain_text("覆盖前会自动创建安全备份")
+            expect(restore.get_by_role("list", name="将导入的密码条目")).to_contain_text("导入演示条目")
+            expect(restore).not_to_contain_text("synthetic-secret")
             assert not restore_requests
             for theme, width in [("light", 1440), ("dark", 390)]:
                 page.set_viewport_size({"width": width, "height": 1000})
@@ -140,10 +160,10 @@ def test_vault_daily_ui_csv_and_restore_confirmation(live_server, tmp_path):
 
             row = settings.get_by_role("listitem").filter(has_text=backup.name)
             row.get_by_role("button", name="恢复", exact=True).click()
-            verify.get_by_label("备份密码", exact=True).fill(BACKUP_PASSWORD)
+            verify = page.get_by_role("dialog", name="校验密码库备份", exact=True)
             verify.get_by_label("当前密码库主密码", exact=True).fill(MASTER)
             verify.get_by_role("button", name="校验备份", exact=True).click()
-            restore.get_by_role("button", name="确认恢复", exact=True).click()
+            page.get_by_role("dialog", name="确认恢复密码库", exact=True).get_by_role("button", name="确认恢复", exact=True).click()
             expect(settings.get_by_text("已恢复 1 条。覆盖前的安全备份已保存。", exact=True)).to_be_visible()
             expect(settings.get_by_role("listitem").filter(has_text="恢复前安全备份")).to_be_visible()
             settings.get_by_role("button", name="完成", exact=True).click()
@@ -219,13 +239,14 @@ def test_manual_and_automatic_files_restore_locally_and_on_a_different_vault(liv
     import sqlite3
 
     from backend import auth, database
+    from backend.routers import vault as vault_router
 
     source_db = database.DB_PATH
     monkeypatch.setattr(auth, "_desktop_token", "isolated-portable-vault")
     sample = "隔离密码库条目"
 
     def desktop_page(browser):
-        context = browser.new_context(viewport={"width": 1320, "height": 900})
+        context = browser.new_context(viewport={"width": 1320, "height": 900}, reduced_motion="no-preference")
         page = context.new_page()
         _capture_downloads(page)
         page.set_default_timeout(12_000)
@@ -262,25 +283,19 @@ def test_manual_and_automatic_files_restore_locally_and_on_a_different_vault(liv
             expect(settings.get_by_label("自动备份间隔", exact=True)).to_have_value("6")
             settings.get_by_label("备份保留数量", exact=True).select_option("5")
             expect(settings.get_by_label("备份保留数量", exact=True)).to_have_value("5")
-            settings.get_by_role("button", name="设置备份密码", exact=True).click()
-            dialog = page.get_by_role("dialog", name="设置自动备份密码", exact=True)
-            _fill_backup_form(dialog)
-            dialog.get_by_role("button", name="保存密码", exact=True).click()
-            automatic_row = settings.get_by_role("listitem").filter(has_text="自动备份")
-            expect(automatic_row).to_be_visible()
-            automatic_row.get_by_role("button", name="保存副本", exact=True).click()
-            copy = page.get_by_role("dialog", name="保存备份副本", exact=True)
-            copy.get_by_label("当前密码库主密码", exact=True).fill(MASTER)
-            copy.get_by_role("button", name="保存文件", exact=True).click()
-            automatic = _saved_download(page, tmp_path)
+            identity = _export_identity(page, settings, tmp_path)
+            vault_router.run_scheduled_backups()
+            settings.get_by_role("button", name="完成", exact=True).click()
+            settings = _backup_settings(page)
+            directory = Path(settings.get_by_label("备份存放目录").input_value())
+            automatic = next(directory.glob("auto-*.age"))
 
             settings.get_by_role("button", name="立即备份", exact=True).click()
-            dialog = page.get_by_role("dialog", name="立即备份", exact=True)
-            _fill_backup_form(dialog)
-            dialog.get_by_role("button", name="生成备份", exact=True).click()
-            manual = _saved_download(page, tmp_path)
+            expect(settings.get_by_role("listitem").filter(has_text="立即备份")).to_be_visible()
+            expect(settings.get_by_role("listitem").filter(has_text="自动备份")).to_be_visible()
+            manual = next(directory.glob("backup-*.age"))
 
-            panel = settings.get_by_role("region", name="密码库备份", exact=True)
+            panel = settings.get_by_role("region", name="备份与恢复", exact=True)
             expect(panel.get_by_role("listitem")).to_have_count(2)
             for theme, width in [("light", 1320), ("dark", 390)]:
                 page.set_viewport_size({"width": width, "height": 900})
@@ -297,14 +312,11 @@ def test_manual_and_automatic_files_restore_locally_and_on_a_different_vault(liv
             page.set_viewport_size({"width": 1320, "height": 900})
 
             for selected in (automatic, manual):
-                data = json.loads(selected.read_text(encoding="utf-8"))
-                assert data["format"] == "dba-vault-backup-v2"
-                assert set(data) == {"format", "source_user_id", "salt", "nonce", "wrapped_keys", "items", "mac"}
+                assert selected.read_text(encoding="utf-8").startswith("-----BEGIN AGE ENCRYPTED FILE-----")
                 assert sample not in selected.read_text(encoding="utf-8")
                 row = settings.get_by_role("listitem").filter(has_text=selected.name)
                 row.get_by_role("button", name="恢复", exact=True).click()
                 verify = page.get_by_role("dialog", name="校验密码库备份", exact=True)
-                verify.get_by_label("备份密码", exact=True).fill(BACKUP_PASSWORD)
                 verify.get_by_label("当前密码库主密码", exact=True).fill(MASTER)
                 verify.get_by_role("button", name="校验备份", exact=True).click()
                 review = page.get_by_role("dialog", name="确认恢复密码库", exact=True)
@@ -326,12 +338,12 @@ def test_manual_and_automatic_files_restore_locally_and_on_a_different_vault(liv
             legacy = tmp_path / "legacy-v1.json"
             legacy.write_text(json.dumps(v1), encoding="utf-8")
             settings = _backup_settings(page)
-            settings.get_by_label("选择密码库备份文件", exact=True).set_input_files(str(legacy))
-            verify = page.get_by_role("dialog", name="校验密码库备份", exact=True)
-            verify.get_by_label("备份密码", exact=True).fill(MASTER)
-            verify.get_by_label("当前密码库主密码", exact=True).fill(MASTER)
-            verify.get_by_role("button", name="校验备份", exact=True).click()
-            page.get_by_role("dialog", name="确认恢复密码库", exact=True).get_by_role("button", name="确认恢复").click()
+            legacy_dialog = _verify_import(page, settings, MASTER)
+            legacy_dialog.get_by_label("选择备份文件", exact=True).set_input_files(str(legacy))
+            legacy_dialog.get_by_label("旧版备份密码", exact=True).fill(MASTER)
+            legacy_dialog.get_by_role("button", name="下一步", exact=True).click()
+            legacy_dialog.get_by_role("button", name="导入", exact=True).click()
+            expect(legacy_dialog).not_to_be_visible()
             expect(settings.get_by_text("已恢复 1 条。覆盖前的安全备份已保存。", exact=True)).to_be_visible()
             context.close()
 
@@ -347,20 +359,35 @@ def test_manual_and_automatic_files_restore_locally_and_on_a_different_vault(liv
 
                 context, page = desktop_page(browser)
                 settings = _backup_settings(page)
-                settings.get_by_label("选择密码库备份文件", exact=True).set_input_files(str(selected))
-                verify = page.get_by_role("dialog", name="校验密码库备份", exact=True)
-                verify.get_by_label("备份密码", exact=True).fill(BACKUP_PASSWORD)
                 target_master = f"target-master-test-{user_id}"
-                verify.get_by_label("设置本机密码库主密码", exact=True).fill(target_master)
-                verify.get_by_label("确认本机主密码", exact=True).fill(target_master)
-                verify.get_by_label("问题 1", exact=True).fill("目标密保")
-                verify.get_by_label("答案 1", exact=True).fill("target-answer-test")
-                verify.get_by_role("button", name="校验备份", exact=True).click()
-                review = page.get_by_role("dialog", name="确认恢复密码库", exact=True)
+                settings.get_by_role("button", name="导入", exact=True).click()
+                setup_notice = page.get_by_role("dialog", name="导入密码库备份", exact=True)
+                setup_notice.get_by_role("button", name="前往保险箱", exact=True).click()
+                setup = page.get_by_role("region", name="创建本地保险箱")
+                setup.get_by_label("保险箱主密码", exact=True).fill(target_master)
+                setup.get_by_label("确认主密码", exact=True).fill(target_master)
+                setup.get_by_label("问题 1", exact=True).fill("目标密保")
+                setup.get_by_label("答案 1", exact=True).fill("target-answer-test")
+                setup.get_by_role("button", name="创建并解锁", exact=True).click()
+                expect(page.get_by_role("button", name="立即锁定", exact=True)).to_be_visible()
+                settings = _backup_settings(page)
+                review = _verify_import(page, settings, target_master)
+                _select_age_files(review, selected, identity)
                 expect(review).to_contain_text("包含 1 条凭据")
+                expect(review.get_by_role("list", name="将导入的密码条目")).to_contain_text(sample)
                 with sqlite3.connect(separate) as conn:
-                    assert conn.execute("SELECT COUNT(*) FROM vault_profiles").fetchone()[0] == 0
-                review.get_by_role("button", name="确认恢复", exact=True).click()
+                    assert conn.execute("SELECT COUNT(*) FROM vault_items").fetchone()[0] == 0
+                review.evaluate("""dialog => {
+                    new MutationObserver(() => {
+                        if (dialog.querySelector('.vault-import-progress[data-complete]')) {
+                            document.body.dataset.importMotionFinished = 'true';
+                        }
+                    }).observe(dialog, { subtree: true, childList: true, attributes: true });
+                }""")
+                review.get_by_role("button", name="导入", exact=True).click()
+                expect(review.get_by_role("status", name="正在导入")).to_be_visible()
+                expect(review).not_to_be_visible()
+                expect(page.locator("body")).to_have_attribute("data-import-motion-finished", "true")
                 expect(settings.get_by_text("已恢复 1 条。", exact=True)).to_be_visible()
                 settings.get_by_role("button", name="完成", exact=True).click()
                 unlock_and_check(page, target_master)

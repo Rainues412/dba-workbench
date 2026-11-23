@@ -13,6 +13,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
+from pyrage import decrypt, x25519
 
 from backend.vault_recovery import decrypt_recovery_envelope
 from backend import admin
@@ -108,13 +109,17 @@ def initialize_vault(client: TestClient, questions=None) -> tuple[bytes, bytes]:
     return dek, recovery_wrapped
 
 
-def desktop_unlock(client, password):
+def master_proof(client, password):
     profile = client.get("/api/vault/profile").json()["profile"]
     kek = hash_secret_raw(
         password.encode(), unb64(profile["kdf_salt"]), time_cost=3, memory_cost=65536,
         parallelism=1, hash_len=32, type=Type.ID,
     )
-    return client.post("/api/vault/unlock", json={"wrapping_key": b64(kek)})
+    return {"wrapping_key": b64(kek)}
+
+
+def desktop_unlock(client, password):
+    return client.post("/api/vault/unlock", json=master_proof(client, password))
 
 
 def test_desktop_recovery_and_password_change_preserve_items(client, isolated_app, monkeypatch):
@@ -131,6 +136,7 @@ def test_desktop_recovery_and_password_change_preserve_items(client, isolated_ap
     old_grant = {"X-DBA-Vault-Token": desktop_unlock(client, MASTER_PASSWORD).json()["token"]}
     item = encrypted_item(dek, "test-item-key-0021", bytes(range(12)), "original-test-only-value")
     assert client.post("/api/vault/items", json=item, headers=old_grant).status_code == 201
+    backup = client.post("/api/vault/backups").json()["filename"]
     assert client.put("/api/vault/profile/password", json={
         "current_master_password": "wrong-test-only-password", "new_master_password": "new-test-only-password",
     }).status_code == 401
@@ -153,6 +159,10 @@ def test_desktop_recovery_and_password_change_preserve_items(client, isolated_ap
     saved = client.get("/api/vault/items", headers=new_grant).json()["items"][0]
     assert saved["ciphertext"] == item["ciphertext"]
     assert saved["nonce"] == item["nonce"]
+    proof = master_proof(client, "changed-test-only-password")
+    key = client.post("/api/vault/backup/key", json=proof, headers=new_grant).json()["identity"]
+    encrypted = client.get(f"/api/vault/backups/{backup}", headers=new_grant).json()["encrypted"]
+    assert json.loads(decrypt(encrypted.encode(), [x25519.Identity.from_str(key)]))["items"][0]["ciphertext"] == item["ciphertext"]
 
 
 def test_existing_desktop_vault_can_enroll_only_after_unlock(client, monkeypatch):
@@ -338,7 +348,9 @@ def test_backup_restore_preserves_current_items_on_conflict_or_write_failure(cli
     incoming = encrypted_item(dek, "test-item-key-0002", bytes(range(1, 13)), "imported-value")
     assert client.post("/api/vault/items", json=original).status_code == 201
     existing = client.get("/api/vault/backup").json()
-    payload = {"confirm": "RESTORE", "expected_digest": existing["digest"], "items": [incoming]}
+    proof = master_proof(client, MASTER_PASSWORD)
+    payload = {**proof, "confirm": "RESTORE", "expected_digest": existing["digest"], "items": [incoming]}
+    assert client.post("/api/vault/backup/restore", json={**payload, "wrapping_key": b64(bytes(32))}).status_code == 401
     assert client.post("/api/vault/backup/restore", json={**payload, "expected_digest": "0" * 64}).status_code == 409
     assert client.post("/api/vault/backup/restore", json={**payload, "confirm": "cancel"}).status_code == 422
 
@@ -361,14 +373,16 @@ def test_backup_restore_preserves_current_items_on_conflict_or_write_failure(cli
     assert restored.status_code == 200, restored.text
     assert restored.json()["item_count"] == 1
     safety = restored.json()["safety_backup"]
-    assert client.get(f"/api/vault/backups/{safety}").json() == existing
+    key_response = client.post("/api/vault/backup/key", json=proof)
+    identity = x25519.Identity.from_str(key_response.json()["identity"])
+    saved = client.get(f"/api/vault/backups/{safety}").json()
+    assert json.loads(decrypt(saved["encrypted"].encode(), [identity]))["items"] == existing["items"]
     current = client.get("/api/vault/backup").json()
     assert current["profile"] == existing["profile"]
     assert current["items"][0]["ciphertext"] == incoming["ciphertext"]
 
 
-def test_scheduled_portable_backup_respects_interval_and_retention(client, isolated_app):
-    import hmac
+def test_scheduled_portable_backup_respects_interval_and_retention(client, isolated_app, monkeypatch):
     import os
     from datetime import datetime, timedelta, timezone
 
@@ -378,31 +392,37 @@ def test_scheduled_portable_backup_respects_interval_and_retention(client, isola
     item = encrypted_item(dek, "test-item-key-0001", bytes(range(12)), "original-value")
     assert client.post("/api/vault/items", json=item).status_code == 201
     response = client.get("/api/vault/backup-settings")
-    assert response.json() == {"interval_hours": 24, "retention": 10, "portable_ready": False}
+    assert response.json() == {"interval_hours": 24, "retention": 10, "portable_ready": False, "key_exported": False,
+                               "directory": str(vault_backups.directory(1))}
+    opened_paths = []
+    monkeypatch.setattr(os, "startfile", opened_paths.append)
+    assert client.post("/api/vault/backups/open-directory", json={"path": "C:/test-other"}).status_code == 204
+    assert opened_paths == [vault_backups.directory(1)]
     assert client.put("/api/vault/backup-settings", json={"interval_hours": 7, "retention": 3}).status_code == 422
     assert client.put("/api/vault/backup-settings", json={"interval_hours": 6, "retention": 3}).status_code == 200
 
-    salt, nonce, key = os.urandom(16), os.urandom(12), os.urandom(32)
-    kek = hash_secret_raw(b"portable-backup-test-password", salt, 3, 65536, 1, 32, Type.ID)
-    wrapped = AESGCM(kek).encrypt(nonce, dek + key, b"dba-vault-backup-v2:keys:1")
-    profile = client.get("/api/vault/profile").json()["profile"]
-    payload = {"seal": {"salt": b64(salt), "nonce": b64(nonce), "wrapped_keys": b64(wrapped)},
-               "signing_key": b64(key), "recovery_wrapped_dek": profile["recovery_wrapped_dek"]}
-    enrolled = client.post("/api/vault/backup-settings/password", json=payload)
-    assert enrolled.status_code == 200, enrolled.text
-    assert enrolled.json()["portable_ready"]
+    proof = master_proof(client, MASTER_PASSWORD)
+    assert client.post("/api/vault/backups").status_code == 409
+    assert client.post("/api/vault/backup-settings/prepare", json=proof).status_code == 204
+    assert client.get("/api/vault/backup-settings").json()["portable_ready"]
+    key_response = client.post("/api/vault/backup/key?export=true", json=proof)
+    assert key_response.status_code == 200
+    identity = x25519.Identity.from_str(key_response.json()["identity"])
+    assert client.get("/api/vault/backup-settings").json()["key_exported"]
+    assert client.post("/api/vault/backups").status_code == 201
+    vault_router.run_scheduled_backups()
 
     def verify_document(entry):
-        backup = client.get(f"/api/vault/backups/{entry['filename']}").json()
-        mac = backup.pop("mac")
-        assert hmac.digest(key, vault_backups.canonical(backup), "sha256").hex() == mac
-        assert backup["format"] == "dba-vault-backup-v2" and backup["source_user_id"] == 1
-        assert AESGCM(kek).decrypt(unb64(backup["nonce"]), unb64(backup["wrapped_keys"]), b"dba-vault-backup-v2:keys:1") == dek + key
+        encrypted = vault_backups.read(1, entry["filename"])
+        assert encrypted.startswith(b"-----BEGIN AGE ENCRYPTED FILE-----")
+        backup = json.loads(decrypt(encrypted, [identity]))
+        assert backup["format"] == "dba-vault-backup-v3" and backup["source_user_id"] == 1
+        assert decrypt(unb64(backup["wrapped_dek"]), [identity]) == dek
         assert backup["items"][0]["ciphertext"] == item["ciphertext"]
-        assert set(backup) == {"format", "source_user_id", "salt", "nonce", "wrapped_keys", "items"}
+        assert set(backup) == {"format", "source_user_id", "wrapped_dek", "items"}
 
     files = client.get("/api/vault/backups").json()
-    assert len(files) == 1 and files[0]["kind"] == "auto"
+    assert len(files) == 2 and files[0]["kind"] == "auto"
     verify_document(files[0])
     vault_router.run_scheduled_backups()
     assert client.get("/api/vault/backups").json() == files
@@ -417,7 +437,8 @@ def test_scheduled_portable_backup_respects_interval_and_retention(client, isola
         age_files()
         vault_router.run_scheduled_backups()
     files = client.get("/api/vault/backups").json()
-    assert len(files) == 3
+    assert len([entry for entry in files if entry["kind"] == "auto"]) == 3
+    assert len([entry for entry in files if entry["kind"] == "manual"]) == 1
     verify_document(files[0])
     assert client.put("/api/vault/backup-settings", json={"interval_hours": 0, "retention": 3}).status_code == 200
     age_files()

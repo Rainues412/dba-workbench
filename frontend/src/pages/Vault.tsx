@@ -216,13 +216,16 @@ export function Vault() {
 
   async function unlockWithMasterPassword(password: string, envelope: VaultProfile, signal: AbortSignal) {
     const userId = session!.user!.id;
-    const key = await unlockVault(password, userId, envelope, desktopVault ? async (wrappingKey) => {
-      const grant = await api<VaultGrant>("/api/vault/unlock", {
-        method: "POST", body: jsonBody({ wrapping_key: wrappingKey }), signal,
-      });
-      if (signal.aborted) return;
-      acceptGrant(grant);
-    } : undefined);
+    const key = await unlockVault(password, userId, envelope, async (wrappingKey) => {
+      const options = { method: "POST", body: jsonBody({ wrapping_key: wrappingKey }), signal };
+      if (desktopVault) {
+        const grant = await api<VaultGrant>("/api/vault/unlock", options);
+        if (!signal.aborted) acceptGrant(grant);
+      } else {
+        await api("/api/vault/backup-settings/prepare", options).catch(() => undefined);
+      }
+      void client.invalidateQueries({ queryKey: ["vault", "backup-settings"] });
+    });
     if (signal.aborted) {
       key.fill(0);
       return;
@@ -247,13 +250,12 @@ export function Vault() {
       const created = await createVaultProfile(first, session!.user!.id, recovery);
       try {
         await api<VaultProfile>("/api/vault/profile", { method: "POST", body: jsonBody({ ...created.profile, questions }), signal: request.signal });
-        if (desktopVault) await unlockWithMasterPassword(first, created.profile, request.signal);
-        else setDek(created.dek);
+        await unlockWithMasterPassword(first, created.profile, request.signal);
       } catch (reason) {
         created.dek.fill(0);
         throw reason;
       }
-      if (desktopVault) created.dek.fill(0);
+      created.dek.fill(0);
       if (request.signal.aborted) return;
       formElement.reset();
       await Promise.all([profile.refetch(), legacyStatus.refetch()]);

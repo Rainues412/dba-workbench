@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { BookOpenText, Check, Circle, Database, Info, Keyboard, Monitor, PanelLeft, Power, Settings, X } from "lucide-react";
 import { api, VAULT_LOCKED_EVENT } from "../api/client";
 import { savePreference, usePreference, type Preference } from "../preferences";
@@ -26,6 +27,7 @@ const shortcuts = [
 type Section = typeof sections[number][0];
 
 export function WorkbenchSettings({ desktop, onClose }: { desktop: boolean; onClose: () => void }) {
+  const navigate = useNavigate();
   const search = useRef<HTMLInputElement>(null);
   const [section, setSection] = useState<Section>("appearance");
   const [query, setQuery] = useState("");
@@ -154,7 +156,7 @@ export function WorkbenchSettings({ desktop, onClose }: { desktop: boolean; onCl
             <button type="submit" className="button" disabled={passwordBusy}>{passwordBusy ? "正在保存…" : "保存新主密码"}</button>
           </form>}
           </>}
-          <VaultBackupRestore desktop={desktop} />
+          <VaultBackupRestore desktop={desktop} onOpenVault={() => { onClose(); void navigate("/vault"); }} />
           {desktop && <section className="vault-data-directory context-details">
             <h4>数据目录</h4>
             {diagnostics.isLoading && <p>正在读取数据目录…</p>}

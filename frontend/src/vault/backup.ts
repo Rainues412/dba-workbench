@@ -1,7 +1,9 @@
-import { decodeBase64, decryptSecret, deriveKek, encodeBase64, importAesKey, unlockVault, type VaultCipherItem, type VaultProfile, type VaultSecret } from "./crypto";
+import { decodeBase64, decryptSecret, deriveKek, importAesKey, unlockVault, type VaultCipherItem, type VaultProfile, type VaultSecret } from "./crypto";
 
 const portable = "dba-vault-backup-v2";
 const legacy = "dba-vault-backup-v1";
+const ageFormat = "dba-vault-backup-v3";
+const ageHeader = "-----BEGIN AGE ENCRYPTED FILE-----";
 const text = new TextEncoder();
 const backupSizeLimit = 64 * 1024 * 1024;
 
@@ -9,7 +11,7 @@ type Cipher = Pick<VaultCipherItem, "item_key" | "envelope_version" | "nonce" | 
 type Seal = { salt: string; nonce: string; wrapped_keys: string };
 export type LegacyBackup = { format: typeof legacy; digest: string; profile: VaultProfile; items: Cipher[] };
 export type PortableBackup = Seal & { format: typeof portable; source_user_id: number; items: Cipher[]; mac: string };
-export type VaultBackup = PortableBackup | LegacyBackup;
+export type VaultBackup = PortableBackup | LegacyBackup | { format: typeof ageFormat; encrypted: string };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -45,6 +47,10 @@ function hexDigest(value: unknown): value is string {
 }
 
 export function parseBackup(value: unknown): VaultBackup {
+  if (isRecord(value) && value.format === ageFormat && typeof value.encrypted === "string"
+    && value.encrypted.startsWith(ageHeader) && value.encrypted.length <= backupSizeLimit) {
+    return { format: ageFormat, encrypted: value.encrypted };
+  }
   if (isRecord(value) && Array.isArray(value.items) && value.items.every(validItem)) {
     if (value.format === portable && Object.keys(value).length === 7
       && within(value.source_user_id, 1, Number.MAX_SAFE_INTEGER)
@@ -59,8 +65,19 @@ export function parseBackup(value: unknown): VaultBackup {
 
 export async function readBackupFile(file: File): Promise<VaultBackup> {
   if (file.size > backupSizeLimit) throw new Error("备份文件不能超过 64 MiB。");
-  try { return parseBackup(JSON.parse(await file.text())); }
+  try {
+    const data = await file.text();
+    return parseBackup(data.startsWith(ageHeader) ? { format: ageFormat, encrypted: data } : JSON.parse(data));
+  }
   catch { throw new Error("请选择工作台生成且支持的密码库加密备份文件。"); }
+}
+
+export async function readBackupIdentity(file: File) {
+  if (file.size <= 4096) {
+    const lines = (await file.text()).split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
+    if (lines.length === 1 && /^AGE-SECRET-KEY-1[0-9A-Z]+$/.test(lines[0])) return lines[0];
+  }
+  throw new Error("请选择工作台另存的备份恢复密钥文件。");
 }
 
 function secret(value: unknown): VaultSecret {
@@ -81,22 +98,6 @@ async function backupKey(password: string, salt: string) {
 
 function sealAad(userId: number) {
   return text.encode(portable + ":keys:" + userId);
-}
-
-// The server keeps only this password-wrapped envelope and the MAC key. It can
-// authenticate an automatic snapshot, but cannot unwrap the vault's data key.
-export async function createBackupSeal(password: string, userId: number, dek: Uint8Array<ArrayBuffer>) {
-  const keys = new Uint8Array(64);
-  keys.set(dek);
-  const signingKey = crypto.getRandomValues(keys.subarray(32));
-  const salt = encodeBase64(crypto.getRandomValues(new Uint8Array(16)));
-  const nonce = crypto.getRandomValues(new Uint8Array(12));
-  try {
-    const wrapped = await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce, additionalData: sealAad(userId) },
-      await backupKey(password, salt), keys);
-    return { seal: { salt, nonce: encodeBase64(nonce), wrapped_keys: encodeBase64(new Uint8Array(wrapped)) },
-      signing_key: encodeBase64(signingKey) };
-  } finally { keys.fill(0); }
 }
 
 function canonical(value: unknown): string {
@@ -127,6 +128,27 @@ async function openLegacy(backup: LegacyBackup, password: string, userId: number
 }
 
 export async function openBackup(backup: VaultBackup, password: string, userId: number): Promise<VaultSecret[]> {
+  if (backup.format === ageFormat) {
+    const { armor, Decrypter } = await import("age-encryption");
+    const decrypt = new Decrypter();
+    let document: unknown;
+    try {
+      decrypt.addIdentity(password);
+      document = JSON.parse(await decrypt.decrypt(armor.decode(backup.encrypted), "text"));
+    } catch { throw new Error("恢复密钥与备份不匹配，或备份文件已损坏。"); }
+    if (!isRecord(document) || document.format !== ageFormat || Object.keys(document).length !== 4
+      || !within(document.source_user_id, 1, Number.MAX_SAFE_INTEGER) || !encoded(document.wrapped_dek)
+      || document.wrapped_dek.length > 512 || !Array.isArray(document.items) || !document.items.every(validItem)) {
+      throw new Error("请选择工作台生成且支持的密码库加密备份文件。");
+    }
+    const rawKey = await decrypt.decrypt(decodeBase64(document.wrapped_dek));
+    const dek = new Uint8Array(rawKey);
+    rawKey.fill(0);
+    try {
+      if (dek.length !== 32) throw new Error("备份数据密钥格式无效。");
+      return await entries(document.items, dek, document.source_user_id);
+    } finally { dek.fill(0); }
+  }
   try {
     if (backup.format === legacy) return await openLegacy(backup, password, userId);
     const { mac, ...document } = backup;

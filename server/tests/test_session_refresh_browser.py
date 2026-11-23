@@ -32,13 +32,11 @@ def test_server_reauth_rejection_updates_badge_without_refresh(live_server, isol
             page.locator(".sidebar-foot").get_by_role("button", name="设置", exact=True).click()
             settings = page.get_by_role("dialog", name="设置", exact=True)
             settings.get_by_role("button", name="密码库安全", exact=True).click()
-            settings.get_by_role("button", name="立即备份", exact=True).click()
-            backup = page.get_by_role("dialog", name="立即备份", exact=True)
+            settings.get_by_role("button", name="导入", exact=True).click()
+            backup = page.get_by_role("dialog", name="导入密码库备份", exact=True)
             backup.get_by_label("当前密码库主密码", exact=True).fill("test-only-master-password")
-            backup.get_by_label("备份密码", exact=True).fill("test-only-backup-password")
-            backup.get_by_label("确认备份密码", exact=True).fill("test-only-backup-password")
-            with page.expect_response(lambda response: response.url.endswith("/api/vault/backups") and response.request.method == "POST") as rejected:
-                backup.get_by_role("button", name="生成备份", exact=True).click()
+            with page.expect_response(lambda response: response.url.endswith("/api/vault/backup/verify-master") and response.request.method == "POST") as rejected:
+                backup.get_by_role("button", name="验证主密码", exact=True).click()
             assert rejected.value.status == 403
             expect(backup.get_by_role("alert")).to_be_visible()
             backup.get_by_role("button", name="取消", exact=True).click()
