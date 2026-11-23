@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { BookOpenText, Check, Circle, Database, Info, Keyboard, Monitor, PanelLeft, Power, Settings, X } from "lucide-react";
+import { BookOpenText, Check, Circle, Database, Info, Keyboard, Monitor, Power, Settings, X } from "lucide-react";
 import { api, VAULT_LOCKED_EVENT } from "../api/client";
 import { savePreference, usePreference, type Preference } from "../preferences";
 import { desktopVaultApi, useDesktopVaultUnlocked } from "../vault/desktopVault";
@@ -10,8 +10,7 @@ import { desktopSettingsApi, useDesktopSettings } from "../desktopSettings";
 import { VaultBackupRestore } from "./VaultBackupRestore";
 
 const sections = [
-  ["appearance", "外观与阅读", Monitor, "字号 字体 动画 行号 换行 密度"],
-  ["navigation", "导航栏", PanelLeft, "菜单 位置 侧栏 左 右 顶部 底部"],
+  ["appearance", "外观与阅读", Monitor, "字号 字体 动画 行号 换行 密度 导航栏位置 菜单 侧栏 左 右 顶部 底部"],
   ["workspace", "工作区", BookOpenText, "脚本 置顶 文档 信息"],
   ["window", "窗口与启动", Power, "开机 自启 静默 窗口 关闭 最小化 托盘"],
   ["security", "密码库安全", Database, "密码 保险箱 主密码 解锁 锁定 安全 数据位置 备份 恢复 导入"],
@@ -112,13 +111,11 @@ export function WorkbenchSettings({ desktop, onClose }: { desktop: boolean; onCl
         {!active && <p role="status">没有匹配的设置。</p>}
         {active === "appearance" && <><h3>外观与阅读</h3>
           <SelectPreference label="界面密度" name="density" options={[["compact", "紧凑"], ["comfortable", "舒适"]]} onUpdate={update} />
+          <SelectPreference label="导航栏位置" name="navigation" options={[["left", "左侧"], ["right", "右侧"], ["top", "顶部"], ["bottom", "底部"]]} onUpdate={update} />
           <SelectPreference label="代码字号" name="codeSize" options={[["0", "默认 14 px"], ...[12, 13, 14, 15, 16, 17, 18].map((size) => [String(size), `${size} px`] as const)]} onUpdate={update} />
           <TogglePreference label="代码自动换行" name="codeWrap" onUpdate={update} />
           <TogglePreference label="显示代码行号" name="lineNumbers" onUpdate={update} />
           <TogglePreference label="减少动态效果" name="reduceMotion" onUpdate={update} />
-        </>}
-        {active === "navigation" && <><h3>导航栏</h3>
-          <SelectPreference label="导航栏位置" name="navigation" options={[["left", "左侧"], ["right", "右侧"], ["top", "顶部"], ["bottom", "底部"]]} onUpdate={update} />
         </>}
         {active === "workspace" && <><h3>工作区</h3>
           <TogglePreference label="常用脚本自动置顶" detail="近 30 天使用至少 3 次，最多 5 个。" name="autoPinScripts" onUpdate={update} />
